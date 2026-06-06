@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Cliente {
+  id        String   @id @default(cuid())
+  nombre    String
+  cif       String   @default("")
+  dir       String   @default("")
+  cp        String   @default("")
+  ciudad    String   @default("")
+  prov      String   @default("")
+  mail      String   @default("")
+  tel       String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  registros Registro[]
+  catalogo  Catalogo[]
+}
+
+model Catalogo {
+  id         String   @id @default(cuid())
+  clienteId  String   @default("")
+  c1         String
+  c2         String
+  coste      Float    @default(0)
+  inc        Float    @default(0)
+  final      Float    @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  cliente Cliente? @relation(fields: [clienteId], references: [id])
+}
+
+model Registro {
+  id         String   @id @default(cuid())
+  fecha      String
+  clienteId  String
+  cliente    String   @default("")
+  c1         String
+  c2         String
+  cant       Int      @default(1)
+  obs        String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  clienteRel Cliente? @relation(fields: [clienteId], references: [id])
+}
+
+model FacturaSeq {
+  id    String @id @default("main")
+  seq   Int    @default(1)
+}
