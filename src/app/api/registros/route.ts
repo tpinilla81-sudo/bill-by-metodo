@@ -8,6 +8,35 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json()
+
+  // Batch import
+  if (body.batch && Array.isArray(body.batch)) {
+    const rows = body.batch as Array<{
+      fecha: string; clienteId: string; cliente: string;
+      c1: string; c2: string; cant: number; obs: string;
+    }>
+
+    const validRows = rows.filter(r => r.fecha && r.clienteId && r.c1 && r.c2)
+    if (validRows.length === 0) {
+      return NextResponse.json({ error: 'No hay filas válidas' }, { status: 400 })
+    }
+
+    const created = await db.registro.createMany({
+      data: validRows.map(r => ({
+        fecha: r.fecha,
+        clienteId: r.clienteId,
+        cliente: r.cliente || '',
+        c1: r.c1,
+        c2: r.c2,
+        cant: Number(r.cant) || 1,
+        obs: r.obs || '',
+      }))
+    })
+
+    return NextResponse.json({ count: created.count }, { status: 201 })
+  }
+
+  // Single entry
   const { fecha, clienteId, cliente, c1, c2, cant, obs } = body
   if (!fecha || !clienteId || !c1 || !c2 || !cant) {
     return NextResponse.json({ error: 'Completa fecha, cliente, conceptos y cantidad' }, { status: 400 })
