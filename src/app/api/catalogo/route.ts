@@ -8,6 +8,34 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json()
+
+  // Batch import
+  if (body.batch && Array.isArray(body.batch)) {
+    const rows = body.batch as Array<{
+      clienteId: string; c1: string; c2: string;
+      coste: number; inc: number; final: number;
+    }>
+
+    const validRows = rows.filter(r => r.c1 && r.c2)
+    if (validRows.length === 0) {
+      return NextResponse.json({ error: 'No hay filas válidas' }, { status: 400 })
+    }
+
+    const created = await db.catalogo.createMany({
+      data: validRows.map(r => ({
+        clienteId: r.clienteId || '',
+        c1: r.c1,
+        c2: r.c2,
+        coste: Number(r.coste) || 0,
+        inc: Number(r.inc) || 0,
+        final: Number(r.final) || 0,
+      }))
+    })
+
+    return NextResponse.json({ count: created.count }, { status: 201 })
+  }
+
+  // Single entry
   const { clienteId, c1, c2, coste, inc, final } = body
   if (!c1 || !c2) return NextResponse.json({ error: 'Grupo y servicio obligatorios' }, { status: 400 })
   const item = await db.catalogo.create({
