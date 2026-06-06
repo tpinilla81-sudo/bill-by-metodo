@@ -285,22 +285,62 @@ export function EntradaView() {
     if (importPreview.length === 0) return
     setImporting(true)
     try {
-      const rowsWithIds = importPreview.filter(r => r.fecha && r.clienteId)
-      if (rowsWithIds.length === 0) {
-        showStatus('err', 'No hay filas válidas')
+      // Filter rows with valid date
+      const validRows = importPreview.filter(r => r.fecha)
+      if (validRows.length === 0) {
+        showStatus('err', 'No hay filas con fecha válida')
         setImporting(false)
         return
       }
 
+      // Auto-create clientes that don't exist yet
+      const clientesSinId = validRows.filter(r => r.cliente && !r.clienteId)
+      const uniqueNombres = [...new Set(clientesSinId.map(r => r.cliente!))]
+
+      // Create each missing cliente
+      for (const nombre of uniqueNombres) {
+        try {
+          const res = await fetch('/api/clientes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre })
+          })
+          if (res.ok) {
+            const newCli = await res.json()
+            // Update all matching preview rows with the new ID
+            validRows.forEach(r => {
+              if (r.cliente === nombre && !r.clienteId) {
+                r.clienteId = newCli.id
+              }
+            })
+          }
+        } catch {
+          // Skip if creation fails, row will be imported without clienteId
+        }
+      }
+
+      // Now import all valid rows (with or without clienteId)
+      const rowsToImport = validRows.map(r => ({
+        fecha: r.fecha,
+        clienteId: r.clienteId || '',
+        cliente: r.cliente || '',
+        c1: r.c1 || '',
+        c2: r.c2 || '',
+        cant: r.cant || 1,
+        obs: r.obs || '',
+      }))
+
       const res = await fetch('/api/registros', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batch: rowsWithIds })
+        body: JSON.stringify({ batch: rowsToImport })
       })
 
       if (res.ok) {
         const result = await res.json()
-        showStatus('ok', `${result.count || rowsWithIds.length} entradas importadas ✓`)
+        const msg = `${result.count || rowsToImport.length} entradas importadas` +
+          (uniqueNombres.length > 0 ? ` · ${uniqueNombres.length} clientes creados` : '')
+        showStatus('ok', msg + ' ✓')
         setImportModalOpen(false)
         setImportPreview([])
         setImportErrors([])
@@ -626,10 +666,10 @@ export function EntradaView() {
           )}
 
           <div className="text-sm text-gray-600 mb-2">
-            <b>{importPreview.length}</b> filas encontradas ·{' '}
-            <b className="text-green-600">{importPreview.filter(r => r.clienteId).length} válidas</b>
-            {importPreview.filter(r => !r.clienteId).length > 0 && (
-              <span className="text-red-500"> · {importPreview.filter(r => !r.clienteId).length} sin cliente</span>
+            <b>{importPreview.filter(r => r.fecha).length}</b> filas con fecha válida ·{' '}
+            <b className="text-green-600">{importPreview.filter(r => r.clienteId).length} clientes conocidos</b>
+            {importPreview.filter(r => r.cliente && !r.clienteId).length > 0 && (
+              <span className="text-amber-600"> · {importPreview.filter(r => r.cliente && !r.clienteId).length} clientes nuevos (se crearán)</span>
             )}
           </div>
 
@@ -648,14 +688,24 @@ export function EntradaView() {
               </thead>
               <tbody>
                 {importPreview.map((r, i) => {
-                  const ok = !!r.clienteId && !!r.fecha
+                  const hasFecha = !!r.fecha
+                  const hasCliente = !!r.cliente
+                  const clienteNuevo = hasCliente && !r.clienteId
                   return (
-                    <tr key={i} className={`border-b ${ok ? '' : 'bg-red-50'}`}>
+                    <tr key={i} className={`border-b ${!hasFecha ? 'bg-red-50' : ''}`}>
                       <td className="p-2">
-                        {ok ? <CheckCircle className="h-4 w-4 text-green-500" /> : <AlertCircle className="h-4 w-4 text-red-400" />}
+                        {hasFecha ? (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <AlertCircle className="h-4 w-4 text-red-400" />
+                        )}
                       </td>
                       <td className="p-2">{r.fecha || '—'}</td>
-                      <td className="p-2">{r.cliente || '—'}{r.clienteId ? ' ✓' : ''}</td>
+                      <td className="p-2">
+                        {r.cliente || '—'}
+                        {r.clienteId && <span className="text-green-600 ml-1">✓</span>}
+                        {clienteNuevo && <span className="text-amber-600 ml-1">+nuevo</span>}
+                      </td>
                       <td className="p-2">{r.c1 || '—'}</td>
                       <td className="p-2">{r.c2 || '—'}</td>
                       <td className="p-2 text-center">{r.cant}</td>
@@ -674,12 +724,12 @@ export function EntradaView() {
             <Button
               onClick={handleImportConfirm}
               className="flex-1 h-12 rounded-xl bg-[#2bb24c] hover:bg-[#23963e] text-white font-bold"
-              disabled={importing || importPreview.filter(r => r.clienteId).length === 0}
+              disabled={importing || importPreview.filter(r => r.fecha).length === 0}
             >
               {importing ? (
                 <span className="animate-pulse">Importando...</span>
               ) : (
-                <>IMPORTAR {importPreview.filter(r => r.clienteId).length} FILAS</>
+                <>IMPORTAR {importPreview.filter(r => r.fecha).length} FILAS</>
               )}
             </Button>
           </div>
