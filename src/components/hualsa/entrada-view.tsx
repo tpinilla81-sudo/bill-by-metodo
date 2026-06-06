@@ -131,6 +131,63 @@ export function EntradaView() {
   }
 
   // ─── Excel Import ───────────────────────────────────────────
+
+  // Parse a date value from Excel (handles serial numbers, strings, various formats)
+  function parseExcelDate(value: unknown): string {
+    if (value === null || value === undefined || value === '') return ''
+
+    // If it's already a number (Excel serial date)
+    if (typeof value === 'number') {
+      if (value > 30000 && value < 70000) {
+        const excelDate = new Date((value - 25569) * 86400 * 1000)
+        const iso = excelDate.toISOString().slice(0, 10)
+        if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso
+      }
+      return ''
+    }
+
+    const s = String(value).trim()
+    if (!s) return ''
+
+    // yyyy-mm-dd
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+    // dd/mm/yyyy
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+      const [d, m, y] = s.split('/')
+      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+    }
+    // dd-mm-yyyy
+    if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(s)) {
+      const [d, m, y] = s.split('-')
+      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+    }
+    // dd/mm/yy
+    if (/^\d{1,2}\/\d{1,2}\/\d{2}$/.test(s)) {
+      const [d, m, y] = s.split('/')
+      const fullYear = Number(y) > 50 ? 1900 + Number(y) : 2000 + Number(y)
+      return `${fullYear}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+    }
+    // Try as serial number string
+    const num = Number(s)
+    if (!isNaN(num) && num > 30000 && num < 70000) {
+      const excelDate = new Date((num - 25569) * 86400 * 1000)
+      const iso = excelDate.toISOString().slice(0, 10)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso
+    }
+
+    return ''
+  }
+
+  // Get a string value from a row by trying multiple column name variants
+  function getRowVal(row: Record<string, unknown>, ...keys: string[]): string {
+    for (const k of keys) {
+      if (row[k] !== undefined && row[k] !== null && row[k] !== '') {
+        return String(row[k]).trim()
+      }
+    }
+    return ''
+  }
+
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -140,13 +197,19 @@ export function EntradaView() {
       try {
         const XLSX = await import('xlsx')
         const arrData = new Uint8Array(evt.target?.result as ArrayBuffer)
-        const workbook = XLSX.read(arrData, { type: 'array' })
+        const workbook = XLSX.read(arrData, { type: 'array', cellDates: false })
         const sheetName = workbook.SheetNames[0]
         const sheet = workbook.Sheets[sheetName]
-        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
 
-        if (rows.length === 0) {
-          setImportErrors(['El archivo está vacío'])
+        // Read with raw values + blankrows:false to skip empty rows
+        const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+          defval: '',
+          blankrows: false,
+          raw: true,  // Keep raw values so we can handle serial dates ourselves
+        })
+
+        if (rawRows.length === 0) {
+          setImportErrors(['El archivo está vacío o no tiene datos'])
           setImportPreview([])
           setImportModalOpen(true)
           return
@@ -158,38 +221,30 @@ export function EntradaView() {
         const clientesRes = await fetch('/api/clientes')
         const clientesList: Cliente[] = await clientesRes.json()
 
-        rows.forEach((row, idx) => {
+        rawRows.forEach((row, idx) => {
           const rowNum = idx + 2
-          const rawFecha = String(row['FECHA'] || row['fecha'] || '').trim()
-          const rawCliente = String(row['CLIENTE'] || row['cliente'] || '').trim()
-          const rawC1 = String(row['CONCEPTO 1'] || row['CONCEPTO1'] || row['C1'] || row['c1'] || row['concepto 1'] || row['concepto1'] || '').trim()
-          const rawC2 = String(row['CONCEPTO 2'] || row['CONCEPTO2'] || row['C2'] || row['c2'] || row['concepto 2'] || row['concepto2'] || '').trim()
-          const rawCant = String(row['CANTIDAD'] || row['cantidad'] || row['Cant'] || row['cant'] || '').trim()
-          const rawObs = String(row['OBSERVACIONES'] || row['observaciones'] || row['Obs'] || row['obs'] || row['OBS'] || '').trim()
 
-          // Skip completely empty rows (all key fields empty)
-          if (!rawFecha && !rawCliente && !rawC1 && !rawC2 && !rawCant && !rawObs) return
+          // Read raw values (may be numbers for dates)
+          const rawFechaVal = row['FECHA'] ?? row['fecha'] ?? ''
+          const rawCliente = getRowVal(row, 'CLIENTE', 'cliente')
+          const rawC1 = getRowVal(row, 'CONCEPTO 1', 'CONCEPTO1', 'C1', 'c1', 'concepto 1', 'concepto1')
+          const rawC2 = getRowVal(row, 'CONCEPTO 2', 'CONCEPTO2', 'C2', 'c2', 'concepto 2', 'concepto2')
+          const rawCant = getRowVal(row, 'CANTIDAD', 'cantidad', 'Cant', 'cant')
+          const rawObs = getRowVal(row, 'OBSERVACIONES', 'observaciones', 'Obs', 'obs', 'OBS')
 
-          let fechaISO = ''
-          if (rawFecha) {
-            if (/^\d{4}-\d{2}-\d{2}$/.test(rawFecha)) {
-              fechaISO = rawFecha
-            } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(rawFecha)) {
-              const [d, m, y] = rawFecha.split('/')
-              fechaISO = `${y}-${m}-${d}`
-            } else if (/^\d{2}-\d{2}-\d{4}$/.test(rawFecha)) {
-              const [d, m, y] = rawFecha.split('-')
-              fechaISO = `${y}-${m}-${d}`
-            } else {
-              const num = Number(rawFecha)
-              if (!isNaN(num) && num > 40000 && num < 60000) {
-                const excelDate = new Date((num - 25569) * 86400 * 1000)
-                fechaISO = excelDate.toISOString().slice(0, 10)
-              }
-            }
-          }
+          // Skip empty rows: if ALL key fields are empty/blank, skip silently
+          const hasData = rawFechaVal !== '' || rawCliente || rawC1 || rawC2 || rawCant || rawObs
+          if (!hasData) return
 
-          if (!fechaISO) errors.push(`Fila ${rowNum}: Fecha inválida "${rawFecha}"`)
+          // Also skip rows where all values are just whitespace
+          const allBlank = !String(rawFechaVal).trim() && !rawCliente && !rawC1 && !rawC2 && !rawCant && !rawObs
+          if (allBlank) return
+
+          // Parse date
+          const fechaISO = parseExcelDate(rawFechaVal)
+
+          // Only report errors for rows that have some real data
+          if (!fechaISO) errors.push(`Fila ${rowNum}: Fecha inválida "${rawFechaVal}"`)
           if (!rawCliente) errors.push(`Fila ${rowNum}: Cliente vacío`)
           if (!rawC1) errors.push(`Fila ${rowNum}: Concepto 1 vacío`)
           if (!rawC2) errors.push(`Fila ${rowNum}: Concepto 2 vacío`)
