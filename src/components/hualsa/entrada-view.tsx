@@ -167,6 +167,9 @@ export function EntradaView() {
           const rawCant = String(row['CANTIDAD'] || row['cantidad'] || row['Cant'] || row['cant'] || '').trim()
           const rawObs = String(row['OBSERVACIONES'] || row['observaciones'] || row['Obs'] || row['obs'] || row['OBS'] || '').trim()
 
+          // Skip completely empty rows (all key fields empty)
+          if (!rawFecha && !rawCliente && !rawC1 && !rawC2 && !rawCant && !rawObs) return
+
           let fechaISO = ''
           if (rawFecha) {
             if (/^\d{4}-\d{2}-\d{2}$/.test(rawFecha)) {
