@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown } from 'lucide-react'
 import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
-import { useConfig, DEFAULT_LABELS_ENTRADA } from '@/lib/config'
+import { useConfig, DEFAULT_LABELS_ENTRADA, DEFAULT_FIELDS_ENTRADA } from '@/lib/config'
 
 interface EntradaViewData {
   registros: Registro[]
@@ -41,9 +41,13 @@ export function EntradaView() {
   const lastTransferDateRef = useRef<string>('')
 
   const L = config?.labelsEntrada || DEFAULT_LABELS_ENTRADA
+  const visibleFields = config?.fieldsEntrada || DEFAULT_FIELDS_ENTRADA
   const transferMode = config?.transferMode || 'auto'
   const transferTime = config?.transferTime || '00:00'
   const { update } = useConfig()
+
+  // Helper to check if a field is visible
+  const isVisible = (field: string) => visibleFields.includes(field)
 
   // Local transfer settings (for quick edit)
   const [localTransferMode, setLocalTransferMode] = useState(transferMode)
@@ -294,6 +298,7 @@ export function EntradaView() {
           </div>
 
           {/* ── Fecha ────────────────────────────────── */}
+          {isVisible('fecha') && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-4 pt-3 pb-1">
               <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.fecha}</Label>
@@ -307,8 +312,10 @@ export function EntradaView() {
               />
             </div>
           </div>
+          )}
 
           {/* ── Cliente ──────────────────────────────── */}
+          {isVisible('cliente') && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-4 pt-3 pb-1">
               <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.cliente}</Label>
@@ -326,8 +333,10 @@ export function EntradaView() {
               </Select>
             </div>
           </div>
+          )}
 
           {/* ── Concepto 1 ──────────────────────────── */}
+          {isVisible('c1') && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-4 pt-3 pb-1">
               <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.c1}</Label>
@@ -345,8 +354,10 @@ export function EntradaView() {
               </Select>
             </div>
           </div>
+          )}
 
           {/* ── Concepto 2 ──────────────────────────── */}
+          {isVisible('c2') && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-4 pt-3 pb-1">
               <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.c2}</Label>
@@ -364,9 +375,11 @@ export function EntradaView() {
               </Select>
             </div>
           </div>
+          )}
 
           {/* ── Cantidad + Obs (side by side on wider, stacked on narrow) */}
           <div className="grid grid-cols-[100px_1fr] gap-3">
+            {isVisible('cantidad') && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-3 pt-3 pb-1">
                 <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.cantidad}</Label>
@@ -381,6 +394,8 @@ export function EntradaView() {
                 />
               </div>
             </div>
+            )}
+            {isVisible('observaciones') && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-3 pt-3 pb-1">
                 <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.observaciones}</Label>
@@ -394,6 +409,7 @@ export function EntradaView() {
                 />
               </div>
             </div>
+            )}
           </div>
 
           {/* ── GUARDAR Button (large, prominent) ──── */}

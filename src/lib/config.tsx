@@ -57,6 +57,11 @@ export const DEFAULT_LABELS_CLIENTES = {
   telefono: 'Teléfono',
 }
 
+// ─── Default visible fields ─────────────────────────────────
+export const DEFAULT_FIELDS_ENTRADA = ['fecha', 'cliente', 'c1', 'c2', 'cantidad', 'observaciones']
+export const DEFAULT_FIELDS_CLIENTES = ['nombre', 'cif', 'direccion', 'cp', 'ciudad', 'provincia', 'mail', 'telefono']
+export const DEFAULT_FIELDS_CATALOGO = ['cliente', 'c1', 'c2', 'coste', 'incremento', 'precioCliente']
+
 // ─── Config type ────────────────────────────────────────────
 export interface AppConfig {
   id: string
@@ -84,6 +89,9 @@ export interface AppConfig {
   sectionBackup: string
   transferMode: string
   transferTime: string
+  fieldsEntrada: string
+  fieldsClientes: string
+  fieldsCatalogo: string
 }
 
 // ─── Resolved labels (parsed from JSON) ─────────────────────
@@ -112,6 +120,9 @@ export interface ResolvedConfig {
   labelsRegistros: typeof DEFAULT_LABELS_REGISTROS
   labelsFacturas: typeof DEFAULT_LABELS_FACTURAS
   labelsClientes: typeof DEFAULT_LABELS_CLIENTES
+  fieldsEntrada: string[]
+  fieldsClientes: string[]
+  fieldsCatalogo: string[]
 }
 
 function parseJSON<T>(jsonStr: string, defaults: T): T {
@@ -119,6 +130,17 @@ function parseJSON<T>(jsonStr: string, defaults: T): T {
   try {
     const parsed = JSON.parse(jsonStr)
     return { ...defaults, ...parsed }
+  } catch {
+    return defaults
+  }
+}
+
+function parseFieldsArray(jsonStr: string, defaults: string[]): string[] {
+  if (!jsonStr || jsonStr.trim() === '') return defaults
+  try {
+    const parsed = JSON.parse(jsonStr)
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    return defaults
   } catch {
     return defaults
   }
@@ -150,6 +172,9 @@ export function resolveConfig(raw: AppConfig): ResolvedConfig {
     labelsRegistros: parseJSON(raw.labelRegistros, DEFAULT_LABELS_REGISTROS),
     labelsFacturas: parseJSON(raw.labelFacturas, DEFAULT_LABELS_FACTURAS),
     labelsClientes: parseJSON(raw.labelClientes, DEFAULT_LABELS_CLIENTES),
+    fieldsEntrada: parseFieldsArray(raw.fieldsEntrada, DEFAULT_FIELDS_ENTRADA),
+    fieldsClientes: parseFieldsArray(raw.fieldsClientes, DEFAULT_FIELDS_CLIENTES),
+    fieldsCatalogo: parseFieldsArray(raw.fieldsCatalogo, DEFAULT_FIELDS_CATALOGO),
   }
 }
 

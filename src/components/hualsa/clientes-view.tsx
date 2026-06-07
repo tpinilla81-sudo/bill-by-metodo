@@ -7,11 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Pencil, Trash2, Save, RotateCcw, Settings2, ChevronDown } from 'lucide-react'
 import type { Cliente } from '@/lib/hualsa-utils'
-import { useConfig, DEFAULT_LABELS_CLIENTES } from '@/lib/config'
+import { useConfig, DEFAULT_LABELS_CLIENTES, DEFAULT_FIELDS_CLIENTES } from '@/lib/config'
 
 export function ClientesView() {
   const { config, update } = useConfig()
   const L = config?.labelsClientes || DEFAULT_LABELS_CLIENTES
+  const visibleFields = config?.fieldsClientes || DEFAULT_FIELDS_CLIENTES
+  const isVisible = (field: string) => visibleFields.includes(field)
   const [showSettings, setShowSettings] = useState(false)
   const [localLabels, setLocalLabels] = useState(DEFAULT_LABELS_CLIENTES)
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -125,40 +127,56 @@ export function ClientesView() {
         <CardContent className="p-4">
           <div className="grid gap-3">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              {isVisible('nombre') && (
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">{L.nombre}</Label>
                 <Input value={nombre} onChange={e => setNombre(e.target.value)} />
               </div>
+              )}
+              {isVisible('cif') && (
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">{L.cif}</Label>
                 <Input value={cif} onChange={e => setCif(e.target.value)} />
               </div>
+              )}
+              {isVisible('mail') && (
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">{L.mail}</Label>
                 <Input type="email" value={mail} onChange={e => setMail(e.target.value)} />
               </div>
+              )}
+              {isVisible('telefono') && (
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">{L.telefono}</Label>
                 <Input value={tel} onChange={e => setTel(e.target.value)} />
               </div>
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_150px] gap-3">
+              {isVisible('direccion') && (
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">{L.direccion}</Label>
                 <Input value={dir} onChange={e => setDir(e.target.value)} />
               </div>
+              )}
+              {isVisible('cp') && (
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">{L.cp}</Label>
                 <Input value={cp} onChange={e => setCp(e.target.value)} />
               </div>
+              )}
+              {isVisible('ciudad') && (
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">{L.ciudad}</Label>
                 <Input value={ciudad} onChange={e => setCiudad(e.target.value)} />
               </div>
+              )}
+              {isVisible('provincia') && (
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">{L.provincia}</Label>
                 <Input value={prov} onChange={e => setProv(e.target.value)} />
               </div>
+              )}
               <div className="flex gap-2 items-end">
                 <Button onClick={handleSave} className="bg-[#005bb5] hover:bg-[#003d7a] text-white flex-1">
                   <Save className="h-4 w-4 mr-1" />
@@ -179,26 +197,26 @@ export function ClientesView() {
         <table className="w-full text-sm min-w-[700px]">
           <thead>
             <tr className="bg-green-50">
-              <th className="p-2 text-left font-semibold border-b">{L.nombre}</th>
-              <th className="p-2 text-left font-semibold border-b">{L.cif}</th>
-              <th className="p-2 text-left font-semibold border-b">{L.direccion}</th>
-              <th className="p-2 text-left font-semibold border-b">{L.cp}</th>
-              <th className="p-2 text-left font-semibold border-b">{L.ciudad}</th>
-              <th className="p-2 text-left font-semibold border-b">{L.provincia}</th>
-              <th className="p-2 text-left font-semibold border-b">Contacto</th>
+              {isVisible('nombre') && <th className="p-2 text-left font-semibold border-b">{L.nombre}</th>}
+              {isVisible('cif') && <th className="p-2 text-left font-semibold border-b">{L.cif}</th>}
+              {isVisible('direccion') && <th className="p-2 text-left font-semibold border-b">{L.direccion}</th>}
+              {isVisible('cp') && <th className="p-2 text-left font-semibold border-b">{L.cp}</th>}
+              {isVisible('ciudad') && <th className="p-2 text-left font-semibold border-b">{L.ciudad}</th>}
+              {isVisible('provincia') && <th className="p-2 text-left font-semibold border-b">{L.provincia}</th>}
+              {(isVisible('mail') || isVisible('telefono')) && <th className="p-2 text-left font-semibold border-b">Contacto</th>}
               <th className="p-2 text-left font-semibold border-b">Acc.</th>
             </tr>
           </thead>
           <tbody>
             {clientes.map(c => (
               <tr key={c.id} className="border-b hover:bg-gray-50">
-                <td className="p-2">{c.nombre}</td>
-                <td className="p-2">{c.cif}</td>
-                <td className="p-2">{c.dir}</td>
-                <td className="p-2">{c.cp}</td>
-                <td className="p-2">{c.ciudad}</td>
-                <td className="p-2">{c.prov}</td>
-                <td className="p-2">{c.mail}{c.tel ? <><br />{c.tel}</> : ''}</td>
+                {isVisible('nombre') && <td className="p-2">{c.nombre}</td>}
+                {isVisible('cif') && <td className="p-2">{c.cif}</td>}
+                {isVisible('direccion') && <td className="p-2">{c.dir}</td>}
+                {isVisible('cp') && <td className="p-2">{c.cp}</td>}
+                {isVisible('ciudad') && <td className="p-2">{c.ciudad}</td>}
+                {isVisible('provincia') && <td className="p-2">{c.prov}</td>}
+                {(isVisible('mail') || isVisible('telefono')) && <td className="p-2">{isVisible('mail') ? c.mail : ''}{isVisible('telefono') && c.tel ? <><br />{c.tel}</> : ''}</td>}
                 <td className="p-2">
                   <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEdit(c)}>
                     <Pencil className="h-3.5 w-3.5" />
@@ -210,7 +228,7 @@ export function ClientesView() {
               </tr>
             ))}
             {clientes.length === 0 && (
-              <tr><td colSpan={8} className="p-6 text-center text-gray-400">No hay clientes</td></tr>
+              <tr><td colSpan={visibleFields.length + 1} className="p-6 text-center text-gray-400">No hay clientes</td></tr>
             )}
           </tbody>
         </table>

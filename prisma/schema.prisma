@@ -88,5 +88,9 @@ model Config {
   // Transfer settings
   transferMode    String   @default("auto")   // "auto" or "manual"
   transferTime    String   @default("00:00")  // HH:mm for auto transfer
+  // Visible fields (JSON arrays of field keys)
+  fieldsEntrada   String   @default("")   // JSON: ["fecha","cliente","c1","c2","cantidad","observaciones"]
+  fieldsClientes  String   @default("")   // JSON: ["nombre","cif","direccion","cp","ciudad","provincia","mail","telefono"]
+  fieldsCatalogo  String   @default("")   // JSON: ["cliente","c1","c2","coste","incremento","precioCliente"]
   updatedAt       DateTime @updatedAt
 }

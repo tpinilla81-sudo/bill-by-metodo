@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
-import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, ArrowRightLeft, Clock, Zap } from 'lucide-react'
+import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, ArrowRightLeft, Clock, Zap, Eye, EyeOff, LayoutList } from 'lucide-react'
 import {
   useConfig,
   DEFAULT_LABELS_ENTRADA,
@@ -15,8 +15,68 @@ import {
   DEFAULT_LABELS_REGISTROS,
   DEFAULT_LABELS_FACTURAS,
   DEFAULT_LABELS_CLIENTES,
+  DEFAULT_FIELDS_ENTRADA,
+  DEFAULT_FIELDS_CLIENTES,
+  DEFAULT_FIELDS_CATALOGO,
   type AppConfig,
 } from '@/lib/config'
+
+// Field labels map (human-readable names for field keys)
+const FIELD_LABELS_ENTRADA: Record<string, string> = {
+  fecha: 'Fecha',
+  cliente: 'Cliente',
+  c1: 'Concepto 1',
+  c2: 'Concepto 2',
+  cantidad: 'Cantidad',
+  observaciones: 'Observaciones',
+}
+
+const FIELD_LABELS_CLIENTES: Record<string, string> = {
+  nombre: 'Nombre',
+  cif: 'CIF',
+  direccion: 'Dirección',
+  cp: 'Código Postal',
+  ciudad: 'Ciudad',
+  provincia: 'Provincia',
+  mail: 'Email',
+  telefono: 'Teléfono',
+}
+
+const FIELD_LABELS_CATALOGO: Record<string, string> = {
+  cliente: 'Cliente',
+  c1: 'Concepto 1',
+  c2: 'Concepto 2',
+  coste: 'Coste',
+  incremento: 'Incremento',
+  precioCliente: 'Precio Cliente',
+}
+
+// Toggle chip component for field visibility
+function FieldToggle({
+  fieldKey,
+  label,
+  active,
+  onToggle,
+}: {
+  fieldKey: string
+  label: string
+  active: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
+        active
+          ? 'border-[#2bb24c] bg-green-50 text-green-700'
+          : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'
+      }`}
+    >
+      {active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+      <span>{label}</span>
+    </button>
+  )
+}
 
 export function ConfiguracionView() {
   const { raw, config, update, loading } = useConfig()
@@ -55,6 +115,11 @@ export function ConfiguracionView() {
   const [labelsFacturas, setLabelsFacturas] = useState(DEFAULT_LABELS_FACTURAS)
   const [labelsClientes, setLabelsClientes] = useState(DEFAULT_LABELS_CLIENTES)
 
+  // Visible fields
+  const [fieldsEntrada, setFieldsEntrada] = useState<string[]>(DEFAULT_FIELDS_ENTRADA)
+  const [fieldsClientes, setFieldsClientes] = useState<string[]>(DEFAULT_FIELDS_CLIENTES)
+  const [fieldsCatalogo, setFieldsCatalogo] = useState<string[]>(DEFAULT_FIELDS_CATALOGO)
+
   // Logo preview
   const [logoPreview, setLogoPreview] = useState('')
   const [logoBase64, setLogoBase64] = useState('')
@@ -86,6 +151,9 @@ export function ConfiguracionView() {
     setLabelsRegistros(config.labelsRegistros)
     setLabelsFacturas(config.labelsFacturas)
     setLabelsClientes(config.labelsClientes)
+    setFieldsEntrada(config.fieldsEntrada)
+    setFieldsClientes(config.fieldsClientes)
+    setFieldsCatalogo(config.fieldsCatalogo)
     if (raw.logo) {
       setLogoPreview(raw.logo.startsWith('data:') ? raw.logo : `data:image/png;base64,${raw.logo}`)
     }
@@ -94,6 +162,15 @@ export function ConfiguracionView() {
   function showStatus(type: 'ok' | 'err', text: string) {
     setStatusMsg({ type, text })
     setTimeout(() => setStatusMsg(null), 4000)
+  }
+
+  // Toggle a field in a visible fields array
+  function toggleField(fields: string[], setFields: (f: string[]) => void, fieldKey: string) {
+    if (fields.includes(fieldKey)) {
+      setFields(fields.filter(f => f !== fieldKey))
+    } else {
+      setFields([...fields, fieldKey])
+    }
   }
 
   // Handle logo upload
@@ -147,6 +224,9 @@ export function ConfiguracionView() {
         labelRegistros: JSON.stringify(labelsRegistros),
         labelFacturas: JSON.stringify(labelsFacturas),
         labelClientes: JSON.stringify(labelsClientes),
+        fieldsEntrada: JSON.stringify(fieldsEntrada),
+        fieldsClientes: JSON.stringify(fieldsClientes),
+        fieldsCatalogo: JSON.stringify(fieldsCatalogo),
       }
 
       // Handle logo
@@ -193,12 +273,15 @@ export function ConfiguracionView() {
       </div>
 
       <Tabs defaultValue="empresa" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="empresa">
             <Building2 className="h-4 w-4 mr-1.5" /> Empresa
           </TabsTrigger>
           <TabsTrigger value="transfer">
             <ArrowRightLeft className="h-4 w-4 mr-1.5" /> Transfer
+          </TabsTrigger>
+          <TabsTrigger value="campos">
+            <LayoutList className="h-4 w-4 mr-1.5" /> Campos
           </TabsTrigger>
           <TabsTrigger value="secciones">
             <Tag className="h-4 w-4 mr-1.5" /> Secciones
@@ -381,6 +464,117 @@ export function ConfiguracionView() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ─── CAMPOS TAB (Visible Fields) ─────────────────── */}
+        <TabsContent value="campos" className="space-y-4 mt-4">
+          <p className="text-sm text-gray-500">
+            Elige qué campos se muestran en cada sección. Los campos desactivados se ocultarán en el formulario y en la tabla.
+          </p>
+
+          {/* ── Entrada Fields ── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Eye className="h-4 w-4 text-[#2bb24c]" /> Campos visibles — Entrada
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {DEFAULT_FIELDS_ENTRADA.map(field => (
+                  <FieldToggle
+                    key={field}
+                    fieldKey={field}
+                    label={FIELD_LABELS_ENTRADA[field] || field}
+                    active={fieldsEntrada.includes(field)}
+                    onToggle={() => toggleField(fieldsEntrada, setFieldsEntrada, field)}
+                  />
+                ))}
+              </div>
+              <div className="flex justify-end mt-3">
+                <button
+                  onClick={() => setFieldsEntrada(DEFAULT_FIELDS_ENTRADA)}
+                  className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                >
+                  <RotateCcw className="h-3 w-3" /> Restaurar
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ── Clientes Fields ── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Eye className="h-4 w-4 text-[#005bb5]" /> Campos visibles — Clientes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {DEFAULT_FIELDS_CLIENTES.map(field => (
+                  <FieldToggle
+                    key={field}
+                    fieldKey={field}
+                    label={FIELD_LABELS_CLIENTES[field] || field}
+                    active={fieldsClientes.includes(field)}
+                    onToggle={() => toggleField(fieldsClientes, setFieldsClientes, field)}
+                  />
+                ))}
+              </div>
+              <div className="flex justify-end mt-3">
+                <button
+                  onClick={() => setFieldsClientes(DEFAULT_FIELDS_CLIENTES)}
+                  className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                >
+                  <RotateCcw className="h-3 w-3" /> Restaurar
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ── Catálogo Fields ── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Eye className="h-4 w-4 text-amber-500" /> Campos visibles — Catálogo
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {DEFAULT_FIELDS_CATALOGO.map(field => (
+                  <FieldToggle
+                    key={field}
+                    fieldKey={field}
+                    label={FIELD_LABELS_CATALOGO[field] || field}
+                    active={fieldsCatalogo.includes(field)}
+                    onToggle={() => toggleField(fieldsCatalogo, setFieldsCatalogo, field)}
+                  />
+                ))}
+              </div>
+              <div className="flex justify-end mt-3">
+                <button
+                  onClick={() => setFieldsCatalogo(DEFAULT_FIELDS_CATALOGO)}
+                  className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                >
+                  <RotateCcw className="h-3 w-3" /> Restaurar
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Reset all */}
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setFieldsEntrada(DEFAULT_FIELDS_ENTRADA)
+                setFieldsClientes(DEFAULT_FIELDS_CLIENTES)
+                setFieldsCatalogo(DEFAULT_FIELDS_CATALOGO)
+              }}
+            >
+              <RotateCcw className="h-4 w-4 mr-1.5" /> Restaurar todos los campos
+            </Button>
+          </div>
         </TabsContent>
 
         {/* ─── SECCIONES TAB ─────────────────────────────── */}

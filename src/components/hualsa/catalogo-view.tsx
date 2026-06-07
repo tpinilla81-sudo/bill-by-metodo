@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Pencil, Trash2, Save, RotateCcw, Filter, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, ChevronDown, Settings2 } from 'lucide-react'
 import { fmtCurrency, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
-import { useConfig, DEFAULT_LABELS_CATALOGO } from '@/lib/config'
+import { useConfig, DEFAULT_LABELS_CATALOGO, DEFAULT_FIELDS_CATALOGO } from '@/lib/config'
 
 interface CatalogoViewData {
   catalogo: CatalogoItem[]
@@ -19,6 +19,8 @@ interface CatalogoViewData {
 export function CatalogoView() {
   const { config, update } = useConfig()
   const L = config?.labelsCatalogo || DEFAULT_LABELS_CATALOGO
+  const visibleFields = config?.fieldsCatalogo || DEFAULT_FIELDS_CATALOGO
+  const isVisible = (field: string) => visibleFields.includes(field)
   const [data, setData] = useState<CatalogoViewData>({ catalogo: [], clientes: [] })
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -377,6 +379,7 @@ export function CatalogoView() {
       <Card className={`border-l-4 ${editingId ? 'border-l-indigo-500 bg-indigo-50/30' : 'border-l-transparent'}`}>
         <CardContent className="p-4">
           <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_130px] gap-3 items-end">
+            {isVisible('cliente') && (
             <div>
               <Label className="text-xs uppercase font-bold text-slate-500">{L.cliente}</Label>
               <Select value={clienteId} onValueChange={setClienteId}>
@@ -387,26 +390,37 @@ export function CatalogoView() {
                 </SelectContent>
               </Select>
             </div>
+            )}
+            {isVisible('c1') && (
             <div>
               <Label className="text-xs uppercase font-bold text-slate-500">Grupo ({L.c1})</Label>
               <Input value={c1} onChange={e => setC1(e.target.value)} />
             </div>
+            )}
+            {isVisible('c2') && (
             <div>
               <Label className="text-xs uppercase font-bold text-slate-500">Servicio ({L.c2})</Label>
               <Input value={c2} onChange={e => setC2(e.target.value)} />
             </div>
+            )}
+            {isVisible('coste') && (
             <div>
               <Label className="text-xs uppercase font-bold text-slate-500">{L.coste} ({config?.currency || '€'})</Label>
               <Input type="number" step="0.01" value={coste} onChange={e => { setCoste(e.target.value); setFinalVal('') }} />
             </div>
+            )}
+            {isVisible('incremento') && (
             <div>
               <Label className="text-xs uppercase font-bold text-slate-500">{L.incremento} %</Label>
               <Input type="number" step="0.01" value={inc} onChange={e => { setInc(e.target.value); setFinalVal('') }} />
             </div>
+            )}
+            {isVisible('precioCliente') && (
             <div>
               <Label className="text-xs uppercase font-bold text-slate-500">Precio Final</Label>
               <Input type="number" step="0.01" value={finalVal || computedFinal} readOnly className="bg-gray-50" />
             </div>
+            )}
             <div className="flex gap-2">
               <Button onClick={handleSave} className="bg-[#005bb5] hover:bg-[#003d7a] text-white flex-1">
                 <Save className="h-4 w-4 mr-1" />
@@ -511,12 +525,12 @@ export function CatalogoView() {
         <table className="w-full text-sm min-w-[600px]">
           <thead>
             <tr className="bg-blue-50">
-              <th className="p-2 text-left font-semibold border-b">{L.cliente}</th>
-              <th className="p-2 text-left font-semibold border-b">{L.c1}</th>
-              <th className="p-2 text-left font-semibold border-b">{L.c2}</th>
-              <th className="p-2 text-left font-semibold border-b">{L.coste}</th>
-              <th className="p-2 text-left font-semibold border-b">{L.incremento}</th>
-              <th className="p-2 text-left font-semibold border-b">P. Final</th>
+              {isVisible('cliente') && <th className="p-2 text-left font-semibold border-b">{L.cliente}</th>}
+              {isVisible('c1') && <th className="p-2 text-left font-semibold border-b">{L.c1}</th>}
+              {isVisible('c2') && <th className="p-2 text-left font-semibold border-b">{L.c2}</th>}
+              {isVisible('coste') && <th className="p-2 text-left font-semibold border-b">{L.coste}</th>}
+              {isVisible('incremento') && <th className="p-2 text-left font-semibold border-b">{L.incremento}</th>}
+              {isVisible('precioCliente') && <th className="p-2 text-left font-semibold border-b">P. Final</th>}
               <th className="p-2 text-left font-semibold border-b">Acc.</th>
             </tr>
           </thead>
@@ -525,12 +539,12 @@ export function CatalogoView() {
               const cli = clientes.find(c => c.id === x.clienteId)
               return (
                 <tr key={x.id} className="border-b hover:bg-gray-50">
-                  <td className="p-2">{cli ? cli.nombre : <i className="text-gray-400">— General —</i>}</td>
-                  <td className="p-2">{x.c1}</td>
-                  <td className="p-2">{x.c2}</td>
-                  <td className="p-2">{fmtCurrency(x.coste)}</td>
-                  <td className="p-2">{(Number(x.inc) || 0).toFixed(2)}%</td>
-                  <td className="p-2 font-bold">{fmtCurrency(x.final)}</td>
+                  {isVisible('cliente') && <td className="p-2">{cli ? cli.nombre : <i className="text-gray-400">— General —</i>}</td>}
+                  {isVisible('c1') && <td className="p-2">{x.c1}</td>}
+                  {isVisible('c2') && <td className="p-2">{x.c2}</td>}
+                  {isVisible('coste') && <td className="p-2">{fmtCurrency(x.coste)}</td>}
+                  {isVisible('incremento') && <td className="p-2">{(Number(x.inc) || 0).toFixed(2)}%</td>}
+                  {isVisible('precioCliente') && <td className="p-2 font-bold">{fmtCurrency(x.final)}</td>}
                   <td className="p-2">
                     <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEdit(x)}>
                       <Pencil className="h-3.5 w-3.5" />
@@ -543,7 +557,7 @@ export function CatalogoView() {
               )
             })}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay artículos</td></tr>
+              <tr><td colSpan={visibleFields.length + 1} className="p-6 text-center text-gray-400">No hay artículos</td></tr>
             )}
           </tbody>
         </table>
