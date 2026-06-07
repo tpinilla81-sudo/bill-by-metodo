@@ -25,6 +25,8 @@ const DEFAULT_CONFIG = {
   sectionCatalogo: 'CATÁLOGO',
   sectionFacturas: 'FACTURAS',
   sectionBackup: 'SEGURIDAD',
+  transferMode: 'auto',
+  transferTime: '00:00',
 }
 
 // GET /api/config - Retrieve configuration
@@ -63,6 +65,7 @@ export async function PUT(req: NextRequest) {
       'labelEntrada', 'labelCatalogo', 'labelRegistros', 'labelFacturas', 'labelClientes',
       'sectionEntrada', 'sectionRegistros', 'sectionClientes', 'sectionCatalogo',
       'sectionFacturas', 'sectionBackup',
+      'transferMode', 'transferTime',
     ]
 
     for (const field of allowedFields) {

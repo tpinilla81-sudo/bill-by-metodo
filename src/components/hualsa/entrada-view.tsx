@@ -1,12 +1,11 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-
-import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X } from 'lucide-react'
+import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap } from 'lucide-react'
 import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_ENTRADA } from '@/lib/config'
 
@@ -23,7 +22,7 @@ function useEntradaData() {
   const loadData = useCallback(async () => {
     setLoading(true)
     const [rRes, cRes, catRes] = await Promise.all([
-      fetch('/api/registros'), fetch('/api/clientes'), fetch('/api/catalogo')
+      fetch('/api/registros?filter=entrada'), fetch('/api/clientes'), fetch('/api/catalogo')
     ])
     setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json() })
     setLoading(false)
@@ -36,8 +35,13 @@ export function EntradaView() {
   const { data, loadData, loading } = useEntradaData()
   const { config } = useConfig()
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [transferring, setTransferring] = useState(false)
+  const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastTransferDateRef = useRef<string>('')
 
   const L = config?.labelsEntrada || DEFAULT_LABELS_ENTRADA
+  const transferMode = config?.transferMode || 'auto'
+  const transferTime = config?.transferTime || '00:00'
 
   // Form
   const [fecha, setFecha] = useState(todayISO())
@@ -54,6 +58,37 @@ export function EntradaView() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // Auto-transfer timer: check every 30 seconds if it's time to transfer
+  useEffect(() => {
+    if (transferMode !== 'auto') return
+
+    function checkAutoTransfer() {
+      const now = new Date()
+      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      const todayStr = todayISO()
+
+      // If we already transferred today, skip
+      if (lastTransferDateRef.current === todayStr) return
+
+      // Check if current time matches the configured transfer time
+      if (currentTime === transferTime) {
+        lastTransferDateRef.current = todayStr
+        handleTransfer()
+      }
+    }
+
+    // Check immediately on mount
+    checkAutoTransfer()
+
+    // Then check every 30 seconds
+    autoTimerRef.current = setInterval(checkAutoTransfer, 30000)
+
+    return () => {
+      if (autoTimerRef.current) clearInterval(autoTimerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transferMode, transferTime])
 
   const { clientes } = data
 
@@ -122,9 +157,23 @@ export function EntradaView() {
     setObs('')
   }
 
-  // Today's entries only (at midnight they disappear from here and stay in Registros)
-  const today = todayISO()
-  const todayEntries = data.registros.filter(r => r.fecha === today)
+  // Transfer all current entries to Registros
+  async function handleTransfer() {
+    if (data.registros.length === 0) return
+    setTransferring(true)
+    try {
+      const res = await fetch('/api/registros/transfer', { method: 'POST' })
+      const result = await res.json()
+      showStatus('ok', `${result.transferred} entrada(s) pasadas al registro ✓`)
+      loadData()
+    } catch {
+      showStatus('err', 'Error al transferir')
+    }
+    setTransferring(false)
+  }
+
+  // Active (un-transferred) entries — these are the ones shown in Entrada
+  const activeEntries = data.registros // Already filtered by API (filter=entrada)
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-2rem)] md:min-h-0">
@@ -152,6 +201,25 @@ export function EntradaView() {
               </Button>
             </div>
           )}
+
+          {/* ── Transfer Mode Banner ──────────────────────── */}
+          <div className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm ${
+            transferMode === 'auto'
+              ? 'bg-blue-50 border border-blue-200 text-blue-700'
+              : 'bg-amber-50 border border-amber-200 text-amber-700'
+          }`}>
+            {transferMode === 'auto' ? (
+              <>
+                <Clock className="h-4 w-4 shrink-0" />
+                <span>Auto-transferencia a las <b>{transferTime}</b></span>
+              </>
+            ) : (
+              <>
+                <Zap className="h-4 w-4 shrink-0" />
+                <span>Transferencia manual</span>
+              </>
+            )}
+          </div>
 
           {/* ── Fecha ────────────────────────────────── */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -266,19 +334,31 @@ export function EntradaView() {
             {editingId ? 'ACTUALIZAR' : 'GUARDAR'}
           </button>
 
-          {/* ── Today's Entries (Cards for mobile) ──── */}
+          {/* ── PASAR AL REGISTRO Button (manual mode) ──── */}
+          {transferMode === 'manual' && activeEntries.length > 0 && (
+            <button
+              onClick={handleTransfer}
+              disabled={transferring}
+              className="w-full h-14 rounded-2xl bg-[#005bb5] hover:bg-[#003d7a] active:scale-[0.98] transition-all text-white text-lg font-bold shadow-lg shadow-blue-200 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <ArrowRightCircle className="h-5 w-5" />
+              {transferring ? 'Transfiriendo...' : 'PASAR AL REGISTRO'}
+            </button>
+          )}
+
+          {/* ── Active Entries (Cards for mobile) ──── */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">
-                Entradas de Hoy
+                Entradas Activas
               </h3>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-300">{todayEntries.length}</span>
+                <span className="text-xs text-gray-300">{activeEntries.length}</span>
               </div>
             </div>
 
             <div className="space-y-2">
-              {todayEntries.map(r => (
+              {activeEntries.map(r => (
                 <div
                   key={r.id}
                   className={`bg-white rounded-xl border p-3.5 shadow-sm transition-all ${
@@ -289,8 +369,9 @@ export function EntradaView() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      {/* Cliente */}
-                      <div className="mb-1">
+                      {/* Fecha + Cliente */}
+                      <div className="mb-1 flex items-center gap-2">
+                        <span className="text-xs text-gray-400">{r.fecha}</span>
                         <span className="text-sm text-[#005bb5] font-semibold truncate">{r.cliente}</span>
                       </div>
                       {/* Concepts */}
@@ -325,10 +406,11 @@ export function EntradaView() {
                 </div>
               ))}
 
-              {todayEntries.length === 0 && (
+              {activeEntries.length === 0 && (
                 <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
                   <div className="text-4xl mb-2">📝</div>
-                  <p className="text-gray-400 text-sm">Sin entradas hoy</p>
+                  <p className="text-gray-400 text-sm">Sin entradas activas</p>
+                  <p className="text-gray-300 text-xs mt-1">Las entradas se transferirán al registro {transferMode === 'auto' ? `automáticamente a las ${transferTime}` : 'con el botón "Pasar al registro"'}</p>
                 </div>
               )}
             </div>

@@ -23,7 +23,7 @@ function useRegistrosData() {
   const loadData = useCallback(async () => {
     setLoading(true)
     const [rRes, cRes, catRes] = await Promise.all([
-      fetch('/api/registros'), fetch('/api/clientes'), fetch('/api/catalogo')
+      fetch('/api/registros?filter=registros'), fetch('/api/clientes'), fetch('/api/catalogo')
     ])
     setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json() })
     setLoading(false)

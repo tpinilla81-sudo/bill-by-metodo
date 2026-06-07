@@ -82,6 +82,8 @@ export interface AppConfig {
   sectionCatalogo: string
   sectionFacturas: string
   sectionBackup: string
+  transferMode: string
+  transferTime: string
 }
 
 // ─── Resolved labels (parsed from JSON) ─────────────────────
@@ -103,6 +105,8 @@ export interface ResolvedConfig {
   sectionCatalogo: string
   sectionFacturas: string
   sectionBackup: string
+  transferMode: string
+  transferTime: string
   labelsEntrada: typeof DEFAULT_LABELS_ENTRADA
   labelsCatalogo: typeof DEFAULT_LABELS_CATALOGO
   labelsRegistros: typeof DEFAULT_LABELS_REGISTROS
@@ -139,6 +143,8 @@ export function resolveConfig(raw: AppConfig): ResolvedConfig {
     sectionCatalogo: raw.sectionCatalogo || 'CATÁLOGO',
     sectionFacturas: raw.sectionFacturas || 'FACTURAS',
     sectionBackup: raw.sectionBackup || 'SEGURIDAD',
+    transferMode: raw.transferMode || 'auto',
+    transferTime: raw.transferTime || '00:00',
     labelsEntrada: parseJSON(raw.labelEntrada, DEFAULT_LABELS_ENTRADA),
     labelsCatalogo: parseJSON(raw.labelCatalogo, DEFAULT_LABELS_CATALOGO),
     labelsRegistros: parseJSON(raw.labelRegistros, DEFAULT_LABELS_REGISTROS),

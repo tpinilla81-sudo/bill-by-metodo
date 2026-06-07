@@ -1,9 +1,28 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
-export async function GET() {
-  const registros = await db.registro.findMany({ orderBy: { fecha: 'desc' } })
-  return NextResponse.json(registros)
+// GET /api/registros?filter=entrada|registros|all
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const filter = searchParams.get('filter') || 'all'
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let where: any = {}
+    if (filter === 'entrada') {
+      // Only entries NOT yet passed to registro
+      where = { pasadoRegistro: false }
+    } else if (filter === 'registros') {
+      // Only entries already passed to registro
+      where = { pasadoRegistro: true }
+    }
+
+    const registros = await db.registro.findMany({ where, orderBy: { fecha: 'desc' } })
+    return NextResponse.json(registros)
+  } catch (err) {
+    console.error('Registros GET error:', err)
+    return NextResponse.json({ error: 'Error cargando registros' }, { status: 500 })
+  }
 }
 
 export async function POST(req: Request) {
@@ -30,19 +49,20 @@ export async function POST(req: Request) {
         c2: r.c2,
         cant: Number(r.cant) || 1,
         obs: r.obs || '',
+        pasadoRegistro: true, // Batch imports go directly to registros
       }))
     })
 
     return NextResponse.json({ count: created.count }, { status: 201 })
   }
 
-  // Single entry
+  // Single entry — always created as NOT passed to registro (stays in Entrada)
   const { fecha, clienteId, cliente, c1, c2, cant, obs } = body
   if (!fecha || !clienteId || !c1 || !c2 || !cant) {
     return NextResponse.json({ error: 'Completa fecha, cliente, conceptos y cantidad' }, { status: 400 })
   }
   const registro = await db.registro.create({
-    data: { fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '' }
+    data: { fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '', pasadoRegistro: false }
   })
   return NextResponse.json(registro, { status: 201 })
 }

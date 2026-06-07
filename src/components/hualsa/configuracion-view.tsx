@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
-import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag } from 'lucide-react'
+import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, ArrowRightLeft, Clock, Zap } from 'lucide-react'
 import {
   useConfig,
   DEFAULT_LABELS_ENTRADA,
@@ -44,6 +44,10 @@ export function ConfiguracionView() {
   const [sectionFacturas, setSectionFacturas] = useState('')
   const [sectionBackup, setSectionBackup] = useState('')
 
+  // Transfer settings
+  const [transferMode, setTransferMode] = useState('auto')
+  const [transferTime, setTransferTime] = useState('00:00')
+
   // Labels
   const [labelsEntrada, setLabelsEntrada] = useState(DEFAULT_LABELS_ENTRADA)
   const [labelsCatalogo, setLabelsCatalogo] = useState(DEFAULT_LABELS_CATALOGO)
@@ -75,6 +79,8 @@ export function ConfiguracionView() {
     setSectionCatalogo(raw.sectionCatalogo)
     setSectionFacturas(raw.sectionFacturas)
     setSectionBackup(raw.sectionBackup)
+    setTransferMode(raw.transferMode || 'auto')
+    setTransferTime(raw.transferTime || '00:00')
     setLabelsEntrada(config.labelsEntrada)
     setLabelsCatalogo(config.labelsCatalogo)
     setLabelsRegistros(config.labelsRegistros)
@@ -134,6 +140,8 @@ export function ConfiguracionView() {
         sectionCatalogo,
         sectionFacturas,
         sectionBackup,
+        transferMode,
+        transferTime,
         labelEntrada: JSON.stringify(labelsEntrada),
         labelCatalogo: JSON.stringify(labelsCatalogo),
         labelRegistros: JSON.stringify(labelsRegistros),
@@ -185,9 +193,12 @@ export function ConfiguracionView() {
       </div>
 
       <Tabs defaultValue="empresa" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="empresa">
             <Building2 className="h-4 w-4 mr-1.5" /> Empresa
+          </TabsTrigger>
+          <TabsTrigger value="transfer">
+            <ArrowRightLeft className="h-4 w-4 mr-1.5" /> Transfer
           </TabsTrigger>
           <TabsTrigger value="secciones">
             <Tag className="h-4 w-4 mr-1.5" /> Secciones
@@ -288,6 +299,85 @@ export function ConfiguracionView() {
                   <Label className="text-xs uppercase font-bold text-slate-500">IVA por defecto (%)</Label>
                   <Input type="number" step="0.01" value={defaultIva} onChange={e => setDefaultIva(e.target.value)} className="w-32" />
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ─── TRANSFER TAB ─────────────────────────────── */}
+        <TabsContent value="transfer" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ArrowRightLeft className="h-4 w-4" /> Transferencia Entrada → Registros
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-gray-500">
+                Configura cómo y cuándo las entradas pasan de la sección Entrada a Registros.
+                En Entrada solo se ven las entradas activas (no transferidas). Una vez transferidas, aparecen en Registros.
+              </p>
+
+              {/* Mode selection */}
+              <div className="space-y-3">
+                <Label className="text-sm font-bold text-slate-700">Modo de transferencia</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setTransferMode('auto')}
+                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                      transferMode === 'auto'
+                        ? 'border-[#005bb5] bg-blue-50 text-[#005bb5]'
+                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    <Clock className="h-6 w-6" />
+                    <span className="text-sm font-bold">Automático</span>
+                    <span className="text-[11px] text-center opacity-70">A la hora configurada</span>
+                  </button>
+                  <button
+                    onClick={() => setTransferMode('manual')}
+                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                      transferMode === 'manual'
+                        ? 'border-[#2bb24c] bg-green-50 text-[#2bb24c]'
+                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    <Zap className="h-6 w-6" />
+                    <span className="text-sm font-bold">Manual</span>
+                    <span className="text-[11px] text-center opacity-70">Con botón "Pasar al registro"</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Time picker (only for auto mode) */}
+              {transferMode === 'auto' && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-bold text-slate-700">Hora de transferencia automática</Label>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      type="time"
+                      value={transferTime}
+                      onChange={e => setTransferTime(e.target.value)}
+                      className="w-40 text-lg font-mono"
+                    />
+                    <span className="text-sm text-gray-400">
+                      A esta hora, todas las entradas activas pasarán automáticamente a Registros
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Info box */}
+              <div className={`rounded-lg p-3 text-sm ${
+                transferMode === 'auto'
+                  ? 'bg-blue-50 border border-blue-200 text-blue-700'
+                  : 'bg-green-50 border border-green-200 text-green-700'
+              }`}>
+                {transferMode === 'auto' ? (
+                  <p>Las entradas se transferirán automáticamente cada día a las <b>{transferTime}</b>. Debes tener la aplicación abierta para que se ejecute la transferencia.</p>
+                ) : (
+                  <p>Las entradas permanecerán en Entrada hasta que pulses el botón <b>"Pasar al registro"</b>. Tú decides cuándo transferirlas.</p>
+                )}
               </div>
             </CardContent>
           </Card>

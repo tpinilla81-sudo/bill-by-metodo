@@ -63,4 +63,5 @@ export interface Registro {
   c2: string
   cant: number
   obs: string
+  pasadoRegistro: boolean
 }
