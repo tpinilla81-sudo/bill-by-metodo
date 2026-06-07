@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-import { Pencil, Trash2, Save, Download, CheckCircle, AlertCircle, X } from 'lucide-react'
-import { fmtDate, todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
+import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X } from 'lucide-react'
+import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_ENTRADA } from '@/lib/config'
 
 interface EntradaViewData {
@@ -122,26 +122,9 @@ export function EntradaView() {
     setObs('')
   }
 
-  async function handleExportData() {
-    const XLSX = await import('xlsx')
-    const rows = data.registros.map(r => ({
-      [L.fecha]: r.fecha,
-      [L.cliente]: r.cliente,
-      [L.c1]: r.c1,
-      [L.c2]: r.c2,
-      [L.cantidad]: r.cant,
-      [L.observaciones]: r.obs,
-    }))
-    const ws = XLSX.utils.json_to_sheet(rows)
-    ws['!cols'] = [{ wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 10 }, { wch: 30 }]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Entradas')
-    const appName = config?.appName || 'HUALSA'
-    XLSX.writeFile(wb, `Entradas_${appName}_${new Date().toISOString().slice(0, 10)}.xlsx`)
-  }
-
-  // Recent entries (last 15)
-  const recentEntries = data.registros.slice(0, 15)
+  // Today's entries only (at midnight they disappear from here and stay in Registros)
+  const today = todayISO()
+  const todayEntries = data.registros.filter(r => r.fecha === today)
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-2rem)] md:min-h-0">
@@ -283,26 +266,19 @@ export function EntradaView() {
             {editingId ? 'ACTUALIZAR' : 'GUARDAR'}
           </button>
 
-          {/* ── Recent Entries (Cards for mobile) ──── */}
+          {/* ── Today's Entries (Cards for mobile) ──── */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">
-                Últimas Entradas
+                Entradas de Hoy
               </h3>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={handleExportData}
-                  disabled={data.registros.length === 0}
-                  className="h-7 px-2.5 rounded-lg border border-gray-200 text-gray-500 hover:text-[#005bb5] hover:border-[#005bb5] text-xs font-medium flex items-center gap-1 transition-colors disabled:opacity-30"
-                >
-                  <Download className="h-3.5 w-3.5" /> Exportar
-                </button>
-                <span className="text-xs text-gray-300">{data.registros.length} total</span>
+                <span className="text-xs text-gray-300">{todayEntries.length}</span>
               </div>
             </div>
 
             <div className="space-y-2">
-              {recentEntries.map(r => (
+              {todayEntries.map(r => (
                 <div
                   key={r.id}
                   className={`bg-white rounded-xl border p-3.5 shadow-sm transition-all ${
@@ -313,9 +289,8 @@ export function EntradaView() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      {/* Date + Cliente */}
-                      <div className="flex items-baseline gap-2 mb-1">
-                        <span className="text-sm font-bold text-gray-800">{fmtDate(r.fecha)}</span>
+                      {/* Cliente */}
+                      <div className="mb-1">
                         <span className="text-sm text-[#005bb5] font-semibold truncate">{r.cliente}</span>
                       </div>
                       {/* Concepts */}
@@ -350,10 +325,10 @@ export function EntradaView() {
                 </div>
               ))}
 
-              {recentEntries.length === 0 && (
+              {todayEntries.length === 0 && (
                 <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
                   <div className="text-4xl mb-2">📝</div>
-                  <p className="text-gray-400 text-sm">No hay entradas todavía</p>
+                  <p className="text-gray-400 text-sm">Sin entradas hoy</p>
                 </div>
               )}
             </div>
