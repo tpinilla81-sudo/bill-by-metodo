@@ -66,3 +66,29 @@ Stage Summary:
 - Configurable fields feature already works in Configuración → Campos tab
 - Server auto-restarts on crash (sandbox limitation workaround)
 - Removed `output: "standalone"` from next.config.ts for better stability with `next start`
+
+---
+Task ID: 2
+Agent: main
+Task: Make concepts (c1/c2) fully editable - add, edit, delete
+
+Work Log:
+- Created ComboInput component for entrada-view.tsx: text input with dropdown suggestions from catalog
+- Replaced Select dropdowns for c1 and c2 with ComboInput in Entrada view
+- Users can now type any value freely or select from existing catalog suggestions
+- Added ConceptosManager component in configuracion-view.tsx
+- New "Conceptos" tab in Configuración with full CRUD:
+  - View all concept groups (C1) as chips with count
+  - Add new groups with one click
+  - Rename entire groups (updates all items)
+  - Delete entire groups or individual concepts
+  - Add/edit individual concepts with C1, C2, Cliente, Coste, Incremento
+  - Table with edit/delete per row
+- Rebuilt Next.js and restarted server
+- Server running with auto-restart on keep-alive wrapper
+
+Stage Summary:
+- Concepts are now fully editable from both Entrada (free typing) and Configuración (CRUD management)
+- Entrada: ComboInput allows typing new values or selecting from catalog suggestions
+- Configuración: New Conceptos tab with group management + individual concept CRUD
+- Server stable with 3-second pause between requests

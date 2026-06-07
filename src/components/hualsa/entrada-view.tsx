@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown } from 'lucide-react'
+import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus } from 'lucide-react'
 import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_ENTRADA, DEFAULT_FIELDS_ENTRADA } from '@/lib/config'
 
@@ -29,6 +29,88 @@ function useEntradaData() {
   }, [])
 
   return { data, loadData, loading }
+}
+
+// ─── ComboInput: text input with dropdown suggestions from catalog ───
+function ComboInput({
+  value,
+  onChange,
+  suggestions,
+  placeholder,
+  label,
+}: {
+  value: string
+  onChange: (v: string) => void
+  suggestions: string[]
+  placeholder: string
+  label: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(-1)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  // Filter suggestions based on current input
+  const filtered = value
+    ? suggestions.filter(s => s.toLowerCase().includes(value.toLowerCase()))
+    : suggestions
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!open || filtered.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlight(h => Math.min(h + 1, filtered.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlight(h => Math.max(h - 1, 0))
+    } else if (e.key === 'Enter' && highlight >= 0) {
+      e.preventDefault()
+      onChange(filtered[highlight])
+      setOpen(false)
+      setHighlight(-1)
+    } else if (e.key === 'Escape') {
+      setOpen(false)
+    }
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <Input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); setHighlight(-1) }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className="h-12 text-lg border-0 bg-transparent p-0 focus:ring-0 focus:outline-none"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-[200px] overflow-auto">
+          {filtered.map((s, i) => (
+            <button
+              key={s}
+              className={`w-full text-left px-4 py-2.5 text-base transition-colors ${
+                i === highlight ? 'bg-[#005bb5] text-white' : 'hover:bg-gray-50'
+              } ${s.toLowerCase() === value.toLowerCase() ? 'font-bold' : ''}`}
+              onMouseDown={e => { e.preventDefault(); onChange(s); setOpen(false) }}
+              onMouseEnter={() => setHighlight(i)}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function EntradaView() {
@@ -108,13 +190,18 @@ export function EntradaView() {
 
   const { clientes } = data
 
-  // Available C1 options from catalog
+  // Available C1 options from catalog (unique, sorted)
   const c1Options = [...new Set(data.catalogo.map(x => x.c1))].sort()
 
-  // Available C2 options based on selected C1 and cliente
-  const c2Options = data.catalogo
-    .filter(x => (!c1 || x.c1 === c1) && (!x.clienteId || x.clienteId === clienteId))
-    .filter((x, i, arr) => arr.findIndex(y => y.c2 === x.c2) === i)
+  // Available C2 options based on selected C1 and cliente (unique values)
+  const c2Options = [...new Set(
+    data.catalogo
+      .filter(x => (!c1 || x.c1 === c1) && (!x.clienteId || x.clienteId === clienteId))
+      .map(x => x.c2)
+  )].sort()
+
+  // All C2 options for free-typing (when no C1 selected)
+  const allC2Options = [...new Set(data.catalogo.map(x => x.c2))].sort()
 
   function showStatus(type: 'ok' | 'err', text: string) {
     setStatusMsg({ type, text })
@@ -335,44 +422,38 @@ export function EntradaView() {
           </div>
           )}
 
-          {/* ── Concepto 1 ──────────────────────────── */}
+          {/* ── Concepto 1 (ComboInput: type freely or select from catalog) ──── */}
           {isVisible('c1') && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
             <div className="px-4 pt-3 pb-1">
               <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.c1}</Label>
             </div>
             <div className="px-4 pb-3">
-              <Select value={c1} onValueChange={v => { setC1(v); setC2('') }}>
-                <SelectTrigger className="h-12 text-lg border-0 bg-transparent p-0 focus:ring-0 shadow-none">
-                  <SelectValue placeholder="Selecciona..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {c1Options.map(c => (
-                    <SelectItem key={c} value={c} className="text-base py-3">{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ComboInput
+                value={c1}
+                onChange={v => { setC1(v); setC2('') }}
+                suggestions={c1Options}
+                placeholder="Escribe o selecciona..."
+                label={L.c1}
+              />
             </div>
           </div>
           )}
 
-          {/* ── Concepto 2 ──────────────────────────── */}
+          {/* ── Concepto 2 (ComboInput: type freely or select from catalog) ──── */}
           {isVisible('c2') && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
             <div className="px-4 pt-3 pb-1">
               <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.c2}</Label>
             </div>
             <div className="px-4 pb-3">
-              <Select value={c2} onValueChange={setC2}>
-                <SelectTrigger className="h-12 text-lg border-0 bg-transparent p-0 focus:ring-0 shadow-none">
-                  <SelectValue placeholder="Selecciona..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {c2Options.map(x => (
-                    <SelectItem key={x.c2} value={x.c2} className="text-base py-3">{x.c2}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ComboInput
+                value={c2}
+                onChange={setC2}
+                suggestions={c2Options.length > 0 ? c2Options : allC2Options}
+                placeholder="Escribe o selecciona..."
+                label={L.c2}
+              />
             </div>
           </div>
           )}

@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
-import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, ArrowRightLeft, Clock, Zap, Eye, EyeOff, LayoutList } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, ArrowRightLeft, Clock, Zap, Eye, EyeOff, LayoutList, Pencil, Trash2, Plus, BookOpen, X } from 'lucide-react'
 import {
   useConfig,
   DEFAULT_LABELS_ENTRADA,
@@ -20,6 +21,7 @@ import {
   DEFAULT_FIELDS_CATALOGO,
   type AppConfig,
 } from '@/lib/config'
+import type { CatalogoItem, Cliente } from '@/lib/hualsa-utils'
 
 // Field labels map (human-readable names for field keys)
 const FIELD_LABELS_ENTRADA: Record<string, string> = {
@@ -51,7 +53,311 @@ const FIELD_LABELS_CATALOGO: Record<string, string> = {
   precioCliente: 'Precio Cliente',
 }
 
-// Toggle chip component for field visibility
+// ─── ConceptosManager: Full CRUD for catalog concepts ─────────
+function ConceptosManager() {
+  const [catalogo, setCatalogo] = useState<CatalogoItem[]>([])
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+
+  // Form state
+  const [formC1, setFormC1] = useState('')
+  const [formC2, setFormC2] = useState('')
+  const [formClienteId, setFormClienteId] = useState('')
+  const [formCoste, setFormCoste] = useState('')
+  const [formInc, setFormInc] = useState('0')
+
+  // Filter
+  const [filterC1, setFilterC1] = useState('')
+  const [filterCli, setFilterCli] = useState('')
+
+  const loadData = useCallback(async () => {
+    try {
+      const [catRes, cliRes] = await Promise.all([fetch('/api/catalogo'), fetch('/api/clientes')])
+      setCatalogo(await catRes.json())
+      setClientes(await cliRes.json())
+    } catch (err) {
+      console.error('Error loading conceptos:', err)
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  function showMsg(type: 'ok' | 'err', text: string) {
+    setStatusMsg({ type, text })
+    setTimeout(() => setStatusMsg(null), 3000)
+  }
+
+  function resetForm() {
+    setEditingId(null)
+    setFormC1(''); setFormC2(''); setFormClienteId(''); setFormCoste(''); setFormInc('0')
+  }
+
+  // Unique C1 groups
+  const c1Groups = [...new Set(catalogo.map(x => x.c1))].sort()
+
+  // Filtered catalogo
+  const filtered = catalogo.filter(x => {
+    if (filterC1 && x.c1 !== filterC1) return false
+    if (filterCli === '__gen__' && x.clienteId) return false
+    if (filterCli && filterCli !== '__gen__' && x.clienteId !== filterCli) return false
+    return true
+  })
+
+  async function handleSave() {
+    if (!formC1 || !formC2) { showMsg('err', 'Concepto 1 y Concepto 2 son obligatorios'); return }
+    const costeNum = Number(formCoste) || 0
+    const incNum = Number(formInc) || 0
+    const finalNum = costeNum * (1 + incNum / 100)
+    const body = {
+      clienteId: formClienteId || '',
+      c1: formC1,
+      c2: formC2,
+      coste: costeNum,
+      inc: incNum,
+      final: Number(finalNum.toFixed(2)),
+    }
+
+    if (editingId) {
+      await fetch('/api/catalogo', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingId, ...body })
+      })
+      showMsg('ok', 'Concepto actualizado ✓')
+    } else {
+      await fetch('/api/catalogo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      showMsg('ok', 'Concepto añadido ✓')
+    }
+    resetForm()
+    loadData()
+  }
+
+  function handleEdit(x: CatalogoItem) {
+    setEditingId(x.id)
+    setFormC1(x.c1); setFormC2(x.c2); setFormClienteId(x.clienteId || '')
+    setFormCoste(String(x.coste)); setFormInc(String(x.inc))
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('¿Eliminar este concepto?')) return
+    await fetch(`/api/catalogo?id=${id}`, { method: 'DELETE' })
+    showMsg('ok', 'Concepto eliminado')
+    loadData()
+  }
+
+  // Rename a C1 group across all catalog items
+  async function handleRenameC1(oldName: string) {
+    const newName = prompt(`Renombrar grupo "${oldName}" a:`, oldName)
+    if (!newName || newName === oldName) return
+    const items = catalogo.filter(x => x.c1 === oldName)
+    for (const item of items) {
+      await fetch('/api/catalogo', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, c1: newName, c2: item.c2, clienteId: item.clienteId || '', coste: item.coste, inc: item.inc, final: item.final })
+      })
+    }
+    showMsg('ok', `Grupo "${oldName}" renombrado a "${newName}" ✓`)
+    loadData()
+  }
+
+  // Delete entire C1 group
+  async function handleDeleteC1(name: string) {
+    const count = catalogo.filter(x => x.c1 === name).length
+    if (!confirm(`¿Eliminar el grupo "${name}" con ${count} concepto(s)?`)) return
+    const items = catalogo.filter(x => x.c1 === name)
+    for (const item of items) {
+      await fetch(`/api/catalogo?id=${item.id}`, { method: 'DELETE' })
+    }
+    showMsg('ok', `Grupo "${name}" eliminado (${count} conceptos)`)
+    loadData()
+  }
+
+  // Add a new empty C1 group (creates a placeholder item)
+  async function handleAddC1() {
+    const name = prompt('Nombre del nuevo grupo (Concepto 1):')
+    if (!name) return
+    await fetch('/api/catalogo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ c1: name, c2: '(nuevo)', coste: 0, inc: 0, final: 0 })
+    })
+    showMsg('ok', `Grupo "${name}" creado ✓`)
+    loadData()
+  }
+
+  if (loading) return <div className="p-6 text-center text-gray-400">Cargando conceptos...</div>
+
+  return (
+    <div className="space-y-4">
+      {statusMsg && (
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
+          statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+        }`}>
+          {statusMsg.type === 'ok' ? <CheckCircle className="h-4 w-4" /> : null}
+          {statusMsg.text}
+        </div>
+      )}
+
+      <p className="text-sm text-gray-500">
+        Gestiona los conceptos del catálogo. Añade nuevos, edita los existentes o elimina los que no necesites.
+        Los conceptos que añadas aquí aparecerán como sugerencias en la Entrada.
+      </p>
+
+      {/* ── C1 Groups Overview ──── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-[#005bb5]" /> Grupos (Concepto 1)
+            <span className="text-xs text-gray-400 ml-auto">{c1Groups.length} grupos</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {c1Groups.map(g => {
+              const count = catalogo.filter(x => x.c1 === g).length
+              return (
+                <div key={g} className="flex items-center gap-0 border-2 border-[#005bb5]/20 rounded-xl overflow-hidden bg-blue-50/50">
+                  <button
+                    onClick={() => setFilterC1(filterC1 === g ? '' : g)}
+                    className={`px-3 py-2 text-sm font-medium transition-colors ${
+                      filterC1 === g ? 'bg-[#005bb5] text-white' : 'text-[#005bb5] hover:bg-blue-100'
+                    }`}
+                  >
+                    {g} <span className="text-xs opacity-70">({count})</span>
+                  </button>
+                  <button
+                    onClick={() => handleRenameC1(g)}
+                    className="px-2 py-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                    title="Renombrar grupo"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteC1(g)}
+                    className="px-2 py-2 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    title="Eliminar grupo"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )
+            })}
+            <button
+              onClick={handleAddC1}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-dashed border-gray-300 text-gray-400 hover:border-[#2bb24c] hover:text-[#2bb24c] transition-colors text-sm"
+            >
+              <Plus className="h-4 w-4" /> Nuevo grupo
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Add / Edit Form ──── */}
+      <Card className={`border-l-4 ${editingId ? 'border-l-indigo-500 bg-indigo-50/30' : 'border-l-[#2bb24c]'}`}>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            {editingId ? <Pencil className="h-4 w-4 text-indigo-500" /> : <Plus className="h-4 w-4 text-[#2bb24c]" />}
+            {editingId ? 'Editar Concepto' : 'Añadir Concepto'}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto] gap-3 items-end">
+            <div>
+              <Label className="text-xs uppercase font-bold text-slate-500">Grupo (C1)</Label>
+              <Input value={formC1} onChange={e => setFormC1(e.target.value)} placeholder="Ej: Transporte" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase font-bold text-slate-500">Servicio (C2)</Label>
+              <Input value={formC2} onChange={e => setFormC2(e.target.value)} placeholder="Ej: Carga completa" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase font-bold text-slate-500">Cliente</Label>
+              <Select value={formClienteId || '__none__'} onValueChange={setFormClienteId}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— General —</SelectItem>
+                  {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs uppercase font-bold text-slate-500">Coste (€)</Label>
+              <Input type="number" step="0.01" value={formCoste} onChange={e => setFormCoste(e.target.value)} placeholder="0.00" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase font-bold text-slate-500">Incremento %</Label>
+              <Input type="number" step="0.01" value={formInc} onChange={e => setFormInc(e.target.value)} placeholder="0" />
+            </div>
+            <div className="flex gap-1">
+              <Button onClick={handleSave} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
+                <Save className="h-4 w-4 mr-1" />
+                {editingId ? 'ACTUALIZAR' : 'AÑADIR'}
+              </Button>
+              {editingId && (
+                <Button onClick={resetForm} variant="outline" size="icon">
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Table of Concepts ──── */}
+      <div className="bg-white rounded-lg border overflow-auto shadow-sm">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-blue-50">
+              <th className="p-2 text-left font-semibold border-b">Grupo (C1)</th>
+              <th className="p-2 text-left font-semibold border-b">Servicio (C2)</th>
+              <th className="p-2 text-left font-semibold border-b">Cliente</th>
+              <th className="p-2 text-right font-semibold border-b">Coste</th>
+              <th className="p-2 text-right font-semibold border-b">Inc. %</th>
+              <th className="p-2 text-right font-semibold border-b">P. Final</th>
+              <th className="p-2 text-center font-semibold border-b">Acc.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(x => {
+              const cli = clientes.find(c => c.id === x.clienteId)
+              return (
+                <tr key={x.id} className={`border-b hover:bg-gray-50 ${editingId === x.id ? 'bg-indigo-50' : ''}`}>
+                  <td className="p-2 font-medium">{x.c1}</td>
+                  <td className="p-2">{x.c2}</td>
+                  <td className="p-2 text-gray-500">{cli ? cli.nombre : <i>General</i>}</td>
+                  <td className="p-2 text-right">{x.coste.toFixed(2)}€</td>
+                  <td className="p-2 text-right">{x.inc.toFixed(2)}%</td>
+                  <td className="p-2 text-right font-bold">{x.final.toFixed(2)}€</td>
+                  <td className="p-2 text-center">
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEdit(x)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(x.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </td>
+                </tr>
+              )
+            })}
+            {filtered.length === 0 && (
+              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay conceptos{filterC1 ? ` en el grupo "${filterC1}"` : ''}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ─── Toggle chip component for field visibility ───────────────
 function FieldToggle({
   fieldKey,
   label,
@@ -273,12 +579,15 @@ export function ConfiguracionView() {
       </div>
 
       <Tabs defaultValue="empresa" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="empresa">
             <Building2 className="h-4 w-4 mr-1.5" /> Empresa
           </TabsTrigger>
           <TabsTrigger value="transfer">
             <ArrowRightLeft className="h-4 w-4 mr-1.5" /> Transfer
+          </TabsTrigger>
+          <TabsTrigger value="conceptos">
+            <BookOpen className="h-4 w-4 mr-1.5" /> Conceptos
           </TabsTrigger>
           <TabsTrigger value="campos">
             <LayoutList className="h-4 w-4 mr-1.5" /> Campos
@@ -464,6 +773,11 @@ export function ConfiguracionView() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ─── CONCEPTOS TAB (CRUD for catalog concepts) ──────────────── */}
+        <TabsContent value="conceptos" className="space-y-4 mt-4">
+          <ConceptosManager />
         </TabsContent>
 
         {/* ─── CAMPOS TAB (Visible Fields) ─────────────────── */}
