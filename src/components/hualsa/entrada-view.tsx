@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Pencil, Trash2, Save, RotateCcw, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, X, ChevronDown } from 'lucide-react'
+
+import { Pencil, Trash2, Save, Download, CheckCircle, AlertCircle, X } from 'lucide-react'
 import { fmtDate, todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_ENTRADA } from '@/lib/config'
 
@@ -47,16 +47,6 @@ export function EntradaView() {
   const [c2, setC2] = useState('')
   const [cant, setCant] = useState('1')
   const [obs, setObs] = useState('')
-
-  // Excel import
-  const [importModalOpen, setImportModalOpen] = useState(false)
-  const [importPreview, setImportPreview] = useState<Partial<Registro>[]>([])
-  const [importErrors, setImportErrors] = useState<string[]>([])
-  const [importing, setImporting] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // Show excel tools (collapsed by default on mobile)
-  const [showExcelTools, setShowExcelTools] = useState(false)
 
   // Status message
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
@@ -132,241 +122,6 @@ export function EntradaView() {
     setC2('')
     setCant('1')
     setObs('')
-  }
-
-  // ─── Excel Import ───────────────────────────────────────────
-
-  // Parse a date value from Excel (handles serial numbers, strings, various formats)
-  function parseExcelDate(value: unknown): string {
-    if (value === null || value === undefined || value === '') return ''
-
-    // If it's already a number (Excel serial date)
-    if (typeof value === 'number') {
-      if (value > 30000 && value < 70000) {
-        const excelDate = new Date((value - 25569) * 86400 * 1000)
-        const iso = excelDate.toISOString().slice(0, 10)
-        if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso
-      }
-      return ''
-    }
-
-    const s = String(value).trim()
-    if (!s) return ''
-
-    // yyyy-mm-dd
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-    // dd/mm/yyyy
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
-      const [d, m, y] = s.split('/')
-      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
-    }
-    // dd-mm-yyyy
-    if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(s)) {
-      const [d, m, y] = s.split('-')
-      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
-    }
-    // dd/mm/yy
-    if (/^\d{1,2}\/\d{1,2}\/\d{2}$/.test(s)) {
-      const [d, m, y] = s.split('/')
-      const fullYear = Number(y) > 50 ? 1900 + Number(y) : 2000 + Number(y)
-      return `${fullYear}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
-    }
-    // Try as serial number string
-    const num = Number(s)
-    if (!isNaN(num) && num > 30000 && num < 70000) {
-      const excelDate = new Date((num - 25569) * 86400 * 1000)
-      const iso = excelDate.toISOString().slice(0, 10)
-      if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso
-    }
-
-    return ''
-  }
-
-  // Get a string value from a row by trying multiple column name variants
-  function getRowVal(row: Record<string, unknown>, ...keys: string[]): string {
-    for (const k of keys) {
-      if (row[k] !== undefined && row[k] !== null && row[k] !== '') {
-        return String(row[k]).trim()
-      }
-    }
-    return ''
-  }
-
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = async (evt) => {
-      try {
-        const XLSX = await import('xlsx')
-        const arrData = new Uint8Array(evt.target?.result as ArrayBuffer)
-        const workbook = XLSX.read(arrData, { type: 'array', cellDates: false })
-        const sheetName = workbook.SheetNames[0]
-        const sheet = workbook.Sheets[sheetName]
-
-        // Read with raw values + blankrows:false to skip empty rows
-        const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-          defval: '',
-          blankrows: false,
-          raw: true,  // Keep raw values so we can handle serial dates ourselves
-        })
-
-        if (rawRows.length === 0) {
-          setImportErrors(['El archivo está vacío o no tiene datos'])
-          setImportPreview([])
-          setImportModalOpen(true)
-          return
-        }
-
-        const errors: string[] = []
-        const preview: Partial<Registro>[] = []
-
-        const clientesRes = await fetch('/api/clientes')
-        const clientesList: Cliente[] = await clientesRes.json()
-
-        rawRows.forEach((row, idx) => {
-          const rowNum = idx + 2
-
-          // Read raw values (may be numbers for dates)
-          const rawFechaVal = row['FECHA'] ?? row['fecha'] ?? ''
-          const rawCliente = getRowVal(row, L.cliente, 'CLIENTE', 'cliente')
-          const rawC1 = getRowVal(row, L.c1, 'CONCEPTO 1', 'CONCEPTO1', 'C1', 'c1', 'concepto 1', 'concepto1')
-          const rawC2 = getRowVal(row, L.c2, 'CONCEPTO 2', 'CONCEPTO2', 'C2', 'c2', 'concepto 2', 'concepto2')
-          const rawCant = getRowVal(row, L.cantidad, 'CANTIDAD', 'cantidad', 'Cant', 'cant')
-          const rawObs = getRowVal(row, L.observaciones, 'OBSERVACIONES', 'observaciones', 'Obs', 'obs', 'OBS')
-
-          // Skip empty rows: if ALL key fields are empty/blank, skip silently
-          const hasData = rawFechaVal !== '' || rawCliente || rawC1 || rawC2 || rawCant || rawObs
-          if (!hasData) return
-
-          // Also skip rows where all values are just whitespace
-          const allBlank = !String(rawFechaVal).trim() && !rawCliente && !rawC1 && !rawC2 && !rawCant && !rawObs
-          if (allBlank) return
-
-          // Parse date
-          const fechaISO = parseExcelDate(rawFechaVal)
-
-          // Only report errors for rows that have some real data
-          if (!fechaISO) errors.push(`Fila ${rowNum}: ${L.fecha} inválida "${rawFechaVal}"`)
-          if (!rawCliente) errors.push(`Fila ${rowNum}: ${L.cliente} vacío`)
-          if (!rawC1) errors.push(`Fila ${rowNum}: ${L.c1} vacío`)
-          if (!rawC2) errors.push(`Fila ${rowNum}: ${L.c2} vacío`)
-
-          const cant = parseInt(rawCant) || 1
-
-          const matchedCliente = clientesList.find(c =>
-            c.nombre.toLowerCase() === rawCliente.toLowerCase() ||
-            c.nombre.toLowerCase().includes(rawCliente.toLowerCase()) ||
-            rawCliente.toLowerCase().includes(c.nombre.toLowerCase())
-          )
-
-          preview.push({
-            fecha: fechaISO,
-            clienteId: matchedCliente?.id || '',
-            cliente: rawCliente,
-            c1: rawC1,
-            c2: rawC2,
-            cant,
-            obs: rawObs,
-          })
-        })
-
-        setImportErrors(errors)
-        setImportPreview(preview)
-        setImportModalOpen(true)
-      } catch (err) {
-        setImportErrors(['Error leyendo el archivo: ' + String(err)])
-        setImportPreview([])
-        setImportModalOpen(true)
-      }
-    }
-    reader.readAsArrayBuffer(file)
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }
-
-  async function handleImportConfirm() {
-    if (importPreview.length === 0) return
-    setImporting(true)
-    try {
-      // Filter rows with valid date
-      const validRows = importPreview.filter(r => r.fecha)
-      if (validRows.length === 0) {
-        showStatus('err', 'No hay filas con fecha válida')
-        setImporting(false)
-        return
-      }
-
-      // Auto-create clientes that don't exist yet
-      const clientesSinId = validRows.filter(r => r.cliente && !r.clienteId)
-      const uniqueNombres = [...new Set(clientesSinId.map(r => r.cliente!))]
-
-      // Create each missing cliente
-      for (const nombre of uniqueNombres) {
-        try {
-          const res = await fetch('/api/clientes', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nombre })
-          })
-          if (res.ok) {
-            const newCli = await res.json()
-            // Update all matching preview rows with the new ID
-            validRows.forEach(r => {
-              if (r.cliente === nombre && !r.clienteId) {
-                r.clienteId = newCli.id
-              }
-            })
-          }
-        } catch {
-          // Skip if creation fails, row will be imported without clienteId
-        }
-      }
-
-      // Now import all valid rows (with or without clienteId)
-      const rowsToImport = validRows.map(r => ({
-        fecha: r.fecha,
-        clienteId: r.clienteId || '',
-        cliente: r.cliente || '',
-        c1: r.c1 || '',
-        c2: r.c2 || '',
-        cant: r.cant || 1,
-        obs: r.obs || '',
-      }))
-
-      const res = await fetch('/api/registros', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batch: rowsToImport })
-      })
-
-      if (res.ok) {
-        const result = await res.json()
-        const msg = `${result.count || rowsToImport.length} entradas importadas` +
-          (uniqueNombres.length > 0 ? ` · ${uniqueNombres.length} clientes creados` : '')
-        showStatus('ok', msg + ' ✓')
-        setImportModalOpen(false)
-        setImportPreview([])
-        setImportErrors([])
-        loadData()
-      } else {
-        showStatus('err', 'Error importando')
-      }
-    } catch (err) {
-      showStatus('err', 'Error: ' + String(err))
-    }
-    setImporting(false)
-  }
-
-  async function handleExportTemplate() {
-    const XLSX = await import('xlsx')
-    const header = [L.fecha, L.cliente, L.c1, L.c2, L.cantidad, L.observaciones]
-    const ws = XLSX.utils.aoa_to_sheet([header])
-    ws['!cols'] = [{ wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 10 }, { wch: 30 }]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Entrada')
-    const appName = config?.appName || 'HUALSA'
-    XLSX.writeFile(wb, `Plantilla_Entrada_${appName}.xlsx`)
   }
 
   async function handleExportData() {
@@ -530,63 +285,22 @@ export function EntradaView() {
             {editingId ? 'ACTUALIZAR' : 'GUARDAR'}
           </button>
 
-          {/* ── Excel Tools (collapsible) ────────────── */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <button
-              onClick={() => setShowExcelTools(!showExcelTools)}
-              className="w-full flex items-center justify-between px-4 py-3.5"
-            >
-              <div className="flex items-center gap-2">
-                <FileSpreadsheet className="h-5 w-5 text-[#005bb5]" />
-                <span className="text-sm font-semibold text-gray-700">Excel / Importar</span>
-              </div>
-              <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${showExcelTools ? 'rotate-180' : ''}`} />
-            </button>
-
-            {showExcelTools && (
-              <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full h-12 rounded-xl bg-[#005bb5] hover:bg-[#003d7a] active:scale-[0.98] transition-all text-white font-semibold flex items-center justify-center gap-2"
-                >
-                  <Upload className="h-5 w-5" /> IMPORTAR EXCEL
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={handleExportData}
-                    disabled={data.registros.length === 0}
-                    className="h-11 rounded-xl border-2 border-gray-200 text-gray-700 font-semibold text-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all disabled:opacity-40"
-                  >
-                    <Download className="h-4 w-4" /> Exportar
-                  </button>
-                  <button
-                    onClick={handleExportTemplate}
-                    className="h-11 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 font-semibold text-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all"
-                  >
-                    <FileSpreadsheet className="h-4 w-4" /> Plantilla
-                  </button>
-                </div>
-                <p className="text-[11px] text-gray-400 text-center leading-relaxed">
-                  Columnas: {L.fecha} · {L.cliente} · {L.c1} · {L.c2} · {L.cantidad} · {L.observaciones}
-                </p>
-              </div>
-            )}
-          </div>
-
           {/* ── Recent Entries (Cards for mobile) ──── */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">
                 Últimas Entradas
               </h3>
-              <span className="text-xs text-gray-300">{data.registros.length} total</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExportData}
+                  disabled={data.registros.length === 0}
+                  className="h-7 px-2.5 rounded-lg border border-gray-200 text-gray-500 hover:text-[#005bb5] hover:border-[#005bb5] text-xs font-medium flex items-center gap-1 transition-colors disabled:opacity-30"
+                >
+                  <Download className="h-3.5 w-3.5" /> Exportar
+                </button>
+                <span className="text-xs text-gray-300">{data.registros.length} total</span>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -648,99 +362,6 @@ export function EntradaView() {
           </div>
         </div>
       </div>
-
-      {/* ─── Import Preview Modal ──────────────────────────── */}
-      <Dialog open={importModalOpen} onOpenChange={setImportModalOpen}>
-        <DialogContent className="max-w-[900px] max-h-[85vh] overflow-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileSpreadsheet className="h-5 w-5 text-[#005bb5]" />
-              Vista Previa de Importación
-            </DialogTitle>
-          </DialogHeader>
-
-          {importErrors.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3">
-              <p className="text-sm font-bold text-red-700 mb-1">Advertencias ({importErrors.length})</p>
-              <div className="max-h-28 overflow-auto text-xs text-red-600 space-y-0.5">
-                {importErrors.slice(0, 15).map((err, i) => (
-                  <div key={i}>{err}</div>
-                ))}
-                {importErrors.length > 15 && <div>... y {importErrors.length - 15} más</div>}
-              </div>
-            </div>
-          )}
-
-          <div className="text-sm text-gray-600 mb-2">
-            <b>{importPreview.filter(r => r.fecha).length}</b> filas con fecha válida ·{' '}
-            <b className="text-green-600">{importPreview.filter(r => r.clienteId).length} clientes conocidos</b>
-            {importPreview.filter(r => r.cliente && !r.clienteId).length > 0 && (
-              <span className="text-amber-600"> · {importPreview.filter(r => r.cliente && !r.clienteId).length} clientes nuevos (se crearán)</span>
-            )}
-          </div>
-
-          <div className="overflow-auto max-h-[350px] border rounded-xl">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0">
-                <tr className="bg-gray-100">
-                  <th className="p-2 text-left border-b">✓</th>
-                  <th className="p-2 text-left border-b">{L.fecha}</th>
-                  <th className="p-2 text-left border-b">{L.cliente}</th>
-                  <th className="p-2 text-left border-b">{L.c1}</th>
-                  <th className="p-2 text-left border-b">{L.c2}</th>
-                  <th className="p-2 text-center border-b">{L.cantidad}</th>
-                  <th className="p-2 text-left border-b">{L.observaciones}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {importPreview.map((r, i) => {
-                  const hasFecha = !!r.fecha
-                  const hasCliente = !!r.cliente
-                  const clienteNuevo = hasCliente && !r.clienteId
-                  return (
-                    <tr key={i} className={`border-b ${!hasFecha ? 'bg-red-50' : ''}`}>
-                      <td className="p-2">
-                        {hasFecha ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4 text-red-400" />
-                        )}
-                      </td>
-                      <td className="p-2">{r.fecha || '—'}</td>
-                      <td className="p-2">
-                        {r.cliente || '—'}
-                        {r.clienteId && <span className="text-green-600 ml-1">✓</span>}
-                        {clienteNuevo && <span className="text-amber-600 ml-1">+nuevo</span>}
-                      </td>
-                      <td className="p-2">{r.c1 || '—'}</td>
-                      <td className="p-2">{r.c2 || '—'}</td>
-                      <td className="p-2 text-center">{r.cant}</td>
-                      <td className="p-2 text-gray-400">{r.obs}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="flex gap-3 mt-4">
-            <Button variant="outline" onClick={() => setImportModalOpen(false)} className="flex-1 h-12 rounded-xl">
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleImportConfirm}
-              className="flex-1 h-12 rounded-xl bg-[#2bb24c] hover:bg-[#23963e] text-white font-bold"
-              disabled={importing || importPreview.filter(r => r.fecha).length === 0}
-            >
-              {importing ? (
-                <span className="animate-pulse">Importando...</span>
-              ) : (
-                <>IMPORTAR {importPreview.filter(r => r.fecha).length} FILAS</>
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
