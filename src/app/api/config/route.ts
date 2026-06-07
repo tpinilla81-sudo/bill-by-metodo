@@ -30,6 +30,8 @@ const DEFAULT_CONFIG = {
   fieldsEntrada: '',
   fieldsClientes: '',
   fieldsCatalogo: '',
+  fieldsRegistros: '',
+  fieldsFacturas: '',
 }
 
 // GET /api/config - Retrieve configuration
@@ -69,7 +71,7 @@ export async function PUT(req: NextRequest) {
       'sectionEntrada', 'sectionRegistros', 'sectionClientes', 'sectionCatalogo',
       'sectionFacturas', 'sectionBackup',
       'transferMode', 'transferTime',
-      'fieldsEntrada', 'fieldsClientes', 'fieldsCatalogo',
+      'fieldsEntrada', 'fieldsClientes', 'fieldsCatalogo', 'fieldsRegistros', 'fieldsFacturas',
     ]
 
     for (const field of allowedFields) {

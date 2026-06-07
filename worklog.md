@@ -92,3 +92,31 @@ Stage Summary:
 - Entrada: ComboInput allows typing new values or selecting from catalog suggestions
 - Configuración: New Conceptos tab with group management + individual concept CRUD
 - Server stable with 3-second pause between requests
+---
+Task ID: dynamic-fields-system
+Agent: Main
+Task: Implement fully editable dynamic fields system for HUALSA PRO
+
+Work Log:
+- Updated prisma/schema.prisma: Added customData columns to Cliente, Catalogo, Registro models; Added fieldsRegistros and fieldsFacturas to Config model
+- Updated src/lib/config.tsx: New FieldDef interface with key/label/type/visible/isCustom/required/placeholder/options/dbColumn; New default field definitions for all 5 sections; parseFieldDefs function with validation; parseCustomData/serializeCustomData helpers
+- Updated src/lib/hualsa-utils.ts: Added customData to Cliente, CatalogoItem, Registro interfaces
+- Updated src/app/api/config/route.ts: Added fieldsRegistros and fieldsFacturas to allowed fields
+- Updated src/app/api/registros/route.ts: Added customData support to POST/PUT
+- Updated src/app/api/clientes/route.ts: Added customData support to POST/PUT
+- Updated src/app/api/catalogo/route.ts: Added customData support to POST/PUT
+- Rewrote src/components/hualsa/configuracion-view.tsx: Full CRUD FieldsManager component with add/edit/delete/reorder/visibility toggle per section; FieldEditor component for inline editing of field properties; Supports 5 sections: Entrada, Clientes, Catálogo, Registros, Facturas
+- Rewrote src/components/hualsa/entrada-view.tsx: Dynamic field rendering from FieldDef config; Custom fields stored in customData JSON; Displays custom field values in active entry cards
+- Rewrote src/components/hualsa/clientes-view.tsx: Dynamic field rendering from FieldDef config; Custom field inputs in form; Custom field columns in table
+- Rewrote src/components/hualsa/catalogo-view.tsx: Dynamic field rendering from FieldDef config; Custom field support
+- Rewrote src/components/hualsa/registros-view.tsx: Dynamic field columns from FieldDef config; Custom field values in export
+- Built production bundle and restarted server
+
+Stage Summary:
+- Full dynamic fields system implemented across all sections
+- Users can add custom fields (text/number/date/select/textarea) to any section
+- Core fields can be shown/hidden/reordered/renamed but not deleted
+- Custom fields can be fully CRUDed (add, edit, rename, delete)
+- Custom field values stored in customData JSON column on each model
+- Field definitions stored as JSON in Config model
+- Backward compatible: old string-array config format falls back to defaults

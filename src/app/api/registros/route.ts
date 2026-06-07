@@ -10,10 +10,8 @@ export async function GET(req: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let where: any = {}
     if (filter === 'entrada') {
-      // Only entries NOT yet passed to registro
       where = { pasadoRegistro: false }
     } else if (filter === 'registros') {
-      // Only entries already passed to registro
       where = { pasadoRegistro: true }
     }
 
@@ -32,7 +30,7 @@ export async function POST(req: Request) {
   if (body.batch && Array.isArray(body.batch)) {
     const rows = body.batch as Array<{
       fecha: string; clienteId: string; cliente: string;
-      c1: string; c2: string; cant: number; obs: string;
+      c1: string; c2: string; cant: number; obs: string; customData?: string;
     }>
 
     const validRows = rows.filter(r => r.fecha && r.clienteId && r.c1 && r.c2)
@@ -49,32 +47,33 @@ export async function POST(req: Request) {
         c2: r.c2,
         cant: Number(r.cant) || 1,
         obs: r.obs || '',
-        pasadoRegistro: true, // Batch imports go directly to registros
+        customData: r.customData || '',
+        pasadoRegistro: true,
       }))
     })
 
     return NextResponse.json({ count: created.count }, { status: 201 })
   }
 
-  // Single entry — always created as NOT passed to registro (stays in Entrada)
-  const { fecha, clienteId, cliente, c1, c2, cant, obs } = body
+  // Single entry
+  const { fecha, clienteId, cliente, c1, c2, cant, obs, customData } = body
   if (!fecha || !clienteId || !c1 || !c2 || !cant) {
     return NextResponse.json({ error: 'Completa fecha, cliente, conceptos y cantidad' }, { status: 400 })
   }
   const registro = await db.registro.create({
-    data: { fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '', pasadoRegistro: false }
+    data: { fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '', customData: customData || '', pasadoRegistro: false }
   })
   return NextResponse.json(registro, { status: 201 })
 }
 
 export async function PUT(req: Request) {
   const body = await req.json()
-  const { id, fecha, clienteId, cliente, c1, c2, cant, obs } = body
+  const { id, fecha, clienteId, cliente, c1, c2, cant, obs, customData } = body
   if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
-  const registro = await db.registro.update({
-    where: { id },
-    data: { fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '' }
-  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = { fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '' }
+  if (customData !== undefined) data.customData = customData
+  const registro = await db.registro.update({ where: { id }, data })
   return NextResponse.json(registro)
 }
 

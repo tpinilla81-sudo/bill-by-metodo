@@ -42,6 +42,7 @@ export interface Cliente {
   prov: string
   mail: string
   tel: string
+  customData?: string
 }
 
 export interface CatalogoItem {
@@ -52,6 +53,7 @@ export interface CatalogoItem {
   coste: number
   inc: number
   final: number
+  customData?: string
 }
 
 export interface Registro {
@@ -64,4 +66,5 @@ export interface Registro {
   cant: number
   obs: string
   pasadoRegistro: boolean
+  customData?: string
 }

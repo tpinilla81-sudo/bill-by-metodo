@@ -8,32 +8,34 @@ datasource db {
 }
 
 model Cliente {
-  id        String   @id @default(cuid())
-  nombre    String
-  cif       String   @default("")
-  dir       String   @default("")
-  cp        String   @default("")
-  ciudad    String   @default("")
-  prov      String   @default("")
-  mail      String   @default("")
-  tel       String   @default("")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  nombre      String
+  cif         String   @default("")
+  dir         String   @default("")
+  cp          String   @default("")
+  ciudad      String   @default("")
+  prov        String   @default("")
+  mail        String   @default("")
+  tel         String   @default("")
+  customData  String   @default("")     // JSON: custom field values
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   registros Registro[]
   catalogo  Catalogo[]
 }
 
 model Catalogo {
-  id         String   @id @default(cuid())
-  clienteId  String   @default("")
-  c1         String
-  c2         String
-  coste      Float    @default(0)
-  inc        Float    @default(0)
-  final      Float    @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(cuid())
+  clienteId   String   @default("")
+  c1          String
+  c2          String
+  coste       Float    @default(0)
+  inc         Float    @default(0)
+  final       Float    @default(0)
+  customData  String   @default("")     // JSON: custom field values
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   cliente Cliente? @relation(fields: [clienteId], references: [id])
 }
@@ -48,6 +50,7 @@ model Registro {
   cant            Int      @default(1)
   obs             String   @default("")
   pasadoRegistro  Boolean  @default(false)  // true = ya transferido a Registros
+  customData      String   @default("")     // JSON: custom field values
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -88,9 +91,11 @@ model Config {
   // Transfer settings
   transferMode    String   @default("auto")   // "auto" or "manual"
   transferTime    String   @default("00:00")  // HH:mm for auto transfer
-  // Visible fields (JSON arrays of field keys)
-  fieldsEntrada   String   @default("")   // JSON: ["fecha","cliente","c1","c2","cantidad","observaciones"]
-  fieldsClientes  String   @default("")   // JSON: ["nombre","cif","direccion","cp","ciudad","provincia","mail","telefono"]
-  fieldsCatalogo  String   @default("")   // JSON: ["cliente","c1","c2","coste","incremento","precioCliente"]
+  // Visible fields (JSON arrays of field definitions with key, label, type, visible, isCustom)
+  fieldsEntrada   String   @default("")   // JSON: FieldDef[]
+  fieldsClientes  String   @default("")   // JSON: FieldDef[]
+  fieldsCatalogo  String   @default("")   // JSON: FieldDef[]
+  fieldsRegistros String   @default("")   // JSON: FieldDef[]
+  fieldsFacturas  String   @default("")   // JSON: FieldDef[]
   updatedAt       DateTime @updatedAt
 }

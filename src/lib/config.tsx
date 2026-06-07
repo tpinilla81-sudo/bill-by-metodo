@@ -2,7 +2,75 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
 
-// ─── Default label sets ─────────────────────────────────────
+// ─── Field Definition type ────────────────────────────────────
+export interface FieldDef {
+  key: string           // unique identifier, e.g. "fecha", "custom_1"
+  label: string         // display label, e.g. "FECHA", "Mi Campo"
+  type: 'text' | 'number' | 'date' | 'select' | 'textarea'
+  visible: boolean
+  isCustom: boolean     // true = stored in customData JSON; false = core DB column
+  required?: boolean
+  placeholder?: string
+  options?: string[]    // for select type
+  dbColumn?: string     // maps to which DB column (for core fields)
+}
+
+// ─── Default field definitions per section ────────────────────
+export const DEFAULT_FIELDS_ENTRADA: FieldDef[] = [
+  { key: 'fecha', label: 'FECHA', type: 'date', visible: true, isCustom: false, required: true, dbColumn: 'fecha' },
+  { key: 'cliente', label: 'CLIENTE', type: 'select', visible: true, isCustom: false, required: true, dbColumn: 'clienteId' },
+  { key: 'c1', label: 'CONCEPTO 1', type: 'text', visible: true, isCustom: false, required: true, dbColumn: 'c1' },
+  { key: 'c2', label: 'CONCEPTO 2', type: 'text', visible: true, isCustom: false, required: true, dbColumn: 'c2' },
+  { key: 'cantidad', label: 'CANTIDAD', type: 'number', visible: true, isCustom: false, required: true, dbColumn: 'cant' },
+  { key: 'observaciones', label: 'OBSERVACIONES', type: 'text', visible: true, isCustom: false, dbColumn: 'obs' },
+]
+
+export const DEFAULT_FIELDS_CLIENTES: FieldDef[] = [
+  { key: 'nombre', label: 'Nombre Cliente', type: 'text', visible: true, isCustom: false, required: true, dbColumn: 'nombre' },
+  { key: 'cif', label: 'CIF', type: 'text', visible: true, isCustom: false, dbColumn: 'cif' },
+  { key: 'direccion', label: 'Dirección', type: 'text', visible: true, isCustom: false, dbColumn: 'dir' },
+  { key: 'cp', label: 'C.P.', type: 'text', visible: true, isCustom: false, dbColumn: 'cp' },
+  { key: 'ciudad', label: 'Ciudad', type: 'text', visible: true, isCustom: false, dbColumn: 'ciudad' },
+  { key: 'provincia', label: 'Provincia', type: 'text', visible: true, isCustom: false, dbColumn: 'prov' },
+  { key: 'mail', label: 'Mail', type: 'text', visible: true, isCustom: false, dbColumn: 'mail' },
+  { key: 'telefono', label: 'Teléfono', type: 'text', visible: true, isCustom: false, dbColumn: 'tel' },
+]
+
+export const DEFAULT_FIELDS_CATALOGO: FieldDef[] = [
+  { key: 'cliente', label: 'CLIENTE', type: 'select', visible: true, isCustom: false, dbColumn: 'clienteId' },
+  { key: 'c1', label: 'CONCEPTO 1', type: 'text', visible: true, isCustom: false, required: true, dbColumn: 'c1' },
+  { key: 'c2', label: 'CONCEPTO 2', type: 'text', visible: true, isCustom: false, required: true, dbColumn: 'c2' },
+  { key: 'coste', label: 'COSTE', type: 'number', visible: true, isCustom: false, dbColumn: 'coste' },
+  { key: 'incremento', label: 'INCREMENTO', type: 'number', visible: true, isCustom: false, dbColumn: 'inc' },
+  { key: 'precioCliente', label: 'PRECIO CLIENTE', type: 'number', visible: true, isCustom: false, dbColumn: 'final' },
+]
+
+export const DEFAULT_FIELDS_REGISTROS: FieldDef[] = [
+  { key: 'fecha', label: 'Fecha', type: 'date', visible: true, isCustom: false, dbColumn: 'fecha' },
+  { key: 'mes', label: 'Mes', type: 'text', visible: true, isCustom: false },
+  { key: 'semana', label: 'Sem', type: 'text', visible: true, isCustom: false },
+  { key: 'cliente', label: 'Cliente', type: 'text', visible: true, isCustom: false, dbColumn: 'cliente' },
+  { key: 'c1', label: 'Concepto 1', type: 'text', visible: true, isCustom: false, dbColumn: 'c1' },
+  { key: 'c2', label: 'Concepto 2', type: 'text', visible: true, isCustom: false, dbColumn: 'c2' },
+  { key: 'cantidad', label: 'Cant', type: 'number', visible: true, isCustom: false, dbColumn: 'cant' },
+  { key: 'precioUnitario', label: 'P.Unit', type: 'number', visible: true, isCustom: false },
+  { key: 'importe', label: 'Importe', type: 'number', visible: true, isCustom: false },
+  { key: 'observaciones', label: 'Obs', type: 'text', visible: true, isCustom: false, dbColumn: 'obs' },
+]
+
+export const DEFAULT_FIELDS_FACTURAS: FieldDef[] = [
+  { key: 'numero', label: 'Nº FACTURA', type: 'text', visible: true, isCustom: false },
+  { key: 'fecha', label: 'FECHA', type: 'date', visible: true, isCustom: false },
+  { key: 'cliente', label: 'CLIENTE', type: 'text', visible: true, isCustom: false },
+  { key: 'concepto', label: 'CONCEPTO', type: 'text', visible: true, isCustom: false },
+  { key: 'cantidad', label: 'CANT.', type: 'number', visible: true, isCustom: false },
+  { key: 'precioUnitario', label: 'PRECIO UNIT.', type: 'number', visible: true, isCustom: false },
+  { key: 'importe', label: 'IMPORTE', type: 'number', visible: true, isCustom: false },
+  { key: 'baseImponible', label: 'BASE IMPONIBLE', type: 'number', visible: true, isCustom: false },
+  { key: 'totalFactura', label: 'TOTAL FACTURA', type: 'number', visible: true, isCustom: false },
+]
+
+// ─── Default label sets (kept for backward compat) ────────────
 export const DEFAULT_LABELS_ENTRADA = {
   fecha: 'FECHA',
   cliente: 'CLIENTE',
@@ -57,11 +125,6 @@ export const DEFAULT_LABELS_CLIENTES = {
   telefono: 'Teléfono',
 }
 
-// ─── Default visible fields ─────────────────────────────────
-export const DEFAULT_FIELDS_ENTRADA = ['fecha', 'cliente', 'c1', 'c2', 'cantidad', 'observaciones']
-export const DEFAULT_FIELDS_CLIENTES = ['nombre', 'cif', 'direccion', 'cp', 'ciudad', 'provincia', 'mail', 'telefono']
-export const DEFAULT_FIELDS_CATALOGO = ['cliente', 'c1', 'c2', 'coste', 'incremento', 'precioCliente']
-
 // ─── Config type ────────────────────────────────────────────
 export interface AppConfig {
   id: string
@@ -92,9 +155,11 @@ export interface AppConfig {
   fieldsEntrada: string
   fieldsClientes: string
   fieldsCatalogo: string
+  fieldsRegistros: string
+  fieldsFacturas: string
 }
 
-// ─── Resolved labels (parsed from JSON) ─────────────────────
+// ─── Resolved config ──────────────────────────────────────────
 export interface ResolvedConfig {
   companyName: string
   companyFullName: string
@@ -120,9 +185,11 @@ export interface ResolvedConfig {
   labelsRegistros: typeof DEFAULT_LABELS_REGISTROS
   labelsFacturas: typeof DEFAULT_LABELS_FACTURAS
   labelsClientes: typeof DEFAULT_LABELS_CLIENTES
-  fieldsEntrada: string[]
-  fieldsClientes: string[]
-  fieldsCatalogo: string[]
+  fieldsEntrada: FieldDef[]
+  fieldsClientes: FieldDef[]
+  fieldsCatalogo: FieldDef[]
+  fieldsRegistros: FieldDef[]
+  fieldsFacturas: FieldDef[]
 }
 
 function parseJSON<T>(jsonStr: string, defaults: T): T {
@@ -135,12 +202,17 @@ function parseJSON<T>(jsonStr: string, defaults: T): T {
   }
 }
 
-function parseFieldsArray(jsonStr: string, defaults: string[]): string[] {
+function parseFieldDefs(jsonStr: string, defaults: FieldDef[]): FieldDef[] {
   if (!jsonStr || jsonStr.trim() === '') return defaults
   try {
     const parsed = JSON.parse(jsonStr)
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed
-    return defaults
+    if (!Array.isArray(parsed) || parsed.length === 0) return defaults
+    // Validate each entry has required fields
+    const valid = parsed.every((f: unknown) =>
+      typeof f === 'object' && f !== null && 'key' in f && 'label' in f && 'type' in f
+    )
+    if (!valid) return defaults
+    return parsed as FieldDef[]
   } catch {
     return defaults
   }
@@ -172,9 +244,11 @@ export function resolveConfig(raw: AppConfig): ResolvedConfig {
     labelsRegistros: parseJSON(raw.labelRegistros, DEFAULT_LABELS_REGISTROS),
     labelsFacturas: parseJSON(raw.labelFacturas, DEFAULT_LABELS_FACTURAS),
     labelsClientes: parseJSON(raw.labelClientes, DEFAULT_LABELS_CLIENTES),
-    fieldsEntrada: parseFieldsArray(raw.fieldsEntrada, DEFAULT_FIELDS_ENTRADA),
-    fieldsClientes: parseFieldsArray(raw.fieldsClientes, DEFAULT_FIELDS_CLIENTES),
-    fieldsCatalogo: parseFieldsArray(raw.fieldsCatalogo, DEFAULT_FIELDS_CATALOGO),
+    fieldsEntrada: parseFieldDefs(raw.fieldsEntrada, DEFAULT_FIELDS_ENTRADA),
+    fieldsClientes: parseFieldDefs(raw.fieldsClientes, DEFAULT_FIELDS_CLIENTES),
+    fieldsCatalogo: parseFieldDefs(raw.fieldsCatalogo, DEFAULT_FIELDS_CATALOGO),
+    fieldsRegistros: parseFieldDefs(raw.fieldsRegistros, DEFAULT_FIELDS_REGISTROS),
+    fieldsFacturas: parseFieldDefs(raw.fieldsFacturas, DEFAULT_FIELDS_FACTURAS),
   }
 }
 
@@ -242,4 +316,29 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
 
 export function useConfig() {
   return useContext(ConfigContext)
+}
+
+// ─── Helper: get visible fields ───────────────────────────────
+export function getVisibleFields(fields: FieldDef[]): FieldDef[] {
+  return fields.filter(f => f.visible)
+}
+
+// ─── Helper: get label for a field key ────────────────────────
+export function getFieldLabel(fields: FieldDef[], key: string): string {
+  return fields.find(f => f.key === key)?.label || key
+}
+
+// ─── Helper: parse customData JSON ────────────────────────────
+export function parseCustomData(jsonStr: string): Record<string, unknown> {
+  if (!jsonStr || jsonStr.trim() === '') return {}
+  try {
+    return JSON.parse(jsonStr)
+  } catch {
+    return {}
+  }
+}
+
+// ─── Helper: serialize customData ─────────────────────────────
+export function serializeCustomData(data: Record<string, unknown>): string {
+  return JSON.stringify(data)
 }

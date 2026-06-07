@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, ArrowRightLeft, Clock, Zap, Eye, EyeOff, LayoutList, Pencil, Trash2, Plus, BookOpen, X } from 'lucide-react'
+import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, ArrowRightLeft, Clock, Zap, Eye, EyeOff, LayoutList, Pencil, Trash2, Plus, BookOpen, X, GripVertical, ChevronUp, ChevronDown } from 'lucide-react'
 import {
   useConfig,
   DEFAULT_LABELS_ENTRADA,
@@ -19,39 +19,12 @@ import {
   DEFAULT_FIELDS_ENTRADA,
   DEFAULT_FIELDS_CLIENTES,
   DEFAULT_FIELDS_CATALOGO,
+  DEFAULT_FIELDS_REGISTROS,
+  DEFAULT_FIELDS_FACTURAS,
   type AppConfig,
+  type FieldDef,
 } from '@/lib/config'
 import type { CatalogoItem, Cliente } from '@/lib/hualsa-utils'
-
-// Field labels map (human-readable names for field keys)
-const FIELD_LABELS_ENTRADA: Record<string, string> = {
-  fecha: 'Fecha',
-  cliente: 'Cliente',
-  c1: 'Concepto 1',
-  c2: 'Concepto 2',
-  cantidad: 'Cantidad',
-  observaciones: 'Observaciones',
-}
-
-const FIELD_LABELS_CLIENTES: Record<string, string> = {
-  nombre: 'Nombre',
-  cif: 'CIF',
-  direccion: 'Dirección',
-  cp: 'Código Postal',
-  ciudad: 'Ciudad',
-  provincia: 'Provincia',
-  mail: 'Email',
-  telefono: 'Teléfono',
-}
-
-const FIELD_LABELS_CATALOGO: Record<string, string> = {
-  cliente: 'Cliente',
-  c1: 'Concepto 1',
-  c2: 'Concepto 2',
-  coste: 'Coste',
-  incremento: 'Incremento',
-  precioCliente: 'Precio Cliente',
-}
 
 // ─── ConceptosManager: Full CRUD for catalog concepts ─────────
 function ConceptosManager() {
@@ -61,14 +34,12 @@ function ConceptosManager() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
-  // Form state
   const [formC1, setFormC1] = useState('')
   const [formC2, setFormC2] = useState('')
   const [formClienteId, setFormClienteId] = useState('')
   const [formCoste, setFormCoste] = useState('')
   const [formInc, setFormInc] = useState('0')
 
-  // Filter
   const [filterC1, setFilterC1] = useState('')
   const [filterCli, setFilterCli] = useState('')
 
@@ -95,10 +66,8 @@ function ConceptosManager() {
     setFormC1(''); setFormC2(''); setFormClienteId(''); setFormCoste(''); setFormInc('0')
   }
 
-  // Unique C1 groups
   const c1Groups = [...new Set(catalogo.map(x => x.c1))].sort()
 
-  // Filtered catalogo
   const filtered = catalogo.filter(x => {
     if (filterC1 && x.c1 !== filterC1) return false
     if (filterCli === '__gen__' && x.clienteId) return false
@@ -111,86 +80,49 @@ function ConceptosManager() {
     const costeNum = Number(formCoste) || 0
     const incNum = Number(formInc) || 0
     const finalNum = costeNum * (1 + incNum / 100)
-    const body = {
-      clienteId: formClienteId || '',
-      c1: formC1,
-      c2: formC2,
-      coste: costeNum,
-      inc: incNum,
-      final: Number(finalNum.toFixed(2)),
-    }
-
+    const body = { clienteId: formClienteId || '', c1: formC1, c2: formC2, coste: costeNum, inc: incNum, final: Number(finalNum.toFixed(2)) }
     if (editingId) {
-      await fetch('/api/catalogo', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editingId, ...body })
-      })
+      await fetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
       showMsg('ok', 'Concepto actualizado ✓')
     } else {
-      await fetch('/api/catalogo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
+      await fetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       showMsg('ok', 'Concepto añadido ✓')
     }
-    resetForm()
-    loadData()
+    resetForm(); loadData()
   }
 
   function handleEdit(x: CatalogoItem) {
-    setEditingId(x.id)
-    setFormC1(x.c1); setFormC2(x.c2); setFormClienteId(x.clienteId || '')
-    setFormCoste(String(x.coste)); setFormInc(String(x.inc))
+    setEditingId(x.id); setFormC1(x.c1); setFormC2(x.c2); setFormClienteId(x.clienteId || ''); setFormCoste(String(x.coste)); setFormInc(String(x.inc))
   }
 
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar este concepto?')) return
-    await fetch(`/api/catalogo?id=${id}`, { method: 'DELETE' })
-    showMsg('ok', 'Concepto eliminado')
-    loadData()
+    await fetch(`/api/catalogo?id=${id}`, { method: 'DELETE' }); showMsg('ok', 'Concepto eliminado'); loadData()
   }
 
-  // Rename a C1 group across all catalog items
   async function handleRenameC1(oldName: string) {
     const newName = prompt(`Renombrar grupo "${oldName}" a:`, oldName)
     if (!newName || newName === oldName) return
     const items = catalogo.filter(x => x.c1 === oldName)
     for (const item of items) {
-      await fetch('/api/catalogo', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id, c1: newName, c2: item.c2, clienteId: item.clienteId || '', coste: item.coste, inc: item.inc, final: item.final })
-      })
+      await fetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, c1: newName, c2: item.c2, clienteId: item.clienteId || '', coste: item.coste, inc: item.inc, final: item.final }) })
     }
-    showMsg('ok', `Grupo "${oldName}" renombrado a "${newName}" ✓`)
-    loadData()
+    showMsg('ok', `Grupo "${oldName}" renombrado a "${newName}" ✓`); loadData()
   }
 
-  // Delete entire C1 group
   async function handleDeleteC1(name: string) {
     const count = catalogo.filter(x => x.c1 === name).length
     if (!confirm(`¿Eliminar el grupo "${name}" con ${count} concepto(s)?`)) return
     const items = catalogo.filter(x => x.c1 === name)
-    for (const item of items) {
-      await fetch(`/api/catalogo?id=${item.id}`, { method: 'DELETE' })
-    }
-    showMsg('ok', `Grupo "${name}" eliminado (${count} conceptos)`)
-    loadData()
+    for (const item of items) { await fetch(`/api/catalogo?id=${item.id}`, { method: 'DELETE' }) }
+    showMsg('ok', `Grupo "${name}" eliminado (${count} conceptos)`); loadData()
   }
 
-  // Add a new empty C1 group (creates a placeholder item)
   async function handleAddC1() {
     const name = prompt('Nombre del nuevo grupo (Concepto 1):')
     if (!name) return
-    await fetch('/api/catalogo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ c1: name, c2: '(nuevo)', coste: 0, inc: 0, final: 0 })
-    })
-    showMsg('ok', `Grupo "${name}" creado ✓`)
-    loadData()
+    await fetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ c1: name, c2: '(nuevo)', coste: 0, inc: 0, final: 0 }) })
+    showMsg('ok', `Grupo "${name}" creado ✓`); loadData()
   }
 
   if (loading) return <div className="p-6 text-center text-gray-400">Cargando conceptos...</div>
@@ -198,20 +130,12 @@ function ConceptosManager() {
   return (
     <div className="space-y-4">
       {statusMsg && (
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
-          statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
           {statusMsg.type === 'ok' ? <CheckCircle className="h-4 w-4" /> : null}
           {statusMsg.text}
         </div>
       )}
-
-      <p className="text-sm text-gray-500">
-        Gestiona los conceptos del catálogo. Añade nuevos, edita los existentes o elimina los que no necesites.
-        Los conceptos que añadas aquí aparecerán como sugerencias en la Entrada.
-      </p>
-
-      {/* ── C1 Groups Overview ──── */}
+      <p className="text-sm text-gray-500">Gestiona los conceptos del catálogo. Añade nuevos, edita los existentes o elimina los que no necesites.</p>
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -225,131 +149,41 @@ function ConceptosManager() {
               const count = catalogo.filter(x => x.c1 === g).length
               return (
                 <div key={g} className="flex items-center gap-0 border-2 border-[#005bb5]/20 rounded-xl overflow-hidden bg-blue-50/50">
-                  <button
-                    onClick={() => setFilterC1(filterC1 === g ? '' : g)}
-                    className={`px-3 py-2 text-sm font-medium transition-colors ${
-                      filterC1 === g ? 'bg-[#005bb5] text-white' : 'text-[#005bb5] hover:bg-blue-100'
-                    }`}
-                  >
+                  <button onClick={() => setFilterC1(filterC1 === g ? '' : g)} className={`px-3 py-2 text-sm font-medium transition-colors ${filterC1 === g ? 'bg-[#005bb5] text-white' : 'text-[#005bb5] hover:bg-blue-100'}`}>
                     {g} <span className="text-xs opacity-70">({count})</span>
                   </button>
-                  <button
-                    onClick={() => handleRenameC1(g)}
-                    className="px-2 py-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                    title="Renombrar grupo"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteC1(g)}
-                    className="px-2 py-2 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                    title="Eliminar grupo"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <button onClick={() => handleRenameC1(g)} className="px-2 py-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors" title="Renombrar grupo"><Pencil className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => handleDeleteC1(g)} className="px-2 py-2 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Eliminar grupo"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               )
             })}
-            <button
-              onClick={handleAddC1}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-dashed border-gray-300 text-gray-400 hover:border-[#2bb24c] hover:text-[#2bb24c] transition-colors text-sm"
-            >
+            <button onClick={handleAddC1} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-dashed border-gray-300 text-gray-400 hover:border-[#2bb24c] hover:text-[#2bb24c] transition-colors text-sm">
               <Plus className="h-4 w-4" /> Nuevo grupo
             </button>
           </div>
         </CardContent>
       </Card>
-
-      {/* ── Add / Edit Form ──── */}
       <Card className={`border-l-4 ${editingId ? 'border-l-indigo-500 bg-indigo-50/30' : 'border-l-[#2bb24c]'}`}>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            {editingId ? <Pencil className="h-4 w-4 text-indigo-500" /> : <Plus className="h-4 w-4 text-[#2bb24c]" />}
-            {editingId ? 'Editar Concepto' : 'Añadir Concepto'}
-          </CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-base flex items-center gap-2">{editingId ? <Pencil className="h-4 w-4 text-indigo-500" /> : <Plus className="h-4 w-4 text-[#2bb24c]" />}{editingId ? 'Editar Concepto' : 'Añadir Concepto'}</CardTitle></CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto] gap-3 items-end">
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Grupo (C1)</Label>
-              <Input value={formC1} onChange={e => setFormC1(e.target.value)} placeholder="Ej: Transporte" />
-            </div>
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Servicio (C2)</Label>
-              <Input value={formC2} onChange={e => setFormC2(e.target.value)} placeholder="Ej: Carga completa" />
-            </div>
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Cliente</Label>
-              <Select value={formClienteId || '__none__'} onValueChange={setFormClienteId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">— General —</SelectItem>
-                  {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Coste (€)</Label>
-              <Input type="number" step="0.01" value={formCoste} onChange={e => setFormCoste(e.target.value)} placeholder="0.00" />
-            </div>
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Incremento %</Label>
-              <Input type="number" step="0.01" value={formInc} onChange={e => setFormInc(e.target.value)} placeholder="0" />
-            </div>
-            <div className="flex gap-1">
-              <Button onClick={handleSave} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
-                <Save className="h-4 w-4 mr-1" />
-                {editingId ? 'ACTUALIZAR' : 'AÑADIR'}
-              </Button>
-              {editingId && (
-                <Button onClick={resetForm} variant="outline" size="icon">
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+            <div><Label className="text-xs uppercase font-bold text-slate-500">Grupo (C1)</Label><Input value={formC1} onChange={e => setFormC1(e.target.value)} placeholder="Ej: Transporte" /></div>
+            <div><Label className="text-xs uppercase font-bold text-slate-500">Servicio (C2)</Label><Input value={formC2} onChange={e => setFormC2(e.target.value)} placeholder="Ej: Carga completa" /></div>
+            <div><Label className="text-xs uppercase font-bold text-slate-500">Cliente</Label><Select value={formClienteId || '__none__'} onValueChange={setFormClienteId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">— General —</SelectItem>{clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="text-xs uppercase font-bold text-slate-500">Coste (€)</Label><Input type="number" step="0.01" value={formCoste} onChange={e => setFormCoste(e.target.value)} placeholder="0.00" /></div>
+            <div><Label className="text-xs uppercase font-bold text-slate-500">Incremento %</Label><Input type="number" step="0.01" value={formInc} onChange={e => setFormInc(e.target.value)} placeholder="0" /></div>
+            <div className="flex gap-1"><Button onClick={handleSave} className="bg-[#2bb24c] hover:bg-[#23963e] text-white"><Save className="h-4 w-4 mr-1" />{editingId ? 'ACTUALIZAR' : 'AÑADIR'}</Button>{editingId && <Button onClick={resetForm} variant="outline" size="icon"><X className="h-4 w-4" /></Button>}</div>
           </div>
         </CardContent>
       </Card>
-
-      {/* ── Table of Concepts ──── */}
       <div className="bg-white rounded-lg border overflow-auto shadow-sm">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-blue-50">
-              <th className="p-2 text-left font-semibold border-b">Grupo (C1)</th>
-              <th className="p-2 text-left font-semibold border-b">Servicio (C2)</th>
-              <th className="p-2 text-left font-semibold border-b">Cliente</th>
-              <th className="p-2 text-right font-semibold border-b">Coste</th>
-              <th className="p-2 text-right font-semibold border-b">Inc. %</th>
-              <th className="p-2 text-right font-semibold border-b">P. Final</th>
-              <th className="p-2 text-center font-semibold border-b">Acc.</th>
-            </tr>
-          </thead>
+          <thead><tr className="bg-blue-50"><th className="p-2 text-left font-semibold border-b">Grupo (C1)</th><th className="p-2 text-left font-semibold border-b">Servicio (C2)</th><th className="p-2 text-left font-semibold border-b">Cliente</th><th className="p-2 text-right font-semibold border-b">Coste</th><th className="p-2 text-right font-semibold border-b">Inc. %</th><th className="p-2 text-right font-semibold border-b">P. Final</th><th className="p-2 text-center font-semibold border-b">Acc.</th></tr></thead>
           <tbody>
-            {filtered.map(x => {
-              const cli = clientes.find(c => c.id === x.clienteId)
-              return (
-                <tr key={x.id} className={`border-b hover:bg-gray-50 ${editingId === x.id ? 'bg-indigo-50' : ''}`}>
-                  <td className="p-2 font-medium">{x.c1}</td>
-                  <td className="p-2">{x.c2}</td>
-                  <td className="p-2 text-gray-500">{cli ? cli.nombre : <i>General</i>}</td>
-                  <td className="p-2 text-right">{x.coste.toFixed(2)}€</td>
-                  <td className="p-2 text-right">{x.inc.toFixed(2)}%</td>
-                  <td className="p-2 text-right font-bold">{x.final.toFixed(2)}€</td>
-                  <td className="p-2 text-center">
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEdit(x)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(x.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </td>
-                </tr>
-              )
-            })}
-            {filtered.length === 0 && (
-              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay conceptos{filterC1 ? ` en el grupo "${filterC1}"` : ''}</td></tr>
-            )}
+            {filtered.map(x => { const cli = clientes.find(c => c.id === x.clienteId); return (
+              <tr key={x.id} className={`border-b hover:bg-gray-50 ${editingId === x.id ? 'bg-indigo-50' : ''}`}><td className="p-2 font-medium">{x.c1}</td><td className="p-2">{x.c2}</td><td className="p-2 text-gray-500">{cli ? cli.nombre : <i>General</i>}</td><td className="p-2 text-right">{x.coste.toFixed(2)}€</td><td className="p-2 text-right">{x.inc.toFixed(2)}%</td><td className="p-2 text-right font-bold">{x.final.toFixed(2)}€</td><td className="p-2 text-center"><Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEdit(x)}><Pencil className="h-3.5 w-3.5" /></Button><Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(x.id)}><Trash2 className="h-3.5 w-3.5" /></Button></td></tr>
+            )})}
+            {filtered.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay conceptos{filterC1 ? ` en el grupo "${filterC1}"` : ''}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -357,30 +191,287 @@ function ConceptosManager() {
   )
 }
 
-// ─── Toggle chip component for field visibility ───────────────
-function FieldToggle({
-  fieldKey,
-  label,
-  active,
-  onToggle,
+// ─── FieldEditor: Edit a single field definition ─────────────
+function FieldEditor({
+  field,
+  onUpdate,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
 }: {
-  fieldKey: string
-  label: string
-  active: boolean
-  onToggle: () => void
+  field: FieldDef
+  onUpdate: (updated: FieldDef) => void
+  onDelete: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+  isFirst: boolean
+  isLast: boolean
 }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<FieldDef>(field)
+
+  useEffect(() => { setDraft(field) }, [field])
+
+  function handleSave() {
+    onUpdate(draft)
+    setEditing(false)
+  }
+
+  function handleCancel() {
+    setDraft(field)
+    setEditing(false)
+  }
+
   return (
-    <button
-      onClick={onToggle}
-      className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
-        active
-          ? 'border-[#2bb24c] bg-green-50 text-green-700'
-          : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'
-      }`}
-    >
-      {active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-      <span>{label}</span>
-    </button>
+    <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 transition-all ${
+      field.visible
+        ? field.isCustom
+          ? 'border-amber-300 bg-amber-50/50'
+          : 'border-[#2bb24c] bg-green-50/50'
+        : 'border-gray-200 bg-white opacity-60'
+    }`}>
+      {/* Reorder buttons */}
+      <div className="flex flex-col gap-0.5 shrink-0">
+        <button onClick={onMoveUp} disabled={isFirst} className="text-gray-400 hover:text-gray-600 disabled:opacity-20">
+          <ChevronUp className="h-3.5 w-3.5" />
+        </button>
+        <button onClick={onMoveDown} disabled={isLast} className="text-gray-400 hover:text-gray-600 disabled:opacity-20">
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {editing ? (
+        // Edit mode
+        <div className="flex-1 grid grid-cols-[1fr_1fr_120px_auto] gap-2 items-center">
+          <Input
+            value={draft.label}
+            onChange={e => setDraft({ ...draft, label: e.target.value })}
+            className="h-8 text-sm"
+            placeholder="Etiqueta del campo"
+          />
+          <Input
+            value={draft.key}
+            onChange={e => setDraft({ ...draft, key: e.target.value.replace(/[^a-zA-Z0-9_]/g, '_') })}
+            className="h-8 text-sm"
+            placeholder="key_campo"
+            disabled={!field.isCustom}
+          />
+          <Select value={draft.type} onValueChange={v => setDraft({ ...draft, type: v as FieldDef['type'] })}>
+            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="text">Texto</SelectItem>
+              <SelectItem value="number">Número</SelectItem>
+              <SelectItem value="date">Fecha</SelectItem>
+              <SelectItem value="select">Selección</SelectItem>
+              <SelectItem value="textarea">Texto largo</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex gap-1">
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:bg-green-50" onClick={handleSave}>
+              <CheckCircle className="h-4 w-4" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-gray-500 hover:bg-gray-100" onClick={handleCancel}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ) : (
+        // Display mode
+        <div className="flex-1 flex items-center gap-2 min-w-0">
+          {/* Visibility toggle */}
+          <button
+            onClick={() => onUpdate({ ...field, visible: !field.visible })}
+            className="shrink-0"
+            title={field.visible ? 'Ocultar campo' : 'Mostrar campo'}
+          >
+            {field.visible ? <Eye className="h-4 w-4 text-green-600" /> : <EyeOff className="h-4 w-4 text-gray-400" />}
+          </button>
+
+          {/* Field info */}
+          <div className="flex-1 min-w-0">
+            <span className={`text-sm font-medium ${field.visible ? 'text-gray-700' : 'text-gray-400'}`}>
+              {field.label}
+            </span>
+            <span className="text-xs text-gray-400 ml-2">
+              ({field.type}{field.required ? ' · obligatorio' : ''}{field.isCustom ? ' · personalizado' : ''})
+            </span>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-1 shrink-0">
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => setEditing(true)} title="Editar campo">
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            {field.isCustom && (
+              <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:bg-rose-50" onClick={onDelete} title="Eliminar campo">
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── FieldsManager: Full CRUD for field definitions per section ───
+function FieldsManager({
+  title,
+  icon,
+  fields,
+  defaultFields,
+  configKey,
+  onUpdate,
+}: {
+  title: string
+  icon: React.ReactNode
+  fields: FieldDef[]
+  defaultFields: FieldDef[]
+  configKey: string
+  onUpdate: (configKey: string, fields: FieldDef[]) => void
+}) {
+  const [newFieldLabel, setNewFieldLabel] = useState('')
+  const [newFieldType, setNewFieldType] = useState<FieldDef['type']>('text')
+
+  function handleAddField() {
+    if (!newFieldLabel.trim()) return
+    // Generate a key from label
+    const key = 'custom_' + newFieldLabel.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+    // Ensure key is unique
+    let finalKey = key
+    let counter = 1
+    while (fields.some(f => f.key === finalKey)) {
+      finalKey = `${key}_${counter++}`
+    }
+    const newField: FieldDef = {
+      key: finalKey,
+      label: newFieldLabel.trim(),
+      type: newFieldType,
+      visible: true,
+      isCustom: true,
+      required: false,
+      placeholder: newFieldLabel.trim(),
+    }
+    onUpdate(configKey, [...fields, newField])
+    setNewFieldLabel('')
+  }
+
+  function handleUpdateField(index: number, updated: FieldDef) {
+    const newFields = [...fields]
+    newFields[index] = updated
+    onUpdate(configKey, newFields)
+  }
+
+  function handleDeleteField(index: number) {
+    if (!fields[index].isCustom) return
+    if (!confirm(`¿Eliminar el campo "${fields[index].label}"? Los datos guardados en este campo se perderán.`)) return
+    onUpdate(configKey, fields.filter((_, i) => i !== index))
+  }
+
+  function handleMoveUp(index: number) {
+    if (index === 0) return
+    const newFields = [...fields]
+    const temp = newFields[index]
+    newFields[index] = newFields[index - 1]
+    newFields[index - 1] = temp
+    onUpdate(configKey, newFields)
+  }
+
+  function handleMoveDown(index: number) {
+    if (index === fields.length - 1) return
+    const newFields = [...fields]
+    const temp = newFields[index]
+    newFields[index] = newFields[index + 1]
+    newFields[index + 1] = temp
+    onUpdate(configKey, newFields)
+  }
+
+  function handleRestore() {
+    if (!confirm('¿Restaurar campos por defecto? Se perderán los campos personalizados.')) return
+    onUpdate(configKey, defaultFields)
+  }
+
+  const coreFields = fields.filter(f => !f.isCustom)
+  const customFields = fields.filter(f => f.isCustom)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          {icon} {title}
+          <span className="text-xs text-gray-400 ml-auto">{fields.length} campos ({customFields.length} personalizados)</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-gray-500">
+          Gestiona los campos de esta sección. Puedes mostrar/ocultar, editar etiquetas, reordenar y añadir campos personalizados.
+          Los campos base no se pueden eliminar, solo ocultar.
+        </p>
+
+        {/* Field list */}
+        <div className="space-y-1.5">
+          {fields.map((field, index) => (
+            <FieldEditor
+              key={field.key}
+              field={field}
+              onUpdate={(updated) => handleUpdateField(index, updated)}
+              onDelete={() => handleDeleteField(index)}
+              onMoveUp={() => handleMoveUp(index)}
+              onMoveDown={() => handleMoveDown(index)}
+              isFirst={index === 0}
+              isLast={index === fields.length - 1}
+            />
+          ))}
+        </div>
+
+        {/* Add new custom field */}
+        <div className="flex items-center gap-2 pt-2 border-t border-dashed border-gray-200">
+          <Plus className="h-4 w-4 text-gray-400 shrink-0" />
+          <Input
+            value={newFieldLabel}
+            onChange={e => setNewFieldLabel(e.target.value)}
+            placeholder="Nombre del nuevo campo..."
+            className="h-9 text-sm flex-1"
+            onKeyDown={e => { if (e.key === 'Enter') handleAddField() }}
+          />
+          <Select value={newFieldType} onValueChange={v => setNewFieldType(v as FieldDef['type'])}>
+            <SelectTrigger className="h-9 text-sm w-[120px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="text">Texto</SelectItem>
+              <SelectItem value="number">Número</SelectItem>
+              <SelectItem value="date">Fecha</SelectItem>
+              <SelectItem value="select">Selección</SelectItem>
+              <SelectItem value="textarea">Texto largo</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            onClick={handleAddField}
+            disabled={!newFieldLabel.trim()}
+            size="sm"
+            className="bg-[#2bb24c] hover:bg-[#23963e] text-white h-9"
+          >
+            <Plus className="h-4 w-4 mr-1" /> AÑADIR
+          </Button>
+        </div>
+
+        {/* Legend */}
+        <div className="flex flex-wrap gap-3 text-xs text-gray-400 pt-1">
+          <span className="flex items-center gap-1"><Eye className="h-3 w-3 text-green-500" /> Visible</span>
+          <span className="flex items-center gap-1"><EyeOff className="h-3 w-3" /> Oculto</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border-2 border-amber-300 bg-amber-50/50 inline-block" /> Personalizado</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border-2 border-[#2bb24c] bg-green-50/50 inline-block" /> Base</span>
+        </div>
+
+        {/* Restore button */}
+        <div className="flex justify-end">
+          <button onClick={handleRestore} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+            <RotateCcw className="h-3 w-3" /> Restaurar por defecto
+          </button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -402,7 +493,6 @@ export function ConfiguracionView() {
   const [appName, setAppName] = useState('')
   const [appVersion, setAppVersion] = useState('')
 
-  // Section names
   const [sectionEntrada, setSectionEntrada] = useState('')
   const [sectionRegistros, setSectionRegistros] = useState('')
   const [sectionClientes, setSectionClientes] = useState('')
@@ -410,23 +500,22 @@ export function ConfiguracionView() {
   const [sectionFacturas, setSectionFacturas] = useState('')
   const [sectionBackup, setSectionBackup] = useState('')
 
-  // Transfer settings
   const [transferMode, setTransferMode] = useState('auto')
   const [transferTime, setTransferTime] = useState('00:00')
 
-  // Labels
   const [labelsEntrada, setLabelsEntrada] = useState(DEFAULT_LABELS_ENTRADA)
   const [labelsCatalogo, setLabelsCatalogo] = useState(DEFAULT_LABELS_CATALOGO)
   const [labelsRegistros, setLabelsRegistros] = useState(DEFAULT_LABELS_REGISTROS)
   const [labelsFacturas, setLabelsFacturas] = useState(DEFAULT_LABELS_FACTURAS)
   const [labelsClientes, setLabelsClientes] = useState(DEFAULT_LABELS_CLIENTES)
 
-  // Visible fields
-  const [fieldsEntrada, setFieldsEntrada] = useState<string[]>(DEFAULT_FIELDS_ENTRADA)
-  const [fieldsClientes, setFieldsClientes] = useState<string[]>(DEFAULT_FIELDS_CLIENTES)
-  const [fieldsCatalogo, setFieldsCatalogo] = useState<string[]>(DEFAULT_FIELDS_CATALOGO)
+  // Field definitions (new dynamic system)
+  const [fieldsEntrada, setFieldsEntrada] = useState<FieldDef[]>(DEFAULT_FIELDS_ENTRADA)
+  const [fieldsClientes, setFieldsClientes] = useState<FieldDef[]>(DEFAULT_FIELDS_CLIENTES)
+  const [fieldsCatalogo, setFieldsCatalogo] = useState<FieldDef[]>(DEFAULT_FIELDS_CATALOGO)
+  const [fieldsRegistros, setFieldsRegistros] = useState<FieldDef[]>(DEFAULT_FIELDS_REGISTROS)
+  const [fieldsFacturas, setFieldsFacturas] = useState<FieldDef[]>(DEFAULT_FIELDS_FACTURAS)
 
-  // Logo preview
   const [logoPreview, setLogoPreview] = useState('')
   const [logoBase64, setLogoBase64] = useState('')
 
@@ -434,35 +523,17 @@ export function ConfiguracionView() {
   const [initDone, setInitDone] = useState(false)
   if (config && raw && !initDone) {
     setInitDone(true)
-    setCompanyName(raw.companyName)
-    setCompanyFullName(raw.companyFullName)
-    setCompanyAddress(raw.companyAddress)
-    setCompanyCity(raw.companyCity)
-    setCompanyProvince(raw.companyProvince)
-    setCompanyCif(raw.companyCif)
-    setCurrency(raw.currency)
-    setDefaultIva(String(raw.defaultIva))
-    setAppName(raw.appName)
-    setAppVersion(raw.appVersion)
-    setSectionEntrada(raw.sectionEntrada)
-    setSectionRegistros(raw.sectionRegistros)
-    setSectionClientes(raw.sectionClientes)
-    setSectionCatalogo(raw.sectionCatalogo)
-    setSectionFacturas(raw.sectionFacturas)
-    setSectionBackup(raw.sectionBackup)
-    setTransferMode(raw.transferMode || 'auto')
-    setTransferTime(raw.transferTime || '00:00')
-    setLabelsEntrada(config.labelsEntrada)
-    setLabelsCatalogo(config.labelsCatalogo)
-    setLabelsRegistros(config.labelsRegistros)
-    setLabelsFacturas(config.labelsFacturas)
-    setLabelsClientes(config.labelsClientes)
-    setFieldsEntrada(config.fieldsEntrada)
-    setFieldsClientes(config.fieldsClientes)
-    setFieldsCatalogo(config.fieldsCatalogo)
-    if (raw.logo) {
-      setLogoPreview(raw.logo.startsWith('data:') ? raw.logo : `data:image/png;base64,${raw.logo}`)
-    }
+    setCompanyName(raw.companyName); setCompanyFullName(raw.companyFullName); setCompanyAddress(raw.companyAddress)
+    setCompanyCity(raw.companyCity); setCompanyProvince(raw.companyProvince); setCompanyCif(raw.companyCif)
+    setCurrency(raw.currency); setDefaultIva(String(raw.defaultIva)); setAppName(raw.appName); setAppVersion(raw.appVersion)
+    setSectionEntrada(raw.sectionEntrada); setSectionRegistros(raw.sectionRegistros); setSectionClientes(raw.sectionClientes)
+    setSectionCatalogo(raw.sectionCatalogo); setSectionFacturas(raw.sectionFacturas); setSectionBackup(raw.sectionBackup)
+    setTransferMode(raw.transferMode || 'auto'); setTransferTime(raw.transferTime || '00:00')
+    setLabelsEntrada(config.labelsEntrada); setLabelsCatalogo(config.labelsCatalogo)
+    setLabelsRegistros(config.labelsRegistros); setLabelsFacturas(config.labelsFacturas); setLabelsClientes(config.labelsClientes)
+    setFieldsEntrada(config.fieldsEntrada); setFieldsClientes(config.fieldsClientes)
+    setFieldsCatalogo(config.fieldsCatalogo); setFieldsRegistros(config.fieldsRegistros); setFieldsFacturas(config.fieldsFacturas)
+    if (raw.logo) { setLogoPreview(raw.logo.startsWith('data:') ? raw.logo : `data:image/png;base64,${raw.logo}`) }
   }
 
   function showStatus(type: 'ok' | 'err', text: string) {
@@ -470,83 +541,48 @@ export function ConfiguracionView() {
     setTimeout(() => setStatusMsg(null), 4000)
   }
 
-  // Toggle a field in a visible fields array
-  function toggleField(fields: string[], setFields: (f: string[]) => void, fieldKey: string) {
-    if (fields.includes(fieldKey)) {
-      setFields(fields.filter(f => f !== fieldKey))
-    } else {
-      setFields([...fields, fieldKey])
+  // Handle field definition update
+  function handleFieldsUpdate(configKey: string, newFields: FieldDef[]) {
+    switch (configKey) {
+      case 'fieldsEntrada': setFieldsEntrada(newFields); break
+      case 'fieldsClientes': setFieldsClientes(newFields); break
+      case 'fieldsCatalogo': setFieldsCatalogo(newFields); break
+      case 'fieldsRegistros': setFieldsRegistros(newFields); break
+      case 'fieldsFacturas': setFieldsFacturas(newFields); break
     }
   }
 
-  // Handle logo upload
   function handleLogoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > 2 * 1024 * 1024) {
-      showStatus('err', 'El logo debe ser menor de 2MB')
-      return
-    }
+    if (file.size > 2 * 1024 * 1024) { showStatus('err', 'El logo debe ser menor de 2MB'); return }
     const reader = new FileReader()
-    reader.onload = (evt) => {
-      const dataUrl = evt.target?.result as string
-      setLogoPreview(dataUrl)
-      setLogoBase64(dataUrl)
-    }
+    reader.onload = (evt) => { const dataUrl = evt.target?.result as string; setLogoPreview(dataUrl); setLogoBase64(dataUrl) }
     reader.readAsDataURL(file)
     if (logoInputRef.current) logoInputRef.current.value = ''
   }
 
-  function handleRemoveLogo() {
-    setLogoPreview('')
-    setLogoBase64('REMOVE')
-  }
+  function handleRemoveLogo() { setLogoPreview(''); setLogoBase64('REMOVE') }
 
-  // Save all config
   async function handleSave() {
     setSaving(true)
     try {
       const partial: Partial<AppConfig> = {
-        companyName,
-        companyFullName,
-        companyAddress,
-        companyCity,
-        companyProvince,
-        companyCif,
-        currency,
-        defaultIva: Number(defaultIva) || 21,
-        appName,
-        appVersion,
-        sectionEntrada,
-        sectionRegistros,
-        sectionClientes,
-        sectionCatalogo,
-        sectionFacturas,
-        sectionBackup,
-        transferMode,
-        transferTime,
-        labelEntrada: JSON.stringify(labelsEntrada),
-        labelCatalogo: JSON.stringify(labelsCatalogo),
-        labelRegistros: JSON.stringify(labelsRegistros),
-        labelFacturas: JSON.stringify(labelsFacturas),
+        companyName, companyFullName, companyAddress, companyCity, companyProvince, companyCif,
+        currency, defaultIva: Number(defaultIva) || 21, appName, appVersion,
+        sectionEntrada, sectionRegistros, sectionClientes, sectionCatalogo, sectionFacturas, sectionBackup,
+        transferMode, transferTime,
+        labelEntrada: JSON.stringify(labelsEntrada), labelCatalogo: JSON.stringify(labelsCatalogo),
+        labelRegistros: JSON.stringify(labelsRegistros), labelFacturas: JSON.stringify(labelsFacturas),
         labelClientes: JSON.stringify(labelsClientes),
-        fieldsEntrada: JSON.stringify(fieldsEntrada),
-        fieldsClientes: JSON.stringify(fieldsClientes),
-        fieldsCatalogo: JSON.stringify(fieldsCatalogo),
+        fieldsEntrada: JSON.stringify(fieldsEntrada), fieldsClientes: JSON.stringify(fieldsClientes),
+        fieldsCatalogo: JSON.stringify(fieldsCatalogo), fieldsRegistros: JSON.stringify(fieldsRegistros),
+        fieldsFacturas: JSON.stringify(fieldsFacturas),
       }
-
-      // Handle logo
-      if (logoBase64 === 'REMOVE') {
-        partial.logo = ''
-      } else if (logoBase64) {
-        partial.logo = logoBase64
-      }
-
+      if (logoBase64 === 'REMOVE') { partial.logo = '' } else if (logoBase64) { partial.logo = logoBase64 }
       await update(partial)
       showStatus('ok', 'Configuración guardada ✓')
-    } catch (err) {
-      showStatus('err', 'Error guardando: ' + String(err))
-    }
+    } catch (err) { showStatus('err', 'Error guardando: ' + String(err)) }
     setSaving(false)
   }
 
@@ -556,141 +592,70 @@ export function ConfiguracionView() {
 
   return (
     <div className="max-w-4xl flex flex-col gap-4">
-      {/* Status */}
       {statusMsg && (
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
-          statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
           {statusMsg.type === 'ok' ? <CheckCircle className="h-4 w-4" /> : null}
           {statusMsg.text}
         </div>
       )}
 
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Settings className="h-5 w-5 text-[#005bb5]" />
           <h2 className="text-lg font-bold text-gray-700">Configuración</h2>
         </div>
         <Button onClick={handleSave} disabled={saving} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
-          <Save className="h-4 w-4 mr-1" />
-          {saving ? 'Guardando...' : 'GUARDAR TODO'}
+          <Save className="h-4 w-4 mr-1" />{saving ? 'Guardando...' : 'GUARDAR TODO'}
         </Button>
       </div>
 
-      <Tabs defaultValue="empresa" className="w-full">
+      <Tabs defaultValue="campos" className="w-full">
         <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="empresa">
-            <Building2 className="h-4 w-4 mr-1.5" /> Empresa
-          </TabsTrigger>
-          <TabsTrigger value="transfer">
-            <ArrowRightLeft className="h-4 w-4 mr-1.5" /> Transfer
-          </TabsTrigger>
-          <TabsTrigger value="conceptos">
-            <BookOpen className="h-4 w-4 mr-1.5" /> Conceptos
-          </TabsTrigger>
-          <TabsTrigger value="campos">
-            <LayoutList className="h-4 w-4 mr-1.5" /> Campos
-          </TabsTrigger>
-          <TabsTrigger value="secciones">
-            <Tag className="h-4 w-4 mr-1.5" /> Secciones
-          </TabsTrigger>
-          <TabsTrigger value="etiquetas">
-            <Settings className="h-4 w-4 mr-1.5" /> Etiquetas
-          </TabsTrigger>
+          <TabsTrigger value="empresa"><Building2 className="h-4 w-4 mr-1.5" /> Empresa</TabsTrigger>
+          <TabsTrigger value="transfer"><ArrowRightLeft className="h-4 w-4 mr-1.5" /> Transfer</TabsTrigger>
+          <TabsTrigger value="conceptos"><BookOpen className="h-4 w-4 mr-1.5" /> Conceptos</TabsTrigger>
+          <TabsTrigger value="campos"><LayoutList className="h-4 w-4 mr-1.5" /> Campos</TabsTrigger>
+          <TabsTrigger value="secciones"><Tag className="h-4 w-4 mr-1.5" /> Secciones</TabsTrigger>
+          <TabsTrigger value="etiquetas"><Settings className="h-4 w-4 mr-1.5" /> Etiquetas</TabsTrigger>
         </TabsList>
 
-        {/* ─── EMPRESA TAB ────────────────────────────────── */}
+        {/* ─── EMPRESA TAB ─────────────────────────────── */}
         <TabsContent value="empresa" className="space-y-4 mt-4">
-          {/* Logo */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <ImageIcon className="h-4 w-4" /> Logotipo
-              </CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><ImageIcon className="h-4 w-4" /> Logotipo</CardTitle></CardHeader>
             <CardContent>
               <div className="flex items-start gap-4">
                 <div className="w-[180px] h-[60px] border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-white overflow-hidden shrink-0">
-                  {logoPreview ? (
-                    <img src={logoPreview} alt="Logo" className="max-w-full max-h-full object-contain" />
-                  ) : (
-                    <span className="text-xs text-gray-400">Sin logo</span>
-                  )}
+                  {logoPreview ? <img src={logoPreview} alt="Logo" className="max-w-full max-h-full object-contain" /> : <span className="text-xs text-gray-400">Sin logo</span>}
                 </div>
                 <div className="space-y-2">
-                  <input
-                    ref={logoInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/svg+xml,image/gif,image/webp"
-                    className="hidden"
-                    onChange={handleLogoSelect}
-                  />
-                  <Button onClick={() => logoInputRef.current?.click()} variant="outline" size="sm">
-                    <Upload className="h-4 w-4 mr-1.5" /> Subir Logo
-                  </Button>
-                  {logoPreview && (
-                    <Button onClick={handleRemoveLogo} variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50 ml-2">
-                      <RotateCcw className="h-4 w-4 mr-1.5" /> Quitar
-                    </Button>
-                  )}
+                  <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/gif,image/webp" className="hidden" onChange={handleLogoSelect} />
+                  <Button onClick={() => logoInputRef.current?.click()} variant="outline" size="sm"><Upload className="h-4 w-4 mr-1.5" /> Subir Logo</Button>
+                  {logoPreview && <Button onClick={handleRemoveLogo} variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50 ml-2"><RotateCcw className="h-4 w-4 mr-1.5" /> Quitar</Button>}
                   <p className="text-[11px] text-gray-400">PNG, JPG, SVG o WebP. Máximo 2MB.</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-
-          {/* Company data */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Building2 className="h-4 w-4" /> Datos de la Empresa
-              </CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><Building2 className="h-4 w-4" /> Datos de la Empresa</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Nombre App (sidebar)</Label>
-                  <Input value={appName} onChange={e => setAppName(e.target.value)} placeholder="MI APP PRO" />
-                </div>
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Razón Social</Label>
-                  <Input value={companyFullName} onChange={e => setCompanyFullName(e.target.value)} placeholder="Mi Empresa S.L." />
-                </div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Nombre App (sidebar)</Label><Input value={appName} onChange={e => setAppName(e.target.value)} placeholder="MI APP PRO" /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Razón Social</Label><Input value={companyFullName} onChange={e => setCompanyFullName(e.target.value)} placeholder="Mi Empresa S.L." /></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">CIF</Label>
-                  <Input value={companyCif} onChange={e => setCompanyCif(e.target.value)} placeholder="B12345678" />
-                </div>
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Dirección</Label>
-                  <Input value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} placeholder="C/ Example, Nº 1" />
-                </div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">CIF</Label><Input value={companyCif} onChange={e => setCompanyCif(e.target.value)} placeholder="B12345678" /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Dirección</Label><Input value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} placeholder="C/ Example, Nº 1" /></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Ciudad / C.P.</Label>
-                  <Input value={companyCity} onChange={e => setCompanyCity(e.target.value)} placeholder="28001 Madrid" />
-                </div>
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Provincia</Label>
-                  <Input value={companyProvince} onChange={e => setCompanyProvince(e.target.value)} placeholder="Madrid" />
-                </div>
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Versión</Label>
-                  <Input value={appVersion} onChange={e => setAppVersion(e.target.value)} placeholder="v2.0" />
-                </div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Ciudad / C.P.</Label><Input value={companyCity} onChange={e => setCompanyCity(e.target.value)} placeholder="28001 Madrid" /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Provincia</Label><Input value={companyProvince} onChange={e => setCompanyProvince(e.target.value)} placeholder="Madrid" /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Versión</Label><Input value={appVersion} onChange={e => setAppVersion(e.target.value)} placeholder="v2.0" /></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Moneda</Label>
-                  <Input value={currency} onChange={e => setCurrency(e.target.value)} placeholder="€" className="w-24" />
-                </div>
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">IVA por defecto (%)</Label>
-                  <Input type="number" step="0.01" value={defaultIva} onChange={e => setDefaultIva(e.target.value)} className="w-32" />
-                </div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Moneda</Label><Input value={currency} onChange={e => setCurrency(e.target.value)} placeholder="€" className="w-24" /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">IVA por defecto (%)</Label><Input type="number" step="0.01" value={defaultIva} onChange={e => setDefaultIva(e.target.value)} className="w-32" /></div>
               </div>
             </CardContent>
           </Card>
@@ -699,353 +664,182 @@ export function ConfiguracionView() {
         {/* ─── TRANSFER TAB ─────────────────────────────── */}
         <TabsContent value="transfer" className="space-y-4 mt-4">
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <ArrowRightLeft className="h-4 w-4" /> Transferencia Entrada → Registros
-              </CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><ArrowRightLeft className="h-4 w-4" /> Transferencia Entrada → Registros</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-gray-500">
-                Configura cómo y cuándo las entradas pasan de la sección Entrada a Registros.
-                En Entrada solo se ven las entradas activas (no transferidas). Una vez transferidas, aparecen en Registros.
-              </p>
-
-              {/* Mode selection */}
+              <p className="text-sm text-gray-500">Configura cómo y cuándo las entradas pasan de la sección Entrada a Registros.</p>
               <div className="space-y-3">
                 <Label className="text-sm font-bold text-slate-700">Modo de transferencia</Label>
                 <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => setTransferMode('auto')}
-                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
-                      transferMode === 'auto'
-                        ? 'border-[#005bb5] bg-blue-50 text-[#005bb5]'
-                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                    }`}
-                  >
-                    <Clock className="h-6 w-6" />
-                    <span className="text-sm font-bold">Automático</span>
-                    <span className="text-[11px] text-center opacity-70">A la hora configurada</span>
+                  <button onClick={() => setTransferMode('auto')} className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${transferMode === 'auto' ? 'border-[#005bb5] bg-blue-50 text-[#005bb5]' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'}`}>
+                    <Clock className="h-6 w-6" /><span className="text-sm font-bold">Automático</span><span className="text-[11px] text-center opacity-70">A la hora configurada</span>
                   </button>
-                  <button
-                    onClick={() => setTransferMode('manual')}
-                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
-                      transferMode === 'manual'
-                        ? 'border-[#2bb24c] bg-green-50 text-[#2bb24c]'
-                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                    }`}
-                  >
-                    <Zap className="h-6 w-6" />
-                    <span className="text-sm font-bold">Manual</span>
-                    <span className="text-[11px] text-center opacity-70">Con botón "Pasar al registro"</span>
+                  <button onClick={() => setTransferMode('manual')} className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${transferMode === 'manual' ? 'border-[#2bb24c] bg-green-50 text-[#2bb24c]' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'}`}>
+                    <Zap className="h-6 w-6" /><span className="text-sm font-bold">Manual</span><span className="text-[11px] text-center opacity-70">Con botón "Pasar al registro"</span>
                   </button>
                 </div>
               </div>
-
-              {/* Time picker (only for auto mode) */}
               {transferMode === 'auto' && (
                 <div className="space-y-2">
                   <Label className="text-sm font-bold text-slate-700">Hora de transferencia automática</Label>
                   <div className="flex items-center gap-3">
-                    <Input
-                      type="time"
-                      value={transferTime}
-                      onChange={e => setTransferTime(e.target.value)}
-                      className="w-40 text-lg font-mono"
-                    />
-                    <span className="text-sm text-gray-400">
-                      A esta hora, todas las entradas activas pasarán automáticamente a Registros
-                    </span>
+                    <Input type="time" value={transferTime} onChange={e => setTransferTime(e.target.value)} className="w-40 text-lg font-mono" />
+                    <span className="text-sm text-gray-400">A esta hora, todas las entradas activas pasarán automáticamente a Registros</span>
                   </div>
                 </div>
               )}
-
-              {/* Info box */}
-              <div className={`rounded-lg p-3 text-sm ${
-                transferMode === 'auto'
-                  ? 'bg-blue-50 border border-blue-200 text-blue-700'
-                  : 'bg-green-50 border border-green-200 text-green-700'
-              }`}>
-                {transferMode === 'auto' ? (
-                  <p>Las entradas se transferirán automáticamente cada día a las <b>{transferTime}</b>. Debes tener la aplicación abierta para que se ejecute la transferencia.</p>
-                ) : (
-                  <p>Las entradas permanecerán en Entrada hasta que pulses el botón <b>"Pasar al registro"</b>. Tú decides cuándo transferirlas.</p>
-                )}
+              <div className={`rounded-lg p-3 text-sm ${transferMode === 'auto' ? 'bg-blue-50 border border-blue-200 text-blue-700' : 'bg-green-50 border border-green-200 text-green-700'}`}>
+                {transferMode === 'auto'
+                  ? <p>Las entradas se transferirán automáticamente cada día a las <b>{transferTime}</b>. Debes tener la aplicación abierta para que se ejecute la transferencia.</p>
+                  : <p>Las entradas permanecerán en Entrada hasta que pulses el botón <b>"Pasar al registro"</b>. Tú decides cuándo transferirlas.</p>
+                }
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* ─── CONCEPTOS TAB (CRUD for catalog concepts) ──────────────── */}
+        {/* ─── CONCEPTOS TAB ────────────────────────────── */}
         <TabsContent value="conceptos" className="space-y-4 mt-4">
           <ConceptosManager />
         </TabsContent>
 
-        {/* ─── CAMPOS TAB (Visible Fields) ─────────────────── */}
+        {/* ─── CAMPOS TAB (Full CRUD for fields) ────────── */}
         <TabsContent value="campos" className="space-y-4 mt-4">
           <p className="text-sm text-gray-500">
-            Elige qué campos se muestran en cada sección. Los campos desactivados se ocultarán en el formulario y en la tabla.
+            Gestiona los campos de cada sección. Puedes añadir nuevos campos personalizados, editar los existentes, ocultarlos o eliminarlos.
+            Los campos base (verde) son esenciales y solo se pueden ocultar. Los campos personalizados (ámbar) se pueden eliminar.
           </p>
 
-          {/* ── Entrada Fields ── */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Eye className="h-4 w-4 text-[#2bb24c]" /> Campos visibles — Entrada
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {DEFAULT_FIELDS_ENTRADA.map(field => (
-                  <FieldToggle
-                    key={field}
-                    fieldKey={field}
-                    label={FIELD_LABELS_ENTRADA[field] || field}
-                    active={fieldsEntrada.includes(field)}
-                    onToggle={() => toggleField(fieldsEntrada, setFieldsEntrada, field)}
-                  />
-                ))}
-              </div>
-              <div className="flex justify-end mt-3">
-                <button
-                  onClick={() => setFieldsEntrada(DEFAULT_FIELDS_ENTRADA)}
-                  className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
-                >
-                  <RotateCcw className="h-3 w-3" /> Restaurar
-                </button>
-              </div>
-            </CardContent>
-          </Card>
+          <FieldsManager
+            title="Campos — Entrada"
+            icon={<Eye className="h-4 w-4 text-[#2bb24c]" />}
+            fields={fieldsEntrada}
+            defaultFields={DEFAULT_FIELDS_ENTRADA}
+            configKey="fieldsEntrada"
+            onUpdate={handleFieldsUpdate}
+          />
 
-          {/* ── Clientes Fields ── */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Eye className="h-4 w-4 text-[#005bb5]" /> Campos visibles — Clientes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {DEFAULT_FIELDS_CLIENTES.map(field => (
-                  <FieldToggle
-                    key={field}
-                    fieldKey={field}
-                    label={FIELD_LABELS_CLIENTES[field] || field}
-                    active={fieldsClientes.includes(field)}
-                    onToggle={() => toggleField(fieldsClientes, setFieldsClientes, field)}
-                  />
-                ))}
-              </div>
-              <div className="flex justify-end mt-3">
-                <button
-                  onClick={() => setFieldsClientes(DEFAULT_FIELDS_CLIENTES)}
-                  className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
-                >
-                  <RotateCcw className="h-3 w-3" /> Restaurar
-                </button>
-              </div>
-            </CardContent>
-          </Card>
+          <FieldsManager
+            title="Campos — Clientes"
+            icon={<Eye className="h-4 w-4 text-[#005bb5]" />}
+            fields={fieldsClientes}
+            defaultFields={DEFAULT_FIELDS_CLIENTES}
+            configKey="fieldsClientes"
+            onUpdate={handleFieldsUpdate}
+          />
 
-          {/* ── Catálogo Fields ── */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Eye className="h-4 w-4 text-amber-500" /> Campos visibles — Catálogo
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {DEFAULT_FIELDS_CATALOGO.map(field => (
-                  <FieldToggle
-                    key={field}
-                    fieldKey={field}
-                    label={FIELD_LABELS_CATALOGO[field] || field}
-                    active={fieldsCatalogo.includes(field)}
-                    onToggle={() => toggleField(fieldsCatalogo, setFieldsCatalogo, field)}
-                  />
-                ))}
-              </div>
-              <div className="flex justify-end mt-3">
-                <button
-                  onClick={() => setFieldsCatalogo(DEFAULT_FIELDS_CATALOGO)}
-                  className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
-                >
-                  <RotateCcw className="h-3 w-3" /> Restaurar
-                </button>
-              </div>
-            </CardContent>
-          </Card>
+          <FieldsManager
+            title="Campos — Catálogo"
+            icon={<Eye className="h-4 w-4 text-amber-500" />}
+            fields={fieldsCatalogo}
+            defaultFields={DEFAULT_FIELDS_CATALOGO}
+            configKey="fieldsCatalogo"
+            onUpdate={handleFieldsUpdate}
+          />
 
-          {/* Reset all */}
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setFieldsEntrada(DEFAULT_FIELDS_ENTRADA)
-                setFieldsClientes(DEFAULT_FIELDS_CLIENTES)
-                setFieldsCatalogo(DEFAULT_FIELDS_CATALOGO)
-              }}
-            >
-              <RotateCcw className="h-4 w-4 mr-1.5" /> Restaurar todos los campos
-            </Button>
-          </div>
+          <FieldsManager
+            title="Campos — Registros"
+            icon={<Eye className="h-4 w-4 text-[#005bb5]" />}
+            fields={fieldsRegistros}
+            defaultFields={DEFAULT_FIELDS_REGISTROS}
+            configKey="fieldsRegistros"
+            onUpdate={handleFieldsUpdate}
+          />
+
+          <FieldsManager
+            title="Campos — Facturas"
+            icon={<Eye className="h-4 w-4 text-indigo-500" />}
+            fields={fieldsFacturas}
+            defaultFields={DEFAULT_FIELDS_FACTURAS}
+            configKey="fieldsFacturas"
+            onUpdate={handleFieldsUpdate}
+          />
         </TabsContent>
 
-        {/* ─── SECCIONES TAB ─────────────────────────────── */}
+        {/* ─── SECCIONES TAB ────────────────────────────── */}
         <TabsContent value="secciones" className="space-y-4 mt-4">
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Nombres de Secciones</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Nombres de Secciones</CardTitle></CardHeader>
             <CardContent>
               <p className="text-sm text-gray-500 mb-4">Personaliza los nombres de las secciones en el menú lateral.</p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Sección Entrada</Label>
-                  <Input value={sectionEntrada} onChange={e => setSectionEntrada(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Sección Registros</Label>
-                  <Input value={sectionRegistros} onChange={e => setSectionRegistros(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Sección Clientes</Label>
-                  <Input value={sectionClientes} onChange={e => setSectionClientes(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Sección Catálogo</Label>
-                  <Input value={sectionCatalogo} onChange={e => setSectionCatalogo(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Sección Facturas</Label>
-                  <Input value={sectionFacturas} onChange={e => setSectionFacturas(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Sección Seguridad</Label>
-                  <Input value={sectionBackup} onChange={e => setSectionBackup(e.target.value)} />
-                </div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Entrada</Label><Input value={sectionEntrada} onChange={e => setSectionEntrada(e.target.value)} /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Registros</Label><Input value={sectionRegistros} onChange={e => setSectionRegistros(e.target.value)} /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Clientes</Label><Input value={sectionClientes} onChange={e => setSectionClientes(e.target.value)} /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Catálogo</Label><Input value={sectionCatalogo} onChange={e => setSectionCatalogo(e.target.value)} /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Facturas</Label><Input value={sectionFacturas} onChange={e => setSectionFacturas(e.target.value)} /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Seguridad</Label><Input value={sectionBackup} onChange={e => setSectionBackup(e.target.value)} /></div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* ─── ETIQUETAS TAB ─────────────────────────────── */}
+        {/* ─── ETIQUETAS TAB ────────────────────────────── */}
         <TabsContent value="etiquetas" className="space-y-4 mt-4">
-          {/* Entrada Labels */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Etiquetas — Entrada</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Etiquetas — Entrada</CardTitle></CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {(Object.keys(DEFAULT_LABELS_ENTRADA) as (keyof typeof DEFAULT_LABELS_ENTRADA)[]).map(key => (
                   <div key={key}>
                     <Label className="text-xs uppercase font-bold text-slate-500">{key}</Label>
-                    <Input
-                      value={labelsEntrada[key]}
-                      onChange={e => setLabelsEntrada(prev => ({ ...prev, [key]: e.target.value }))}
-                    />
+                    <Input value={labelsEntrada[key] || ''} onChange={e => setLabelsEntrada(prev => ({ ...prev, [key]: e.target.value }))} />
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
-
-          {/* Catalogo Labels */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Etiquetas — Catálogo</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Etiquetas — Catálogo</CardTitle></CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {(Object.keys(DEFAULT_LABELS_CATALOGO) as (keyof typeof DEFAULT_LABELS_CATALOGO)[]).map(key => (
                   <div key={key}>
                     <Label className="text-xs uppercase font-bold text-slate-500">{key}</Label>
-                    <Input
-                      value={labelsCatalogo[key]}
-                      onChange={e => setLabelsCatalogo(prev => ({ ...prev, [key]: e.target.value }))}
-                    />
+                    <Input value={labelsCatalogo[key] || ''} onChange={e => setLabelsCatalogo(prev => ({ ...prev, [key]: e.target.value }))} />
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
-
-          {/* Registros Labels */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Etiquetas — Registros</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Etiquetas — Registros</CardTitle></CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {(Object.keys(DEFAULT_LABELS_REGISTROS) as (keyof typeof DEFAULT_LABELS_REGISTROS)[]).map(key => (
                   <div key={key}>
                     <Label className="text-xs uppercase font-bold text-slate-500">{key}</Label>
-                    <Input
-                      value={labelsRegistros[key]}
-                      onChange={e => setLabelsRegistros(prev => ({ ...prev, [key]: e.target.value }))}
-                    />
+                    <Input value={labelsRegistros[key] || ''} onChange={e => setLabelsRegistros(prev => ({ ...prev, [key]: e.target.value }))} />
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
-
-          {/* Facturas Labels */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Etiquetas — Facturas</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Etiquetas — Facturas</CardTitle></CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {(Object.keys(DEFAULT_LABELS_FACTURAS) as (keyof typeof DEFAULT_LABELS_FACTURAS)[]).map(key => (
                   <div key={key}>
                     <Label className="text-xs uppercase font-bold text-slate-500">{key}</Label>
-                    <Input
-                      value={labelsFacturas[key]}
-                      onChange={e => setLabelsFacturas(prev => ({ ...prev, [key]: e.target.value }))}
-                    />
+                    <Input value={labelsFacturas[key] || ''} onChange={e => setLabelsFacturas(prev => ({ ...prev, [key]: e.target.value }))} />
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
-
-          {/* Clientes Labels */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Etiquetas — Clientes</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Etiquetas — Clientes</CardTitle></CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {(Object.keys(DEFAULT_LABELS_CLIENTES) as (keyof typeof DEFAULT_LABELS_CLIENTES)[]).map(key => (
                   <div key={key}>
                     <Label className="text-xs uppercase font-bold text-slate-500">{key}</Label>
-                    <Input
-                      value={labelsClientes[key]}
-                      onChange={e => setLabelsClientes(prev => ({ ...prev, [key]: e.target.value }))}
-                    />
+                    <Input value={labelsClientes[key] || ''} onChange={e => setLabelsClientes(prev => ({ ...prev, [key]: e.target.value }))} />
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
-
-          {/* Reset to defaults */}
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setLabelsEntrada(DEFAULT_LABELS_ENTRADA)
-                setLabelsCatalogo(DEFAULT_LABELS_CATALOGO)
-                setLabelsRegistros(DEFAULT_LABELS_REGISTROS)
-                setLabelsFacturas(DEFAULT_LABELS_FACTURAS)
-                setLabelsClientes(DEFAULT_LABELS_CLIENTES)
-              }}
-            >
-              <RotateCcw className="h-4 w-4 mr-1.5" /> Restaurar etiquetas por defecto
-            </Button>
-          </div>
         </TabsContent>
       </Tabs>
     </div>
