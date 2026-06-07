@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -36,8 +36,6 @@ export function RegistrosView() {
   const { data, loadData, loading } = useRegistrosData()
   const { config } = useConfig()
   const L = config?.labelsRegistros || DEFAULT_LABELS_REGISTROS
-  const [initialized, setInitialized] = useState(false)
-
   // Filters
   const [fDesde, setFDesde] = useState('')
   const [fHasta, setFHasta] = useState('')
@@ -45,11 +43,9 @@ export function RegistrosView() {
   const [fC1, setFC1] = useState('')
   const [fQ, setFQ] = useState('')
 
-  // Load data on first render
-  if (!initialized) {
-    setInitialized(true)
+  useEffect(() => {
     loadData()
-  }
+  }, [loadData])
 
   const { registros, clientes, catalogo } = data
 

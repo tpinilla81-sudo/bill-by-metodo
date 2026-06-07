@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -14,8 +14,6 @@ export function ClientesView() {
   const L = config?.labelsClientes || DEFAULT_LABELS_CLIENTES
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [initialized, setInitialized] = useState(false)
-
   const [nombre, setNombre] = useState('')
   const [cif, setCif] = useState('')
   const [mail, setMail] = useState('')
@@ -30,10 +28,9 @@ export function ClientesView() {
     setClientes(await res.json())
   }, [])
 
-  if (!initialized) {
-    setInitialized(true)
+  useEffect(() => {
     loadData()
-  }
+  }, [loadData])
 
   function resetForm() {
     setEditingId(null)

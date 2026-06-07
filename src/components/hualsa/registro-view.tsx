@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,6 @@ function useRegistroData() {
 
 export function RegistroView() {
   const { data, loadData, loading } = useRegistroData()
-  const [initialized, setInitialized] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
 
   // Form
@@ -50,11 +49,9 @@ export function RegistroView() {
   const [fCliente, setFCliente] = useState('')
   const [fQ, setFQ] = useState('')
 
-  // Load data on first render
-  if (!initialized) {
-    setInitialized(true)
+  useEffect(() => {
     loadData()
-  }
+  }, [loadData])
 
   const { registros, clientes, catalogo } = data
 

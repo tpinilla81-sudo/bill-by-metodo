@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -20,7 +20,6 @@ export function CatalogoView() {
   const { config } = useConfig()
   const L = config?.labelsCatalogo || DEFAULT_LABELS_CATALOGO
   const [data, setData] = useState<CatalogoViewData>({ catalogo: [], clientes: [] })
-  const [initialized, setInitialized] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
 
   // Form
@@ -52,10 +51,9 @@ export function CatalogoView() {
     setData({ catalogo: await catRes.json(), clientes: await cRes.json() })
   }, [])
 
-  if (!initialized) {
-    setInitialized(true)
+  useEffect(() => {
     loadData()
-  }
+  }, [loadData])
 
   // Compute final price from coste + inc
   const computedFinal = useMemo(() => {

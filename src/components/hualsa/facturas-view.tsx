@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import Image from 'next/image'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -30,8 +30,6 @@ export function FacturasView() {
   const { config } = useConfig()
   const L = config?.labelsFacturas || DEFAULT_LABELS_FACTURAS
   const [data, setData] = useState<FacturasData>({ registros: [], clientes: [], catalogo: [], seq: 1 })
-  const [initialized, setInitialized] = useState(false)
-
   // Filters
   const [fDesde, setFDesde] = useState('')
   const [fHasta, setFHasta] = useState('')
@@ -60,10 +58,9 @@ export function FacturasView() {
     setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json(), seq })
   }, [])
 
-  if (!initialized) {
-    setInitialized(true)
+  useEffect(() => {
     loadData()
-  }
+  }, [loadData])
 
   // Set default factura number and IVA
   if (!fNumero && data.seq) {

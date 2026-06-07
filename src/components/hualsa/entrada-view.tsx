@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -35,7 +35,6 @@ function useEntradaData() {
 export function EntradaView() {
   const { data, loadData, loading } = useEntradaData()
   const { config } = useConfig()
-  const [initialized, setInitialized] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const L = config?.labelsEntrada || DEFAULT_LABELS_ENTRADA
@@ -51,11 +50,10 @@ export function EntradaView() {
   // Status message
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
-  // Load data on first render
-  if (!initialized) {
-    setInitialized(true)
+  // Load data on mount (client-side only)
+  useEffect(() => {
     loadData()
-  }
+  }, [loadData])
 
   const { clientes } = data
 
