@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap } from 'lucide-react'
+import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown } from 'lucide-react'
 import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_ENTRADA } from '@/lib/config'
 
@@ -36,12 +36,24 @@ export function EntradaView() {
   const { config } = useConfig()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [transferring, setTransferring] = useState(false)
+  const [showTransferSettings, setShowTransferSettings] = useState(false)
   const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastTransferDateRef = useRef<string>('')
 
   const L = config?.labelsEntrada || DEFAULT_LABELS_ENTRADA
   const transferMode = config?.transferMode || 'auto'
   const transferTime = config?.transferTime || '00:00'
+  const { update } = useConfig()
+
+  // Local transfer settings (for quick edit)
+  const [localTransferMode, setLocalTransferMode] = useState(transferMode)
+  const [localTransferTime, setLocalTransferTime] = useState(transferTime)
+
+  // Sync local state when config changes
+  useEffect(() => {
+    setLocalTransferMode(transferMode)
+    setLocalTransferTime(transferTime)
+  }, [transferMode, transferTime])
 
   // Form
   const [fecha, setFecha] = useState(todayISO())
@@ -172,6 +184,13 @@ export function EntradaView() {
     setTransferring(false)
   }
 
+  // Save transfer settings from inline UI
+  async function handleSaveTransferSettings() {
+    await update({ transferMode: localTransferMode, transferTime: localTransferTime })
+    showStatus('ok', 'Ajustes de transferencia guardados ✓')
+    setShowTransferSettings(false)
+  }
+
   // Active (un-transferred) entries — these are the ones shown in Entrada
   const activeEntries = data.registros // Already filtered by API (filter=entrada)
 
@@ -202,22 +221,75 @@ export function EntradaView() {
             </div>
           )}
 
-          {/* ── Transfer Mode Banner ──────────────────────── */}
-          <div className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm ${
+          {/* ── Transfer Mode Banner (clickable to expand settings) ── */}
+          <div className={`rounded-xl overflow-hidden border ${
             transferMode === 'auto'
-              ? 'bg-blue-50 border border-blue-200 text-blue-700'
-              : 'bg-amber-50 border border-amber-200 text-amber-700'
+              ? 'bg-blue-50 border-blue-200'
+              : 'bg-amber-50 border-amber-200'
           }`}>
-            {transferMode === 'auto' ? (
-              <>
-                <Clock className="h-4 w-4 shrink-0" />
-                <span>Auto-transferencia a las <b>{transferTime}</b></span>
-              </>
-            ) : (
-              <>
-                <Zap className="h-4 w-4 shrink-0" />
-                <span>Transferencia manual</span>
-              </>
+            <button
+              onClick={() => setShowTransferSettings(!showTransferSettings)}
+              className="w-full flex items-center justify-between px-4 py-2.5 text-sm"
+            >
+              <div className="flex items-center gap-2">
+                <Settings2 className="h-4 w-4 shrink-0 text-gray-400" />
+                {transferMode === 'auto' ? (
+                  <span className="text-blue-700"><Clock className="h-4 w-4 inline mr-1" />Auto-transferencia a las <b>{transferTime}</b></span>
+                ) : (
+                  <span className="text-amber-700"><Zap className="h-4 w-4 inline mr-1" />Transferencia manual</span>
+                )}
+              </div>
+              <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${showTransferSettings ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* ── Inline Transfer Settings ──── */}
+            {showTransferSettings && (
+              <div className="px-4 pb-3 pt-1 border-t border-gray-200/50 space-y-3 bg-white/60">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-slate-600 uppercase">Modo de transferencia</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setLocalTransferMode('auto')}
+                      className={`flex items-center gap-2 p-2.5 rounded-lg border-2 text-sm transition-all ${
+                        localTransferMode === 'auto'
+                          ? 'border-[#005bb5] bg-blue-50 text-[#005bb5] font-bold'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}
+                    >
+                      <Clock className="h-4 w-4" /> Automático
+                    </button>
+                    <button
+                      onClick={() => setLocalTransferMode('manual')}
+                      className={`flex items-center gap-2 p-2.5 rounded-lg border-2 text-sm transition-all ${
+                        localTransferMode === 'manual'
+                          ? 'border-[#2bb24c] bg-green-50 text-[#2bb24c] font-bold'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}
+                    >
+                      <Zap className="h-4 w-4" /> Manual
+                    </button>
+                  </div>
+                </div>
+
+                {localTransferMode === 'auto' && (
+                  <div>
+                    <Label className="text-xs font-bold text-slate-600 uppercase">Hora</Label>
+                    <Input
+                      type="time"
+                      value={localTransferTime}
+                      onChange={e => setLocalTransferTime(e.target.value)}
+                      className="w-36 text-base font-mono mt-1"
+                    />
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSaveTransferSettings}
+                  className="w-full h-10 rounded-lg bg-[#005bb5] hover:bg-[#003d7a] text-white text-sm font-bold flex items-center justify-center gap-1.5"
+                >
+                  <Save className="h-4 w-4" /> GUARDAR AJUSTES
+                </button>
+              </div>
             )}
           </div>
 

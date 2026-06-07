@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Pencil, Trash2, Save, RotateCcw, Filter, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, ChevronDown } from 'lucide-react'
+import { Pencil, Trash2, Save, RotateCcw, Filter, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, ChevronDown, Settings2 } from 'lucide-react'
 import { fmtCurrency, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_CATALOGO } from '@/lib/config'
 
@@ -17,10 +17,12 @@ interface CatalogoViewData {
 }
 
 export function CatalogoView() {
-  const { config } = useConfig()
+  const { config, update } = useConfig()
   const L = config?.labelsCatalogo || DEFAULT_LABELS_CATALOGO
   const [data, setData] = useState<CatalogoViewData>({ catalogo: [], clientes: [] })
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
+  const [localLabels, setLocalLabels] = useState(DEFAULT_LABELS_CATALOGO)
 
   // Form
   const [clienteId, setClienteId] = useState('')
@@ -54,6 +56,11 @@ export function CatalogoView() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // Sync local labels from config
+  useEffect(() => {
+    if (config?.labelsCatalogo) setLocalLabels(config.labelsCatalogo)
+  }, [config?.labelsCatalogo])
 
   // Compute final price from coste + inc
   const computedFinal = useMemo(() => {
@@ -99,6 +106,12 @@ export function CatalogoView() {
     await fetch(`/api/catalogo?id=${id}`, { method: 'DELETE' })
     showStatus('ok', 'Eliminado')
     loadData()
+  }
+
+  async function handleSaveSettings() {
+    await update({ labelCatalogo: JSON.stringify(localLabels) })
+    setShowSettings(false)
+    showStatus('ok', 'Etiquetas guardadas ✓')
   }
 
   const { catalogo, clientes } = data
@@ -314,6 +327,51 @@ export function CatalogoView() {
           {statusMsg.text}
         </div>
       )}
+
+      {/* ── Inline Settings ──── */}
+      <div className="rounded-xl overflow-hidden border border-gray-200 bg-white">
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-sm"
+        >
+          <div className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4 text-gray-400" />
+            <span className="text-gray-600 font-medium">Configuración de Catálogo</span>
+          </div>
+          <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${showSettings ? 'rotate-180' : ''}`} />
+        </button>
+        {showSettings && (
+          <div className="px-4 pb-4 pt-1 border-t border-gray-100 space-y-3 bg-gray-50/50">
+            <p className="text-xs text-gray-500">Personaliza las etiquetas de los campos del catálogo.</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {(Object.keys(DEFAULT_LABELS_CATALOGO) as (keyof typeof DEFAULT_LABELS_CATALOGO)[]).map(key => (
+                <div key={key}>
+                  <Label className="text-[10px] uppercase font-bold text-slate-400">{key}</Label>
+                  <Input
+                    value={localLabels[key]}
+                    onChange={e => setLocalLabels(prev => ({ ...prev, [key]: e.target.value }))}
+                    className="h-8 text-sm"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveSettings}
+                className="h-9 px-4 rounded-lg bg-[#005bb5] hover:bg-[#003d7a] text-white text-sm font-bold flex items-center gap-1.5"
+              >
+                <Save className="h-3.5 w-3.5" /> GUARDAR
+              </button>
+              <button
+                onClick={() => { setLocalLabels(DEFAULT_LABELS_CATALOGO) }}
+                className="h-9 px-4 rounded-lg border border-gray-300 text-gray-500 text-sm hover:bg-gray-100 flex items-center gap-1.5"
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Restaurar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Form */}
       <Card className={`border-l-4 ${editingId ? 'border-l-indigo-500 bg-indigo-50/30' : 'border-l-transparent'}`}>
