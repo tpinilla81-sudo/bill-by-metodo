@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Sidebar } from '@/components/hualsa/sidebar'
 import { EntradaView } from '@/components/hualsa/entrada-view'
 import { RegistrosView } from '@/components/hualsa/registros-view'
@@ -8,12 +8,22 @@ import { ClientesView } from '@/components/hualsa/clientes-view'
 import { CatalogoView } from '@/components/hualsa/catalogo-view'
 import { FacturasView } from '@/components/hualsa/facturas-view'
 import { BackupView } from '@/components/hualsa/backup-view'
+import { ConfiguracionView } from '@/components/hualsa/configuracion-view'
+import { ConfigProvider, useConfig } from '@/lib/config'
 
-type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'facturas' | 'backup'
+export type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'facturas' | 'backup' | 'config'
 
-export default function Home() {
+function AppContent() {
   const [activeView, setActiveView] = useState<View>('entrada')
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { config } = useConfig()
+
+  // Update page title dynamically based on config
+  useEffect(() => {
+    if (config) {
+      document.title = `${config.appName} - ${config.companyFullName || 'Gestión'}`
+    }
+  }, [config])
 
   return (
     <div className="flex min-h-screen bg-[#f4f7f6]">
@@ -31,8 +41,17 @@ export default function Home() {
           {activeView === 'catalogo' && <CatalogoView />}
           {activeView === 'facturas' && <FacturasView />}
           {activeView === 'backup' && <BackupView />}
+          {activeView === 'config' && <ConfiguracionView />}
         </div>
       </main>
     </div>
+  )
+}
+
+export default function Home() {
+  return (
+    <ConfigProvider>
+      <AppContent />
+    </ConfigProvider>
   )
 }

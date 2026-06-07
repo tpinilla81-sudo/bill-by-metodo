@@ -1,22 +1,30 @@
 ---
 Task ID: 1
-Agent: main
-Task: Restructure HUALSA PRO - Split Registro into Entrada + Registros, make Entrada mobile/iPhone optimized
+Agent: Main
+Task: Make the HUALSA PRO app configurable for any company - logo upload, company data, configurable labels for all sections
 
 Work Log:
-- Created new EntradaView component with iPhone/mobile-first design: full-width stacked cards, 48px+ touch targets, large fonts, rounded-2xl cards, native iOS-style form fields
-- Added Excel import functionality: file picker for .xlsx/.xls/.csv, column mapping (FECHA, CLIENTE, CONCEPTO 1, CONCEPTO 2, CANTIDAD, OBSERVACIONES), preview modal with validation, batch import API
-- Added Excel export: current data export and template download
-- Created RegistrosView component: read-only table combining entradas with catalog data (precio unitario, importe, mes, semana), filters, Excel export
-- Updated API route /api/registros to support batch import (POST with {batch: [...]} body)
-- Updated sidebar navigation: ENTRADA, REGISTROS, CLIENTES, CATALOGO, FACTURAS, SEGURIDAD
-- Updated page.tsx with new view structure
-- Installed xlsx package for Excel processing
-- Verified with agent browser: all views render correctly, no errors, mobile layout works on iPhone viewport
+- Added Config model to Prisma schema with 23 fields (company data, labels JSON, section names)
+- Ran prisma db push and created initial config record
+- Created /api/config API route (GET/PUT) with auto-creation of default config
+- Created /src/lib/config.tsx with: default label sets for all 5 sections, AppConfig type, ResolvedConfig type with parsed labels, ConfigProvider context, useConfig hook
+- Created /src/components/hualsa/configuracion-view.tsx with 3 tabs: Empresa (logo upload, company data, currency, IVA), Secciones (section name customization), Etiquetas (column label customization for all 5 sections)
+- Updated Sidebar: dynamic company name, logo (base64 or default), section labels from config, new CONFIGURACIÓN nav item
+- Updated page.tsx: added ConfigProvider wrapper, dynamic document title, new config view
+- Updated EntradaView: all form labels, Excel column names, error messages use config labels
+- Updated CatalogoView: all form/table labels, Excel column names use config labels
+- Updated RegistrosView: all table headers, Excel export columns use config labels
+- Updated FacturasView: invoice preview uses dynamic company name/address/logo, all labels configurable, default IVA from config
+- Updated ClientesView: all form/table labels use config labels
+- Updated BackupView: dynamic app name in backup filename
+- Updated hualsa-utils.ts: fmtCurrency accepts optional currency parameter
+- Build succeeds, API tested and working
 
 Stage Summary:
-- Entrada = input-only view (manual form + Excel import), optimized for iPhone
-- Registros = read-only table with catalog pricing data joined
-- All 6 navigation items working
-- Batch import API endpoint functional
-- Mobile-first design with large touch targets, card-based entries list, collapsible Excel tools section
+- App is now fully configurable for any company
+- New CONFIGURACIÓN section in sidebar with 3 tabs (Empresa, Secciones, Etiquetas)
+- Logo upload (base64, max 2MB) stored in DB
+- All section names, column labels, and company data configurable
+- Invoice preview uses dynamic company data and logo
+- All Excel imports/exports use configurable column names
+- Production build passes successfully

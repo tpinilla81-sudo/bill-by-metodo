@@ -4,8 +4,10 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Download, Upload, Trash2, Database } from 'lucide-react'
+import { useConfig } from '@/lib/config'
 
 export function BackupView() {
+  const { config } = useConfig()
   const [status, setStatus] = useState('')
 
   async function handleExport() {
@@ -16,7 +18,7 @@ export function BackupView() {
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
-      a.download = `hualsa_backup_${new Date().toISOString().slice(0, 10)}.json`
+      a.download = `${(config?.appName || 'HUALSA').toLowerCase()}_backup_${new Date().toISOString().slice(0, 10)}.json`
       a.click()
       setStatus('Exportado correctamente')
     } catch (err) {

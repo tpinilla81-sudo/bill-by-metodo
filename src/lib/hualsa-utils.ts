@@ -1,7 +1,7 @@
 // Utility functions for HUALSA PRO
 
-export function fmtCurrency(n: number): string {
-  return (Number(n) || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+export function fmtCurrency(n: number, currency: string = '€'): string {
+  return (Number(n) || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency
 }
 
 export function fmtDate(iso: string): string {

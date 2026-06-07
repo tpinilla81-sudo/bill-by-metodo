@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Pencil, Trash2, Save, RotateCcw, Filter, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, ChevronDown } from 'lucide-react'
 import { fmtCurrency, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
+import { useConfig, DEFAULT_LABELS_CATALOGO } from '@/lib/config'
 
 interface CatalogoViewData {
   catalogo: CatalogoItem[]
@@ -16,6 +17,8 @@ interface CatalogoViewData {
 }
 
 export function CatalogoView() {
+  const { config } = useConfig()
+  const L = config?.labelsCatalogo || DEFAULT_LABELS_CATALOGO
   const [data, setData] = useState<CatalogoViewData>({ catalogo: [], clientes: [] })
   const [initialized, setInitialized] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -163,24 +166,24 @@ export function CatalogoView() {
 
           // Try all possible column name variants
           const rawC1 = getRowVal(row,
-            'CONCEPTO 1', 'COCEPTO 1', 'CONCEPTO1', 'COCEPTO1',
+            L.c1, 'CONCEPTO 1', 'COCEPTO 1', 'CONCEPTO1', 'COCEPTO1',
             'C1', 'c1', 'concepto 1', 'cocepto 1', 'concepto1', 'cocepto1'
           )
           const rawC2 = getRowVal(row,
-            'CONCEPTO 2', 'COCEPTO 2', 'CONCEPTO2', 'COCEPTO2',
+            L.c2, 'CONCEPTO 2', 'COCEPTO 2', 'CONCEPTO2', 'COCEPTO2',
             'C2', 'c2', 'concepto 2', 'cocepto 2', 'concepto2', 'cocepto2'
           )
-          const rawCoste = getRowVal(row, 'COSTE', 'coste', 'Coste')
+          const rawCoste = getRowVal(row, L.coste, 'COSTE', 'coste', 'Coste')
           const rawInc = getRowVal(row,
-            'INCREMENTO', 'incremento', 'Incremento',
+            L.incremento, 'INCREMENTO', 'incremento', 'Incremento',
             'INC', 'inc', 'INC %', '% INC', '% INC', 'incremento %', 'INCREMENTO %'
           )
           const rawFinal = getRowVal(row,
-            'PRECIO CLIENTE', 'PRECIO', 'precio cliente', 'precio',
+            L.precioCliente, 'PRECIO CLIENTE', 'PRECIO', 'precio cliente', 'precio',
             'P. FINAL', 'P FINAL', 'FINAL', 'final', 'Precio Final', 'precio final'
           )
           const rawCliente = getRowVal(row,
-            'CLIENTE', 'cliente', 'Cliente'
+            L.cliente, 'CLIENTE', 'cliente', 'Cliente'
           )
 
           // Skip empty rows
@@ -188,8 +191,8 @@ export function CatalogoView() {
 
           const hasC1 = !!rawC1
           const hasC2 = !!rawC2
-          if (!hasC1) errors.push(`Fila ${rowNum}: Concepto 1 vacío`)
-          if (!hasC2) errors.push(`Fila ${rowNum}: Concepto 2 vacío`)
+          if (!hasC1) errors.push(`Fila ${rowNum}: ${L.c1} vacío`)
+          if (!hasC2) errors.push(`Fila ${rowNum}: ${L.c2} vacío`)
 
           const costeNum = Number(rawCoste) || 0
           const incNum = Number(rawInc) || 0
@@ -272,12 +275,13 @@ export function CatalogoView() {
 
   async function handleExportTemplate() {
     const XLSX = await import('xlsx')
-    const header = ['CONCEPTO 1', 'CONCEPTO 2', 'COSTE', 'INCREMENTO', 'PRECIO CLIENTE', 'CLIENTE']
+    const header = [L.c1, L.c2, L.coste, L.incremento, L.precioCliente, L.cliente]
     const ws = XLSX.utils.aoa_to_sheet([header])
     ws['!cols'] = [{ wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 25 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Catálogo')
-    XLSX.writeFile(wb, 'Plantilla_Catalogo_HUALSA.xlsx')
+    const appName = config?.appName || 'HUALSA'
+    XLSX.writeFile(wb, `Plantilla_Catalogo_${appName}.xlsx`)
   }
 
   async function handleExportData() {
@@ -285,19 +289,20 @@ export function CatalogoView() {
     const rows = catalogo.map(x => {
       const cli = clientes.find(c => c.id === x.clienteId)
       return {
-        'CONCEPTO 1': x.c1,
-        'CONCEPTO 2': x.c2,
-        COSTE: x.coste,
-        INCREMENTO: x.inc,
-        'PRECIO CLIENTE': x.final,
-        CLIENTE: cli ? cli.nombre : '',
+        [L.c1]: x.c1,
+        [L.c2]: x.c2,
+        [L.coste]: x.coste,
+        [L.incremento]: x.inc,
+        [L.precioCliente]: x.final,
+        [L.cliente]: cli ? cli.nombre : '',
       }
     })
     const ws = XLSX.utils.json_to_sheet(rows)
     ws['!cols'] = [{ wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 25 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Catálogo')
-    XLSX.writeFile(wb, `Catalogo_HUALSA_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    const appName = config?.appName || 'HUALSA'
+    XLSX.writeFile(wb, `Catalogo_${appName}_${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
   return (
@@ -317,7 +322,7 @@ export function CatalogoView() {
         <CardContent className="p-4">
           <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_130px] gap-3 items-end">
             <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Cliente</Label>
+              <Label className="text-xs uppercase font-bold text-slate-500">{L.cliente}</Label>
               <Select value={clienteId} onValueChange={setClienteId}>
                 <SelectTrigger><SelectValue placeholder="— General —" /></SelectTrigger>
                 <SelectContent>
@@ -327,19 +332,19 @@ export function CatalogoView() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Grupo (C1)</Label>
+              <Label className="text-xs uppercase font-bold text-slate-500">Grupo ({L.c1})</Label>
               <Input value={c1} onChange={e => setC1(e.target.value)} />
             </div>
             <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Servicio (C2)</Label>
+              <Label className="text-xs uppercase font-bold text-slate-500">Servicio ({L.c2})</Label>
               <Input value={c2} onChange={e => setC2(e.target.value)} />
             </div>
             <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Coste (€)</Label>
+              <Label className="text-xs uppercase font-bold text-slate-500">{L.coste} ({config?.currency || '€'})</Label>
               <Input type="number" step="0.01" value={coste} onChange={e => { setCoste(e.target.value); setFinalVal('') }} />
             </div>
             <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">% Inc</Label>
+              <Label className="text-xs uppercase font-bold text-slate-500">{L.incremento} %</Label>
               <Input type="number" step="0.01" value={inc} onChange={e => { setInc(e.target.value); setFinalVal('') }} />
             </div>
             <div>
@@ -399,7 +404,7 @@ export function CatalogoView() {
                 </Button>
               </div>
               <p className="text-[11px] text-gray-400 leading-relaxed">
-                Columnas: CONCEPTO 1 · CONCEPTO 2 · COSTE · INCREMENTO · PRECIO CLIENTE · CLIENTE (opcional)
+                Columnas: {L.c1} · {L.c2} · {L.coste} · {L.incremento} · {L.precioCliente} · {L.cliente} (opcional)
               </p>
             </div>
           )}
@@ -411,7 +416,7 @@ export function CatalogoView() {
         <CardContent className="p-4">
           <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_auto_auto] gap-3 items-end">
             <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Cliente</Label>
+              <Label className="text-xs uppercase font-bold text-slate-500">{L.cliente}</Label>
               <Select value={fCli} onValueChange={setFCli}>
                 <SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger>
                 <SelectContent>
@@ -422,7 +427,7 @@ export function CatalogoView() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Grupo C1</Label>
+              <Label className="text-xs uppercase font-bold text-slate-500">Grupo {L.c1}</Label>
               <Select value={fC1} onValueChange={setFC1}>
                 <SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger>
                 <SelectContent>
@@ -450,11 +455,11 @@ export function CatalogoView() {
         <table className="w-full text-sm min-w-[600px]">
           <thead>
             <tr className="bg-blue-50">
-              <th className="p-2 text-left font-semibold border-b">Cliente</th>
-              <th className="p-2 text-left font-semibold border-b">C1</th>
-              <th className="p-2 text-left font-semibold border-b">C2</th>
-              <th className="p-2 text-left font-semibold border-b">Coste</th>
-              <th className="p-2 text-left font-semibold border-b">% Inc</th>
+              <th className="p-2 text-left font-semibold border-b">{L.cliente}</th>
+              <th className="p-2 text-left font-semibold border-b">{L.c1}</th>
+              <th className="p-2 text-left font-semibold border-b">{L.c2}</th>
+              <th className="p-2 text-left font-semibold border-b">{L.coste}</th>
+              <th className="p-2 text-left font-semibold border-b">{L.incremento}</th>
               <th className="p-2 text-left font-semibold border-b">P. Final</th>
               <th className="p-2 text-left font-semibold border-b">Acc.</th>
             </tr>
@@ -520,12 +525,12 @@ export function CatalogoView() {
               <thead className="sticky top-0">
                 <tr className="bg-gray-100">
                   <th className="p-2 text-left border-b">✓</th>
-                  <th className="p-2 text-left border-b">Concepto 1</th>
-                  <th className="p-2 text-left border-b">Concepto 2</th>
-                  <th className="p-2 text-right border-b">Coste</th>
-                  <th className="p-2 text-right border-b">% Inc</th>
+                  <th className="p-2 text-left border-b">{L.c1}</th>
+                  <th className="p-2 text-left border-b">{L.c2}</th>
+                  <th className="p-2 text-right border-b">{L.coste}</th>
+                  <th className="p-2 text-right border-b">{L.incremento}</th>
                   <th className="p-2 text-right border-b">P. Final</th>
-                  <th className="p-2 text-left border-b">Cliente</th>
+                  <th className="p-2 text-left border-b">{L.cliente}</th>
                 </tr>
               </thead>
               <tbody>

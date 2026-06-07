@@ -7,8 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Pencil, Trash2, Save, RotateCcw } from 'lucide-react'
 import type { Cliente } from '@/lib/hualsa-utils'
+import { useConfig, DEFAULT_LABELS_CLIENTES } from '@/lib/config'
 
 export function ClientesView() {
+  const { config } = useConfig()
+  const L = config?.labelsClientes || DEFAULT_LABELS_CLIENTES
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [initialized, setInitialized] = useState(false)
@@ -69,37 +72,37 @@ export function ClientesView() {
           <div className="grid gap-3">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Nombre Cliente</Label>
+                <Label className="text-xs uppercase font-bold text-slate-500">{L.nombre}</Label>
                 <Input value={nombre} onChange={e => setNombre(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">CIF</Label>
+                <Label className="text-xs uppercase font-bold text-slate-500">{L.cif}</Label>
                 <Input value={cif} onChange={e => setCif(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Mail</Label>
+                <Label className="text-xs uppercase font-bold text-slate-500">{L.mail}</Label>
                 <Input type="email" value={mail} onChange={e => setMail(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Teléfono</Label>
+                <Label className="text-xs uppercase font-bold text-slate-500">{L.telefono}</Label>
                 <Input value={tel} onChange={e => setTel(e.target.value)} />
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_150px] gap-3">
               <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Dirección</Label>
+                <Label className="text-xs uppercase font-bold text-slate-500">{L.direccion}</Label>
                 <Input value={dir} onChange={e => setDir(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">C.P.</Label>
+                <Label className="text-xs uppercase font-bold text-slate-500">{L.cp}</Label>
                 <Input value={cp} onChange={e => setCp(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Ciudad</Label>
+                <Label className="text-xs uppercase font-bold text-slate-500">{L.ciudad}</Label>
                 <Input value={ciudad} onChange={e => setCiudad(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Provincia</Label>
+                <Label className="text-xs uppercase font-bold text-slate-500">{L.provincia}</Label>
                 <Input value={prov} onChange={e => setProv(e.target.value)} />
               </div>
               <div className="flex gap-2 items-end">
@@ -122,12 +125,12 @@ export function ClientesView() {
         <table className="w-full text-sm min-w-[700px]">
           <thead>
             <tr className="bg-green-50">
-              <th className="p-2 text-left font-semibold border-b">Cliente</th>
-              <th className="p-2 text-left font-semibold border-b">CIF</th>
-              <th className="p-2 text-left font-semibold border-b">Dirección</th>
-              <th className="p-2 text-left font-semibold border-b">C.P.</th>
-              <th className="p-2 text-left font-semibold border-b">Ciudad</th>
-              <th className="p-2 text-left font-semibold border-b">Provincia</th>
+              <th className="p-2 text-left font-semibold border-b">{L.nombre}</th>
+              <th className="p-2 text-left font-semibold border-b">{L.cif}</th>
+              <th className="p-2 text-left font-semibold border-b">{L.direccion}</th>
+              <th className="p-2 text-left font-semibold border-b">{L.cp}</th>
+              <th className="p-2 text-left font-semibold border-b">{L.ciudad}</th>
+              <th className="p-2 text-left font-semibold border-b">{L.provincia}</th>
               <th className="p-2 text-left font-semibold border-b">Contacto</th>
               <th className="p-2 text-left font-semibold border-b">Acc.</th>
             </tr>

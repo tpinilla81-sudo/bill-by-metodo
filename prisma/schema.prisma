@@ -57,3 +57,32 @@ model FacturaSeq {
   id    String @id @default("main")
   seq   Int    @default(1)
 }
+
+model Config {
+  id              String   @id @default("main")
+  companyName     String   @default("HUALSA PRO")
+  companyFullName String   @default("Transportes Hualsa 2021, S.L.")
+  companyAddress  String   @default("C/ Moret y Aleson, Nº 30")
+  companyCity     String   @default("31320 Milagro")
+  companyProvince String   @default("Navarra")
+  companyCif      String   @default("")
+  logo            String   @default("")   // base64 encoded logo image
+  currency        String   @default("€")
+  defaultIva      Float    @default(21)
+  appName         String   @default("HUALSA PRO")
+  appVersion      String   @default("v2.0")
+  // Configurable section labels (JSON strings)
+  labelEntrada    String   @default("")   // JSON: { fecha, cliente, c1, c2, cantidad, observaciones }
+  labelCatalogo   String   @default("")   // JSON: { c1, c2, coste, incremento, precioCliente, cliente }
+  labelRegistros  String   @default("")   // JSON: { fecha, mes, semana, cliente, c1, c2, cantidad, precioUnitario, importe, observaciones }
+  labelFacturas   String   @default("")   // JSON: { numero, fecha, cliente, concepto, cantidad, precioUnitario, importe, baseImponible, totalFactura }
+  labelClientes   String   @default("")   // JSON: { nombre, cif, direccion, cp, ciudad, provincia, mail, telefono }
+  // Section names
+  sectionEntrada  String   @default("ENTRADA")
+  sectionRegistros String  @default("REGISTROS")
+  sectionClientes String   @default("CLIENTES")
+  sectionCatalogo String   @default("CATÁLOGO")
+  sectionFacturas String   @default("FACTURAS")
+  sectionBackup   String   @default("SEGURIDAD")
+  updatedAt       DateTime @updatedAt
+}

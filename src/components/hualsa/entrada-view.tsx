@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Pencil, Trash2, Save, RotateCcw, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, X, ChevronDown } from 'lucide-react'
 import { fmtDate, todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
+import { useConfig, DEFAULT_LABELS_ENTRADA } from '@/lib/config'
 
 interface EntradaViewData {
   registros: Registro[]
@@ -33,8 +34,11 @@ function useEntradaData() {
 
 export function EntradaView() {
   const { data, loadData, loading } = useEntradaData()
+  const { config } = useConfig()
   const [initialized, setInitialized] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+
+  const L = config?.labelsEntrada || DEFAULT_LABELS_ENTRADA
 
   // Form
   const [fecha, setFecha] = useState(todayISO())
@@ -226,11 +230,11 @@ export function EntradaView() {
 
           // Read raw values (may be numbers for dates)
           const rawFechaVal = row['FECHA'] ?? row['fecha'] ?? ''
-          const rawCliente = getRowVal(row, 'CLIENTE', 'cliente')
-          const rawC1 = getRowVal(row, 'CONCEPTO 1', 'CONCEPTO1', 'C1', 'c1', 'concepto 1', 'concepto1')
-          const rawC2 = getRowVal(row, 'CONCEPTO 2', 'CONCEPTO2', 'C2', 'c2', 'concepto 2', 'concepto2')
-          const rawCant = getRowVal(row, 'CANTIDAD', 'cantidad', 'Cant', 'cant')
-          const rawObs = getRowVal(row, 'OBSERVACIONES', 'observaciones', 'Obs', 'obs', 'OBS')
+          const rawCliente = getRowVal(row, L.cliente, 'CLIENTE', 'cliente')
+          const rawC1 = getRowVal(row, L.c1, 'CONCEPTO 1', 'CONCEPTO1', 'C1', 'c1', 'concepto 1', 'concepto1')
+          const rawC2 = getRowVal(row, L.c2, 'CONCEPTO 2', 'CONCEPTO2', 'C2', 'c2', 'concepto 2', 'concepto2')
+          const rawCant = getRowVal(row, L.cantidad, 'CANTIDAD', 'cantidad', 'Cant', 'cant')
+          const rawObs = getRowVal(row, L.observaciones, 'OBSERVACIONES', 'observaciones', 'Obs', 'obs', 'OBS')
 
           // Skip empty rows: if ALL key fields are empty/blank, skip silently
           const hasData = rawFechaVal !== '' || rawCliente || rawC1 || rawC2 || rawCant || rawObs
@@ -244,10 +248,10 @@ export function EntradaView() {
           const fechaISO = parseExcelDate(rawFechaVal)
 
           // Only report errors for rows that have some real data
-          if (!fechaISO) errors.push(`Fila ${rowNum}: Fecha inválida "${rawFechaVal}"`)
-          if (!rawCliente) errors.push(`Fila ${rowNum}: Cliente vacío`)
-          if (!rawC1) errors.push(`Fila ${rowNum}: Concepto 1 vacío`)
-          if (!rawC2) errors.push(`Fila ${rowNum}: Concepto 2 vacío`)
+          if (!fechaISO) errors.push(`Fila ${rowNum}: ${L.fecha} inválida "${rawFechaVal}"`)
+          if (!rawCliente) errors.push(`Fila ${rowNum}: ${L.cliente} vacío`)
+          if (!rawC1) errors.push(`Fila ${rowNum}: ${L.c1} vacío`)
+          if (!rawC2) errors.push(`Fila ${rowNum}: ${L.c2} vacío`)
 
           const cant = parseInt(rawCant) || 1
 
@@ -356,29 +360,31 @@ export function EntradaView() {
 
   async function handleExportTemplate() {
     const XLSX = await import('xlsx')
-    const header = ['FECHA', 'CLIENTE', 'CONCEPTO 1', 'CONCEPTO 2', 'CANTIDAD', 'OBSERVACIONES']
+    const header = [L.fecha, L.cliente, L.c1, L.c2, L.cantidad, L.observaciones]
     const ws = XLSX.utils.aoa_to_sheet([header])
     ws['!cols'] = [{ wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 10 }, { wch: 30 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Entrada')
-    XLSX.writeFile(wb, 'Plantilla_Entrada_HUALSA.xlsx')
+    const appName = config?.appName || 'HUALSA'
+    XLSX.writeFile(wb, `Plantilla_Entrada_${appName}.xlsx`)
   }
 
   async function handleExportData() {
     const XLSX = await import('xlsx')
     const rows = data.registros.map(r => ({
-      FECHA: r.fecha,
-      CLIENTE: r.cliente,
-      'CONCEPTO 1': r.c1,
-      'CONCEPTO 2': r.c2,
-      CANTIDAD: r.cant,
-      OBSERVACIONES: r.obs,
+      [L.fecha]: r.fecha,
+      [L.cliente]: r.cliente,
+      [L.c1]: r.c1,
+      [L.c2]: r.c2,
+      [L.cantidad]: r.cant,
+      [L.observaciones]: r.obs,
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     ws['!cols'] = [{ wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 10 }, { wch: 30 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Entradas')
-    XLSX.writeFile(wb, `Entradas_HUALSA_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    const appName = config?.appName || 'HUALSA'
+    XLSX.writeFile(wb, `Entradas_${appName}_${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
   // Recent entries (last 15)
@@ -414,7 +420,7 @@ export function EntradaView() {
           {/* ── Fecha ────────────────────────────────── */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-4 pt-3 pb-1">
-              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Fecha</Label>
+              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.fecha}</Label>
             </div>
             <div className="px-4 pb-3">
               <Input
@@ -429,7 +435,7 @@ export function EntradaView() {
           {/* ── Cliente ──────────────────────────────── */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-4 pt-3 pb-1">
-              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Cliente</Label>
+              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.cliente}</Label>
             </div>
             <div className="px-4 pb-3">
               <Select value={clienteId} onValueChange={v => { setClienteId(v); setC2('') }}>
@@ -448,7 +454,7 @@ export function EntradaView() {
           {/* ── Concepto 1 ──────────────────────────── */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-4 pt-3 pb-1">
-              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Concepto 1</Label>
+              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.c1}</Label>
             </div>
             <div className="px-4 pb-3">
               <Select value={c1} onValueChange={v => { setC1(v); setC2('') }}>
@@ -467,7 +473,7 @@ export function EntradaView() {
           {/* ── Concepto 2 ──────────────────────────── */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-4 pt-3 pb-1">
-              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Concepto 2</Label>
+              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.c2}</Label>
             </div>
             <div className="px-4 pb-3">
               <Select value={c2} onValueChange={setC2}>
@@ -487,7 +493,7 @@ export function EntradaView() {
           <div className="grid grid-cols-[100px_1fr] gap-3">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-3 pt-3 pb-1">
-                <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Cant.</Label>
+                <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.cantidad}</Label>
               </div>
               <div className="px-3 pb-3">
                 <Input
@@ -501,7 +507,7 @@ export function EntradaView() {
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-3 pt-3 pb-1">
-                <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Observaciones</Label>
+                <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{L.observaciones}</Label>
               </div>
               <div className="px-3 pb-3">
                 <Input
@@ -568,7 +574,7 @@ export function EntradaView() {
                   </button>
                 </div>
                 <p className="text-[11px] text-gray-400 text-center leading-relaxed">
-                  Columnas: FECHA · CLIENTE · CONCEPTO 1 · CONCEPTO 2 · CANTIDAD · OBSERVACIONES
+                  Columnas: {L.fecha} · {L.cliente} · {L.c1} · {L.c2} · {L.cantidad} · {L.observaciones}
                 </p>
               </div>
             )}
@@ -678,12 +684,12 @@ export function EntradaView() {
               <thead className="sticky top-0">
                 <tr className="bg-gray-100">
                   <th className="p-2 text-left border-b">✓</th>
-                  <th className="p-2 text-left border-b">Fecha</th>
-                  <th className="p-2 text-left border-b">Cliente</th>
-                  <th className="p-2 text-left border-b">C1</th>
-                  <th className="p-2 text-left border-b">C2</th>
-                  <th className="p-2 text-center border-b">Cant</th>
-                  <th className="p-2 text-left border-b">Obs</th>
+                  <th className="p-2 text-left border-b">{L.fecha}</th>
+                  <th className="p-2 text-left border-b">{L.cliente}</th>
+                  <th className="p-2 text-left border-b">{L.c1}</th>
+                  <th className="p-2 text-left border-b">{L.c2}</th>
+                  <th className="p-2 text-center border-b">{L.cantidad}</th>
+                  <th className="p-2 text-left border-b">{L.observaciones}</th>
                 </tr>
               </thead>
               <tbody>

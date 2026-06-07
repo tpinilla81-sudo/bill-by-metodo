@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Printer, FileSpreadsheet, Receipt, RotateCcw, ArrowLeftRight } from 'lucide-react'
 import { fmtCurrency, fmtDate, fmtMonth, todayISO, currentYear, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
+import { useConfig, DEFAULT_LABELS_FACTURAS } from '@/lib/config'
 
 interface FacturasData {
   registros: Registro[]
@@ -26,6 +27,8 @@ interface InvoiceData {
 }
 
 export function FacturasView() {
+  const { config } = useConfig()
+  const L = config?.labelsFacturas || DEFAULT_LABELS_FACTURAS
   const [data, setData] = useState<FacturasData>({ registros: [], clientes: [], catalogo: [], seq: 1 })
   const [initialized, setInitialized] = useState(false)
 
@@ -38,7 +41,7 @@ export function FacturasView() {
   // Invoice settings
   const [fNumero, setFNumero] = useState('')
   const [fFechaFact, setFFechaFact] = useState(todayISO())
-  const [fIva, setFIva] = useState('21')
+  const [fIva, setFIva] = useState('')
   const [fModo, setFModo] = useState<'dia' | 'mes'>('dia')
 
   // Selection
@@ -62,9 +65,12 @@ export function FacturasView() {
     loadData()
   }
 
-  // Set default factura number
+  // Set default factura number and IVA
   if (!fNumero && data.seq) {
     setFNumero(String(data.seq).padStart(4, '0') + '/' + currentYear())
+  }
+  if (!fIva && config) {
+    setFIva(String(config.defaultIva))
   }
 
   const { registros, clientes, catalogo } = data
@@ -156,21 +162,22 @@ export function FacturasView() {
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
     const rows: (string | number)[][] = [
-      ['TRANSPORTES HUALSA 2021, S.L'],
-      ['C/ MORET Y ALESON, Nº 30 - 31320 MILAGRO - NAVARRA'],
+      [config?.companyFullName || 'EMPRESA'],
+      [config?.companyAddress || ''],
+      [config?.companyCity + ' ' + (config?.companyProvince || '')],
       [],
-      ['Nº FACTURA', numero],
-      ['FECHA', fmtDate(fechaFact)],
-      ['CLIENTE', cli.nombre],
+      [L.numero, numero],
+      [L.fecha, fmtDate(fechaFact)],
+      [L.cliente, cli.nombre],
       ['CIF', cli.cif],
       ['DIRECCIÓN', `${cli.dir} ${cli.cp} ${cli.ciudad} ${cli.prov}`],
       [],
-      ['FECHA', 'CONCEPTO', 'CANT.', 'PRECIO UNITARIO', 'IMPORTE'],
+      [L.fecha, L.concepto, L.cantidad, L.precioUnitario, L.importe],
       ...lineas.map(r => { const pu = precioUnit(r.c1, r.c2, r.clienteId); return [fechaLbl(r.fecha), r.c1 + (r.c2 ? ' - ' + r.c2 : ''), r.cant, pu, pu * r.cant] }),
       [],
-      ['', '', '', 'BASE IMPONIBLE', base],
+      ['', '', '', L.baseImponible, base],
       ['', '', '', `IVA ${iva}%`, ivaImp],
-      ['', '', '', 'TOTAL FACTURA', total],
+      ['', '', '', L.totalFactura, total],
     ]
 
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -313,7 +320,7 @@ export function FacturasView() {
           <DialogHeader>
             <DialogTitle>Factura</DialogTitle>
           </DialogHeader>
-          {invoiceData && <InvoicePreview data={invoiceData} catalogo={catalogo} />}
+          {invoiceData && <InvoicePreview data={invoiceData} catalogo={catalogo} config={config} />}
           <div className="flex gap-3 justify-end mt-4">
             <Button variant="outline" onClick={() => window.print()}>
               <Printer className="h-4 w-4 mr-1" /> Imprimir
@@ -328,10 +335,12 @@ export function FacturasView() {
   )
 }
 
-function InvoicePreview({ data, catalogo }: {
+function InvoicePreview({ data, catalogo, config }: {
   data: InvoiceData
   catalogo: CatalogoItem[]
+  config: import('@/lib/config').ResolvedConfig | null
 }) {
+  const L = config?.labelsFacturas || DEFAULT_LABELS_FACTURAS
   const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total } = data
   const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
@@ -347,27 +356,36 @@ function InvoicePreview({ data, catalogo }: {
       {/* Header */}
       <div className="flex justify-between items-start gap-4 mb-4">
         <div className="text-[10.5pt] leading-[1.4]">
-          <h2 className="text-[14pt] font-extrabold text-black mb-1">TRANSPORTES HUALSA 2021, S.L</h2>
-          C/ MORET Y ALESON, Nº 30<br />
-          31320 MILAGRO<br />
-          NAVARRA
+          <h2 className="text-[14pt] font-extrabold text-black mb-1">{config?.companyFullName || 'EMPRESA'}</h2>
+          {config?.companyAddress && <>{config.companyAddress}<br /></>}
+          {config?.companyCity && <>{config.companyCity}</>}
+          {config?.companyProvince && <> {config.companyProvince}</>}
+          {(config?.companyCity || config?.companyProvince) && <br />}
           <div className="mt-2 border border-black p-2 text-[10.5pt] w-fit">
-            <b>Nº FACTURA:</b> {numero}<br />
-            <b>FECHA:</b> {fmtDate(fechaFact)}
+            <b>{L.numero}:</b> {numero}<br />
+            <b>{L.fecha}:</b> {fmtDate(fechaFact)}
           </div>
         </div>
-        <Image
-          src="/hualsa-logo.png"
-          alt="HUALSA"
-          width={200}
-          height={55}
-          style={{ maxWidth: '230px', height: 'auto' }}
-        />
+        {config?.logo ? (
+          <img
+            src={config.logo.startsWith('data:') ? config.logo : `data:image/png;base64,${config.logo}`}
+            alt="Logo"
+            style={{ maxWidth: '230px', height: 'auto', objectFit: 'contain' }}
+          />
+        ) : (
+          <Image
+            src="/hualsa-logo.png"
+            alt="Logo"
+            width={200}
+            height={55}
+            style={{ maxWidth: '230px', height: 'auto' }}
+          />
+        )}
       </div>
 
       {/* Client */}
       <div className="border border-black p-3 mb-4 text-[11pt] bg-gray-50">
-        <b>CLIENTE:</b> {cli.nombre}<br />
+        <b>{L.cliente}:</b> {cli.nombre}<br />
         {cli.cif && <><b>CIF:</b> {cli.cif}<br /></>}
         {cli.dir}{cli.dir && <br />}
         {cli.cp} {cli.ciudad} {cli.prov}
@@ -377,11 +395,11 @@ function InvoicePreview({ data, catalogo }: {
       <table className="w-full border-collapse text-[10.5pt] mb-3">
         <thead>
           <tr>
-            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[90px]">FECHA</th>
-            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt]">CONCEPTO</th>
-            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[60px]">CANT.</th>
-            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[110px]">PRECIO UNIT.</th>
-            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[110px]">IMPORTE</th>
+            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[90px]">{L.fecha}</th>
+            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt]">{L.concepto}</th>
+            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[60px]">{L.cantidad}</th>
+            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[110px]">{L.precioUnitario}</th>
+            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[110px]">{L.importe}</th>
           </tr>
         </thead>
         <tbody>
@@ -404,7 +422,7 @@ function InvoicePreview({ data, catalogo }: {
       <table className="ml-auto border-collapse text-[11pt]">
         <tbody>
           <tr>
-            <td className="p-2 border border-black bg-gray-200 font-bold text-right min-w-[160px]">BASE IMPONIBLE</td>
+            <td className="p-2 border border-black bg-gray-200 font-bold text-right min-w-[160px]">{L.baseImponible}</td>
             <td className="p-2 border border-black text-right min-w-[140px]">{fmtCurrency(base)}</td>
           </tr>
           <tr>
@@ -412,7 +430,7 @@ function InvoicePreview({ data, catalogo }: {
             <td className="p-2 border border-black text-right">{fmtCurrency(ivaImp)}</td>
           </tr>
           <tr className="bg-[#2bb24c] text-white font-extrabold text-[12pt]">
-            <td className="p-2 border border-black text-right">TOTAL FACTURA</td>
+            <td className="p-2 border border-black text-right">{L.totalFactura}</td>
             <td className="p-2 border border-black text-right">{fmtCurrency(total)}</td>
           </tr>
         </tbody>

@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Filter, RotateCcw, FileSpreadsheet, Table2 } from 'lucide-react'
 import { fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
+import { useConfig, DEFAULT_LABELS_REGISTROS } from '@/lib/config'
 
 interface RegistrosViewData {
   registros: Registro[]
@@ -33,6 +34,8 @@ function useRegistrosData() {
 
 export function RegistrosView() {
   const { data, loadData, loading } = useRegistrosData()
+  const { config } = useConfig()
+  const L = config?.labelsRegistros || DEFAULT_LABELS_REGISTROS
   const [initialized, setInitialized] = useState(false)
 
   // Filters
@@ -87,16 +90,16 @@ export function RegistrosView() {
       const imp = pu * r.cant
       const d = new Date(r.fecha)
       return {
-        FECHA: fmtDate(r.fecha),
-        MES: d.getMonth() + 1,
-        SEMANA: getISOWeek(r.fecha),
-        CLIENTE: r.cliente,
-        'CONCEPTO 1': r.c1,
-        'CONCEPTO 2': r.c2,
-        CANTIDAD: r.cant,
-        'P. UNITARIO': pu,
-        IMPORTE: imp,
-        OBSERVACIONES: r.obs,
+        [L.fecha]: fmtDate(r.fecha),
+        [L.mes]: d.getMonth() + 1,
+        [L.semana]: getISOWeek(r.fecha),
+        [L.cliente]: r.cliente,
+        [L.c1]: r.c1,
+        [L.c2]: r.c2,
+        [L.cantidad]: r.cant,
+        [L.precioUnitario]: pu,
+        [L.importe]: imp,
+        [L.observaciones]: r.obs,
       }
     })
     const ws = XLSX.utils.json_to_sheet(rows)
@@ -116,7 +119,8 @@ export function RegistrosView() {
     }])
     XLSX.utils.book_append_sheet(wb, totalsWs, 'Resumen')
 
-    XLSX.writeFile(wb, `Registros_HUALSA_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    const appName = config?.appName || 'HUALSA'
+    XLSX.writeFile(wb, `Registros_${appName}_${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
   return (
@@ -191,16 +195,16 @@ export function RegistrosView() {
         <table className="w-full text-sm min-w-[900px]">
           <thead>
             <tr className="bg-[#005bb5] text-white">
-              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">Fecha</th>
-              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">Mes</th>
-              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">Sem</th>
-              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">Cliente</th>
-              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">Concepto 1</th>
-              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">Concepto 2</th>
-              <th className="p-2.5 text-right font-semibold border-b border-[#004a94]">Cant</th>
-              <th className="p-2.5 text-right font-semibold border-b border-[#004a94]">P.Unit</th>
-              <th className="p-2.5 text-right font-semibold border-b border-[#004a94]">Importe</th>
-              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">Obs</th>
+              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">{L.fecha}</th>
+              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">{L.mes}</th>
+              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">{L.semana}</th>
+              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">{L.cliente}</th>
+              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">{L.c1}</th>
+              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">{L.c2}</th>
+              <th className="p-2.5 text-right font-semibold border-b border-[#004a94]">{L.cantidad}</th>
+              <th className="p-2.5 text-right font-semibold border-b border-[#004a94]">{L.precioUnitario}</th>
+              <th className="p-2.5 text-right font-semibold border-b border-[#004a94]">{L.importe}</th>
+              <th className="p-2.5 text-left font-semibold border-b border-[#004a94]">{L.observaciones}</th>
             </tr>
           </thead>
           <tbody>
