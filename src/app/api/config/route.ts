@@ -1,7 +1,5 @@
+import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
 
 // Default config values
 const DEFAULT_CONFIG = {
@@ -32,10 +30,9 @@ const DEFAULT_CONFIG = {
 // GET /api/config - Retrieve configuration
 export async function GET() {
   try {
-    let config = await prisma.config.findUnique({ where: { id: 'main' } })
+    let config = await db.config.findUnique({ where: { id: 'main' } })
     if (!config) {
-      // Create default config if it doesn't exist
-      config = await prisma.config.create({ data: { id: 'main', ...DEFAULT_CONFIG } })
+      config = await db.config.create({ data: { id: 'main', ...DEFAULT_CONFIG } })
     }
     return NextResponse.json(config)
   } catch (err) {
@@ -53,9 +50,9 @@ export async function PUT(req: NextRequest) {
     if (body.defaultIva !== undefined) body.defaultIva = Number(body.defaultIva) || 0
 
     // Ensure config row exists
-    let config = await prisma.config.findUnique({ where: { id: 'main' } })
+    let config = await db.config.findUnique({ where: { id: 'main' } })
     if (!config) {
-      config = await prisma.config.create({ data: { id: 'main', ...DEFAULT_CONFIG } })
+      config = await db.config.create({ data: { id: 'main', ...DEFAULT_CONFIG } })
     }
 
     // Update with provided fields
@@ -74,7 +71,7 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    config = await prisma.config.update({
+    config = await db.config.update({
       where: { id: 'main' },
       data: updateData,
     })
