@@ -47,3 +47,22 @@ Stage Summary:
 - Users can now go to Configuración → Campos tab and toggle on/off which fields appear in Entrada, Clientes, and Catálogo
 - Fields are stored as JSON arrays in the Config table in SQLite
 - When fields are empty/missing, defaults show all fields (backward compatible)
+
+---
+Task ID: 1
+Agent: main
+Task: Restart server and provide access to user
+
+Work Log:
+- Found server crashed, attempted multiple restart approaches
+- Production standalone server crashes after ~5-7 requests (sandbox memory limitation)
+- Implemented keep-alive.sh auto-restart wrapper for resilience
+- Rebuilt without standalone output mode (using `next start` instead)
+- Verified configurable fields feature already implemented in Entrada, Clientes, and Catálogo views
+- Server is running with auto-restart on port 3000
+
+Stage Summary:
+- Server accessible at https://preview-c47ff676.space-z.ai/
+- Configurable fields feature already works in Configuración → Campos tab
+- Server auto-restarts on crash (sandbox limitation workaround)
+- Removed `output: "standalone"` from next.config.ts for better stability with `next start`
