@@ -221,7 +221,7 @@ function parseFieldDefs(jsonStr: string, defaults: FieldDef[]): FieldDef[] {
 
 export function resolveConfig(raw: AppConfig): ResolvedConfig {
   return {
-    companyName: raw.companyName || 'HUALSA PRO',
+    companyName: raw.companyName || 'BILL by Metodo',
     companyFullName: raw.companyFullName || '',
     companyAddress: raw.companyAddress || '',
     companyCity: raw.companyCity || '',
@@ -230,8 +230,8 @@ export function resolveConfig(raw: AppConfig): ResolvedConfig {
     logo: raw.logo || '',
     currency: raw.currency || '€',
     defaultIva: raw.defaultIva ?? 21,
-    appName: raw.appName || 'HUALSA PRO',
-    appVersion: raw.appVersion || 'v2.0',
+    appName: raw.appName || 'BILL by Metodo',
+    appVersion: raw.appVersion || 'v3.0',
     sectionEntrada: raw.sectionEntrada || 'ENTRADA',
     sectionRegistros: raw.sectionRegistros || 'REGISTROS',
     sectionClientes: raw.sectionClientes || 'CLIENTES',

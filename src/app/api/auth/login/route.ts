@@ -15,9 +15,9 @@ export async function POST(request: Request) {
     if (userCount === 0) {
       const tenant = await db.tenant.create({
         data: {
-          name: 'BILL',
+          name: 'BILL by Metodo',
           slug: 'bill',
-          fullName: 'BILL Sistema de Gestión',
+          fullName: 'BILL by Metodo - Sistema de Gestión',
           active: true,
         },
       })

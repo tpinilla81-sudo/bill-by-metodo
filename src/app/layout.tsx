@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HUALSA PRO - Gestión de Transportes",
-  description: "Sistema de gestión para Transportes Hualsa 2021, S.L. - Registros, Clientes, Catálogo y Facturación.",
+  title: "BILL by Metodo - Gestión Empresarial",
+  description: "Sistema de gestión empresarial multi-empresa. Registros, Clientes, Catálogo y Facturación.",
   icons: {
     icon: "/favicon.ico",
   },

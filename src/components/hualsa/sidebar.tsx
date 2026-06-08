@@ -58,10 +58,10 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
     ? (tenantLogo.startsWith('data:') ? tenantLogo : `data:image/png;base64,${tenantLogo}`)
     : configLogo
       ? (configLogo.startsWith('data:') ? configLogo : `data:image/png;base64,${configLogo}`)
-      : '/hualsa-logo.png'
+      : '/bill-by-metodo-logo.png'
 
-  const displayName = tenant?.name || config?.appName || 'BILL'
-  const appVersion = config?.appVersion || 'v2.0'
+  const displayName = tenant?.name || config?.appName || 'BILL by Metodo'
+  const appVersion = config?.appVersion || 'v3.0'
 
   function getRoleLabel(role: string) {
     switch (role) {
@@ -97,22 +97,13 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
-        <div className="p-4 bg-white border-b-[3px] border-[#2bb24c] flex items-center justify-center min-h-[70px]">
-          {(tenantLogo || configLogo) ? (
-            <img
-              key={logoSrc}
-              src={logoSrc}
-              alt={displayName}
-              style={{ maxWidth: '180px', maxHeight: '55px', height: 'auto', objectFit: 'contain' }}
-            />
-          ) : (
-            <img
-              key="fallback-logo"
-              src="/hualsa-logo.png"
-              alt={displayName}
-              style={{ maxWidth: '180px', maxHeight: '55px', height: 'auto', objectFit: 'contain' }}
-            />
-          )}
+        <div className="p-3 bg-white border-b-[3px] border-[#2bb24c] flex items-center justify-center min-h-[80px]">
+          <img
+            key={logoSrc}
+            src={logoSrc}
+            alt={displayName}
+            style={{ maxWidth: '180px', maxHeight: '65px', height: 'auto', objectFit: 'contain' }}
+          />
         </div>
         <nav className="flex-1 flex flex-col overflow-y-auto">
           {navItems

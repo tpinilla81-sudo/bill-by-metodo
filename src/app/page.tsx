@@ -33,9 +33,11 @@ function AppContent() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f4f7f6]">
         <div className="text-center">
-          <div className="bg-[#005bb5] text-white font-black text-3xl px-8 py-4 rounded-xl shadow-lg tracking-wider inline-block">
-            BILL
-          </div>
+          <img
+            src="/bill-by-metodo-logo.png"
+            alt="BILL by Metodo"
+            style={{ maxWidth: '200px', height: 'auto', objectFit: 'contain' }}
+          />
           <div className="mt-4 flex items-center justify-center gap-2 text-gray-400">
             <div className="h-4 w-4 border-2 border-gray-300 border-t-[#005bb5] rounded-full animate-spin" />
             Cargando...
@@ -131,11 +133,13 @@ function InlineLogin({ onLogin }: { onLogin: (email: string, password: string) =
         <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border-0 overflow-hidden">
           <div className="text-center pb-2 pt-8 px-8">
             <div className="mx-auto mb-4 flex items-center justify-center">
-              <div className="bg-[#005bb5] text-white font-black text-3xl px-6 py-3 rounded-xl shadow-lg tracking-wider">
-                BILL
-              </div>
+              <img
+                src="/bill-by-metodo-logo.png"
+                alt="BILL by Metodo"
+                style={{ maxWidth: '200px', maxHeight: '80px', height: 'auto', objectFit: 'contain' }}
+              />
             </div>
-            <p className="text-gray-500 text-sm">Sistema de Gestión</p>
+            <p className="text-gray-500 text-sm">Sistema de Gestión Empresarial</p>
           </div>
           <div className="px-8 pb-8 pt-4">
             <form onSubmit={handleSubmit} className="space-y-5">

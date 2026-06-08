@@ -55,11 +55,13 @@ export default function LoginPage() {
         <CardHeader className="text-center pb-2 pt-8">
           {/* Logo */}
           <div className="mx-auto mb-4 flex items-center justify-center">
-            <div className="bg-[#005bb5] text-white font-black text-3xl px-6 py-3 rounded-xl shadow-lg tracking-wider">
-              BILL
-            </div>
+            <img
+              src="/bill-by-metodo-logo.png"
+              alt="BILL by Metodo"
+              style={{ maxWidth: '200px', maxHeight: '80px', height: 'auto', objectFit: 'contain' }}
+            />
           </div>
-          <p className="text-gray-500 text-sm">Sistema de Gestión</p>
+          <p className="text-gray-500 text-sm">Sistema de Gestión Empresarial</p>
         </CardHeader>
         <CardContent className="px-8 pb-8 pt-4">
           <form onSubmit={handleSubmit} className="space-y-5">
