@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Filter, RotateCcw, FileSpreadsheet, Table2 } from 'lucide-react'
+import { Filter, RotateCcw, FileSpreadsheet, Table2, CheckCircle2 } from 'lucide-react'
 import { fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_REGISTROS, type FieldDef, parseCustomData } from '@/lib/config'
 
@@ -112,6 +112,9 @@ export function RegistrosView() {
       case 'precioUnitario': return fmtCurrency(pu)
       case 'importe': return fmtCurrency(imp)
       case 'observaciones': return r.obs
+      case 'facturado': return r.facturado
+        ? <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap"><CheckCircle2 className="h-3 w-3" /> Facturado</span>
+        : <span className="text-[10px] text-gray-400">—</span>
       default: return ''
     }
   }

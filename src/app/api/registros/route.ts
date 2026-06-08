@@ -68,11 +68,24 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   const body = await req.json()
-  const { id, fecha, clienteId, cliente, c1, c2, cant, obs, customData } = body
+
+  // Batch update facturado
+  if (body.batchFacturado && Array.isArray(body.ids)) {
+    const ids = body.ids as string[]
+    if (ids.length === 0) return NextResponse.json({ count: 0 })
+    const result = await db.registro.updateMany({
+      where: { id: { in: ids } },
+      data: { facturado: true }
+    })
+    return NextResponse.json({ count: result.count })
+  }
+
+  const { id, fecha, clienteId, cliente, c1, c2, cant, obs, customData, facturado } = body
   if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any = { fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '' }
   if (customData !== undefined) data.customData = customData
+  if (facturado !== undefined) data.facturado = Boolean(facturado)
   const registro = await db.registro.update({ where: { id }, data })
   return NextResponse.json(registro)
 }

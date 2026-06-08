@@ -9,9 +9,10 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Printer, FileSpreadsheet, Receipt, RotateCcw, ArrowLeftRight } from 'lucide-react'
+import { Printer, FileSpreadsheet, Receipt, RotateCcw, ArrowLeftRight, CheckCircle2 } from 'lucide-react'
 import { fmtCurrency, fmtDate, fmtMonth, todayISO, currentYear, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_FACTURAS } from '@/lib/config'
+import * as XLSX from 'xlsx'
 
 interface FacturasData {
   registros: Registro[]
@@ -50,6 +51,9 @@ export function FacturasView() {
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
 
+  // Facturado filter
+  const [showFacturados, setShowFacturados] = useState(true)
+
   const loadData = useCallback(async () => {
     const [rRes, cRes, catRes, seqRes] = await Promise.all([
       fetch('/api/registros'), fetch('/api/clientes'), fetch('/api/catalogo'), fetch('/api/factura-seq')
@@ -86,9 +90,10 @@ export function FacturasView() {
       if (fHasta && r.fecha > fHasta) return false
       if (fMes && r.fecha.slice(0, 7) !== fMes) return false
       if (fCliente && fCliente !== '__all__' && r.clienteId !== fCliente) return false
+      if (!showFacturados && r.facturado) return false
       return true
     }).sort((a, b) => a.fecha.localeCompare(b.fecha))
-  , [registros, fDesde, fHasta, fMes, fCliente])
+  , [registros, fDesde, fHasta, fMes, fCliente, showFacturados])
 
   const selectedItems = filtered.filter(r => selection[r.id] !== false)
   const totalCant = selectedItems.reduce((s, r) => s + r.cant, 0)
@@ -147,6 +152,25 @@ export function FacturasView() {
     setInvoiceData({ cli, lineas, iva, numero: fNumero, fechaFact: fFechaFact, modo: fModo, base, ivaImp, total })
     setModalOpen(true)
 
+    // Mark selected registros as facturado
+    const selectedIds = sel.map(r => r.id)
+    try {
+      await fetch('/api/registros', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchFacturado: true, ids: selectedIds })
+      })
+      // Update local state
+      setData(prev => ({
+        ...prev,
+        registros: prev.registros.map(r =>
+          selectedIds.includes(r.id) ? { ...r, facturado: true } : r
+        )
+      }))
+    } catch (err) {
+      console.error('Error marking registros as facturado:', err)
+    }
+
     // Increment seq
     const newSeq = data.seq + 1
     await fetch('/api/factura-seq', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seq: newSeq }) })
@@ -158,31 +182,98 @@ export function FacturasView() {
     const { cli, lineas, iva, numero, fechaFact, base, ivaImp, total, modo } = invoiceData
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
-    const rows: (string | number)[][] = [
-      [config?.companyFullName || 'EMPRESA'],
-      [config?.companyAddress || ''],
-      [config?.companyCity + ' ' + (config?.companyProvince || '')],
-      [],
-      [L.numero, numero],
-      [L.fecha, fmtDate(fechaFact)],
-      [L.cliente, cli.nombre],
-      ['CIF', cli.cif],
-      ['DIRECCIÓN', `${cli.dir} ${cli.cp} ${cli.ciudad} ${cli.prov}`],
-      [],
-      [L.fecha, L.concepto, L.cantidad, L.precioUnitario, L.importe],
-      ...lineas.map(r => { const pu = precioUnit(r.c1, r.c2, r.clienteId); return [fechaLbl(r.fecha), r.c1 + (r.c2 ? ' - ' + r.c2 : ''), r.cant, pu, pu * r.cant] }),
-      [],
-      ['', '', '', L.baseImponible, base],
-      ['', '', '', `IVA ${iva}%`, ivaImp],
-      ['', '', '', L.totalFactura, total],
+    // Build professional factura layout
+    const wb = XLSX.utils.book_new()
+    const wsData: (string | number)[][] = []
+
+    // Company header
+    wsData.push([config?.companyFullName || 'EMPRESA'])
+    wsData.push([config?.companyAddress || ''])
+    wsData.push([(config?.companyCity || '') + ' ' + (config?.companyProvince || '')])
+    if (config?.companyCif) wsData.push(['CIF: ' + config.companyCif])
+    else wsData.push([])
+    wsData.push([])
+
+    // Factura info
+    wsData.push([L.numero + ':', numero])
+    wsData.push([L.fecha + ':', fmtDate(fechaFact)])
+    wsData.push([])
+
+    // Client info
+    wsData.push([L.cliente + ':', cli.nombre])
+    wsData.push(['CIF:', cli.cif])
+    wsData.push(['Dirección:', `${cli.dir} ${cli.cp} ${cli.ciudad} ${cli.prov}`])
+    wsData.push([])
+
+    // Column headers
+    wsData.push([L.fecha, L.concepto, L.cantidad, L.precioUnitario, L.importe])
+
+    // Line items
+    lineas.forEach(r => {
+      const pu = precioUnit(r.c1, r.c2, r.clienteId)
+      wsData.push([fechaLbl(r.fecha), r.c1 + (r.c2 ? ' - ' + r.c2 : ''), r.cant, pu, pu * r.cant])
+    })
+
+    // Totals
+    wsData.push([])
+    wsData.push(['', '', '', L.baseImponible, base])
+    wsData.push(['', '', '', `IVA ${iva}%`, ivaImp])
+    wsData.push(['', '', '', L.totalFactura, total])
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
+
+    // Column widths
+    ws['!cols'] = [
+      { wch: 14 },  // Fecha
+      { wch: 40 },  // Concepto
+      { wch: 10 },  // Cantidad
+      { wch: 16 },  // Precio Unitario
+      { wch: 16 },  // Importe
     ]
 
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `Factura_${numero.replace(/\//g, '-')}.csv`
-    a.click()
+    // Style: bold for header rows and totals
+    // Company name (row 0) - bold, large
+    const companyCell = ws['A1']
+    if (companyCell) { companyCell.s = { font: { bold: true, sz: 16 } } }
+
+    // Column headers row index (after the header rows)
+    const headerRowIndex = wsData.findIndex(row => row[0] === L.fecha && row[1] === L.concepto)
+    if (headerRowIndex >= 0) {
+      for (let c = 0; c < 5; c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: headerRowIndex, c })]
+        if (cell) {
+          cell.s = {
+            font: { bold: true, color: { rgb: 'FFFFFF' } },
+            fill: { fgColor: { rgb: '1A1A1A' } },
+            alignment: { horizontal: c >= 2 ? 'right' : 'left' }
+          }
+        }
+      }
+    }
+
+    // Total row (last row) - bold
+    const totalRowIndex = wsData.length - 1
+    for (let c = 0; c < 5; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: totalRowIndex, c })]
+      if (cell) {
+        cell.s = { font: { bold: true } }
+      }
+    }
+
+    // Number format for currency cells
+    const lineStartIdx = headerRowIndex + 1
+    const lineEndIdx = wsData.length - 5 // before the empty + 3 totals rows
+    for (let r = lineStartIdx; r < wsData.length; r++) {
+      for (const c of [3, 4]) { // Precio Unitario and Importe columns
+        const cell = ws[XLSX.utils.encode_cell({ r, c })]
+        if (cell && typeof cell.v === 'number') {
+          cell.z = '#,##0.00'
+        }
+      }
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Factura')
+    XLSX.writeFile(wb, `Factura_${numero.replace(/\//g, '-')}.xlsx`)
   }
 
   return (
@@ -259,12 +350,22 @@ export function FacturasView() {
         </CardContent>
       </Card>
 
-      {/* Totals */}
-      <div className="flex flex-wrap gap-4 bg-white rounded-lg px-4 py-3 shadow-sm text-sm font-bold">
+      {/* Totals + Facturado filter */}
+      <div className="flex flex-wrap gap-4 bg-white rounded-lg px-4 py-3 shadow-sm text-sm font-bold items-center">
         <span>Líneas:<b className="text-[#005bb5] ml-1">{filtered.length}</b></span>
         <span>Seleccionadas:<b className="text-[#005bb5] ml-1">{selectedItems.length}</b></span>
         <span>Cantidad:<b className="text-[#005bb5] ml-1">{totalCant}</b></span>
         <span>Base:<b className="text-[#005bb5] ml-1">{fmtCurrency(totalBase)}</b></span>
+        <div className="ml-auto flex items-center gap-2">
+          <Checkbox
+            id="showFacturados"
+            checked={showFacturados}
+            onCheckedChange={(v) => setShowFacturados(v === true)}
+          />
+          <Label htmlFor="showFacturados" className="text-xs font-semibold text-slate-600 cursor-pointer select-none">
+            Mostrar facturados
+          </Label>
+        </div>
       </div>
 
       {/* Table */}
@@ -290,9 +391,17 @@ export function FacturasView() {
               const pu = precioUnit(r.c1, r.c2, r.clienteId)
               const imp = pu * r.cant
               const sel = selection[r.id] !== false
+              const isFacturado = r.facturado === true
               return (
-                <tr key={r.id} className={`border-b ${sel ? '' : 'opacity-40'}`}>
-                  <td className="p-2"><Checkbox checked={sel} onCheckedChange={() => toggleItem(r.id)} /></td>
+                <tr key={r.id} className={`border-b ${sel ? '' : 'opacity-40'} ${isFacturado ? 'border-l-4 border-l-green-500 bg-green-50/40' : ''}`}>
+                  <td className="p-2 flex items-center gap-1">
+                    <Checkbox checked={sel} onCheckedChange={() => toggleItem(r.id)} />
+                    {isFacturado && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                        <CheckCircle2 className="h-3 w-3" /> Facturado
+                      </span>
+                    )}
+                  </td>
                   <td className="p-2">{fmtDate(r.fecha)}</td>
                   <td className="p-2">{r.cliente}</td>
                   <td className="p-2">{r.c1}</td>
@@ -323,11 +432,35 @@ export function FacturasView() {
               <Printer className="h-4 w-4 mr-1" /> Imprimir
             </Button>
             <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={handleExportExcel}>
-              <FileSpreadsheet className="h-4 w-4 mr-1" /> Excel/CSV
+              <FileSpreadsheet className="h-4 w-4 mr-1" /> Excel
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Print-only CSS for A4 format */}
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #invoice-print-area,
+          #invoice-print-area * {
+            visibility: visible;
+          }
+          #invoice-print-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            padding: 15mm 20mm;
+          }
+          @page {
+            size: A4 portrait;
+            margin: 0;
+          }
+        }
+      `}</style>
     </div>
   )
 }
@@ -349,7 +482,7 @@ function InvoicePreview({ data, catalogo, config }: {
   }
 
   return (
-    <div className="font-[family-name:var(--font-geist-sans)] text-black text-[11pt] leading-[1.35]">
+    <div id="invoice-print-area" className="font-[family-name:var(--font-geist-sans)] text-black text-[11pt] leading-[1.35]">
       {/* Header */}
       <div className="flex justify-between items-start gap-4 mb-4">
         <div className="text-[10.5pt] leading-[1.4]">
@@ -358,6 +491,7 @@ function InvoicePreview({ data, catalogo, config }: {
           {config?.companyCity && <>{config.companyCity}</>}
           {config?.companyProvince && <> {config.companyProvince}</>}
           {(config?.companyCity || config?.companyProvince) && <br />}
+          {config?.companyCif && <><b>CIF:</b> {config.companyCif}<br /></>}
           <div className="mt-2 border border-black p-2 text-[10.5pt] w-fit">
             <b>{L.numero}:</b> {numero}<br />
             <b>{L.fecha}:</b> {fmtDate(fechaFact)}
@@ -369,15 +503,7 @@ function InvoicePreview({ data, catalogo, config }: {
             alt="Logo"
             style={{ maxWidth: '230px', height: 'auto', objectFit: 'contain' }}
           />
-        ) : (
-          <Image
-            src="/hualsa-logo.png"
-            alt="Logo"
-            width={200}
-            height={55}
-            style={{ maxWidth: '230px', height: 'auto' }}
-          />
-        )}
+        ) : null}
       </div>
 
       {/* Client */}

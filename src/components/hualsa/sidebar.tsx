@@ -62,12 +62,14 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle }: Side
         <div className="p-4 bg-white border-b-[3px] border-[#2bb24c] flex items-center justify-center min-h-[70px]">
           {config?.logo ? (
             <img
+              key={logoSrc}
               src={logoSrc}
               alt={appName}
               style={{ maxWidth: '180px', maxHeight: '55px', height: 'auto', objectFit: 'contain' }}
             />
           ) : (
             <img
+              key="fallback-logo"
               src="/hualsa-logo.png"
               alt={appName}
               style={{ maxWidth: '180px', maxHeight: '55px', height: 'auto', objectFit: 'contain' }}

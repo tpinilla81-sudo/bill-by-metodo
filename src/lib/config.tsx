@@ -56,6 +56,7 @@ export const DEFAULT_FIELDS_REGISTROS: FieldDef[] = [
   { key: 'precioUnitario', label: 'P.Unit', type: 'number', visible: true, isCustom: false },
   { key: 'importe', label: 'Importe', type: 'number', visible: true, isCustom: false },
   { key: 'observaciones', label: 'Obs', type: 'text', visible: true, isCustom: false, dbColumn: 'obs' },
+  { key: 'facturado', label: 'Estado', type: 'text', visible: true, isCustom: false, dbColumn: 'facturado' },
 ]
 
 export const DEFAULT_FIELDS_FACTURAS: FieldDef[] = [

@@ -66,5 +66,6 @@ export interface Registro {
   cant: number
   obs: string
   pasadoRegistro: boolean
+  facturado: boolean
   customData?: string
 }

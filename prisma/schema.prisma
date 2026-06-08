@@ -50,6 +50,7 @@ model Registro {
   cant            Int      @default(1)
   obs             String   @default("")
   pasadoRegistro  Boolean  @default(false)  // true = ya transferido a Registros
+  facturado       Boolean  @default(false)  // true = ya facturado
   customData      String   @default("")     // JSON: custom field values
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
