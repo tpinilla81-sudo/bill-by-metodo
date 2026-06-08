@@ -10,14 +10,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email y contraseña son obligatorios' }, { status: 400 })
     }
 
-    // Auto-seed: if no users exist, create the default admin tenant + superadmin user
+    // Auto-seed: if no users exist, create the system tenant + superadmin user
+    // The system tenant is NOT a real company — it's just the platform admin account.
+    // The superadmin creates real companies from the ADMIN panel.
     const userCount = await db.user.count()
     if (userCount === 0) {
       const tenant = await db.tenant.create({
         data: {
-          name: 'BILL by Metodo',
-          slug: 'bill',
-          fullName: 'BILL by Metodo - Sistema de Gestión',
+          name: 'Sistema',
+          slug: 'sistema',
+          fullName: 'Administración de la Plataforma',
           active: true,
         },
       })
@@ -26,7 +28,7 @@ export async function POST(request: Request) {
         data: {
           email: 'admin@bill.es',
           password: hashedPw,
-          name: 'Administrador',
+          name: 'SuperAdmin',
           role: 'superadmin',
           tenantId: tenant.id,
           active: true,

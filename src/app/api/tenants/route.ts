@@ -11,6 +11,9 @@ export async function GET() {
     }
 
     const tenants = await db.tenant.findMany({
+      where: {
+        slug: { not: 'sistema' }  // Hide system tenant from company list
+      },
       include: {
         _count: { select: { users: true } },
       },
