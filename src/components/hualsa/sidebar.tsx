@@ -1,21 +1,45 @@
 'use client'
 
-import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings } from 'lucide-react'
+import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useConfig } from '@/lib/config'
 import type { View } from '@/app/page'
+
+interface TenantInfo {
+  id: string
+  name: string
+  fullName: string
+  logo: string
+  address: string
+  city: string
+  province: string
+  cif: string
+}
+
+interface SessionUser {
+  id: string
+  email: string
+  name: string
+  role: string    // "superadmin", "admin", "user"
+  tenantId: string
+}
 
 interface SidebarProps {
   active: View
   onNavigate: (view: View) => void
   mobileOpen: boolean
   onMobileToggle: () => void
+  user: SessionUser
+  tenant: TenantInfo | null
+  onLogout: () => void
 }
 
-export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle }: SidebarProps) {
+export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, tenant, onLogout }: SidebarProps) {
   const { config } = useConfig()
 
-  const navItems: { key: View; label: string; icon: React.ReactNode; color: string }[] = [
+  const isSuperadmin = user?.role === 'superadmin'
+
+  const navItems: { key: View; label: string; icon: React.ReactNode; color: string; adminOnly?: boolean; superadminOnly?: boolean }[] = [
     { key: 'entrada', label: config?.sectionEntrada || 'ENTRADA', icon: <FileInput className="h-4 w-4" />, color: 'text-green-400' },
     { key: 'registros', label: config?.sectionRegistros || 'REGISTROS', icon: <Table2 className="h-4 w-4" />, color: 'text-blue-400' },
     { key: 'clientes', label: config?.sectionClientes || 'CLIENTES', icon: <Users className="h-4 w-4" />, color: 'text-purple-400' },
@@ -23,15 +47,29 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle }: Side
     { key: 'facturas', label: config?.sectionFacturas || 'FACTURAS', icon: <Receipt className="h-4 w-4" />, color: 'text-rose-400' },
     { key: 'backup', label: config?.sectionBackup || 'SEGURIDAD', icon: <Shield className="h-4 w-4" />, color: 'text-cyan-400' },
     { key: 'config', label: 'CONFIGURACIÓN', icon: <Settings className="h-4 w-4" />, color: 'text-gray-400' },
+    { key: 'admin', label: 'ADMIN', icon: <Crown className="h-4 w-4" />, color: 'text-amber-300', superadminOnly: true },
   ]
 
-  // Determine logo source
-  const logoSrc = config?.logo
-    ? (config.logo.startsWith('data:') ? config.logo : `data:image/png;base64,${config.logo}`)
-    : '/hualsa-logo.png'
+  // Use tenant logo if available, otherwise fall back to config logo, then default
+  const tenantLogo = tenant?.logo
+  const configLogo = config?.logo
 
-  const appName = config?.appName || 'HUALSA PRO'
+  const logoSrc = tenantLogo
+    ? (tenantLogo.startsWith('data:') ? tenantLogo : `data:image/png;base64,${tenantLogo}`)
+    : configLogo
+      ? (configLogo.startsWith('data:') ? configLogo : `data:image/png;base64,${configLogo}`)
+      : '/hualsa-logo.png'
+
+  const displayName = tenant?.name || config?.appName || 'BILL'
   const appVersion = config?.appVersion || 'v2.0'
+
+  function getRoleLabel(role: string) {
+    switch (role) {
+      case 'superadmin': return 'SuperAdmin'
+      case 'admin': return 'Admin'
+      default: return ''
+    }
+  }
 
   return (
     <>
@@ -60,43 +98,71 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle }: Side
         }`}
       >
         <div className="p-4 bg-white border-b-[3px] border-[#2bb24c] flex items-center justify-center min-h-[70px]">
-          {config?.logo ? (
+          {(tenantLogo || configLogo) ? (
             <img
               key={logoSrc}
               src={logoSrc}
-              alt={appName}
+              alt={displayName}
               style={{ maxWidth: '180px', maxHeight: '55px', height: 'auto', objectFit: 'contain' }}
             />
           ) : (
             <img
               key="fallback-logo"
               src="/hualsa-logo.png"
-              alt={appName}
+              alt={displayName}
               style={{ maxWidth: '180px', maxHeight: '55px', height: 'auto', objectFit: 'contain' }}
             />
           )}
         </div>
         <nav className="flex-1 flex flex-col overflow-y-auto">
-          {navItems.map((item) => (
-            <button
-              key={item.key}
-              onClick={() => {
-                onNavigate(item.key)
-                onMobileToggle()
-              }}
-              className={`w-full px-4 py-3.5 flex items-center gap-3 text-sm text-left transition-colors ${
-                active === item.key
-                  ? `${item.color} bg-white/10 border-l-4 border-[#2bb24c] font-bold`
-                  : 'text-gray-400 hover:text-gray-200 hover:bg-white/5 border-l-4 border-transparent'
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </button>
-          ))}
+          {navItems
+            .filter(item => {
+              if (item.superadminOnly && !isSuperadmin) return false
+              return true
+            })
+            .map((item) => (
+              <button
+                key={item.key}
+                onClick={() => {
+                  onNavigate(item.key)
+                  onMobileToggle()
+                }}
+                className={`w-full px-4 py-3.5 flex items-center gap-3 text-sm text-left transition-colors ${
+                  active === item.key
+                    ? `${item.color} bg-white/10 border-l-4 border-[#2bb24c] font-bold`
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5 border-l-4 border-transparent'
+                }`}
+              >
+                {item.icon}
+                {item.label}
+                {item.superadminOnly && <Crown className="h-3 w-3 ml-auto text-amber-400" />}
+              </button>
+            ))}
         </nav>
+
+        {/* User info + Logout */}
+        <div className="border-t border-gray-700/50">
+          <div className="px-4 py-2.5 text-xs text-gray-500 truncate flex items-center gap-1.5">
+            <span className="truncate">{user?.name || user?.email}</span>
+            {user?.role && user.role !== 'user' && (
+              <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                user.role === 'superadmin' ? 'bg-red-900/40 text-red-400' : 'bg-purple-900/40 text-purple-400'
+              }`}>
+                {getRoleLabel(user.role)}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={onLogout}
+            className="w-full px-4 py-2.5 flex items-center gap-3 text-sm text-left text-red-400 hover:text-red-300 hover:bg-white/5 transition-colors"
+          >
+            <LogOut className="h-4 w-4" />
+            Cerrar Sesión
+          </button>
+        </div>
+
         <div className="p-3 text-center text-xs text-gray-500">
-          {appName} {appVersion}
+          {displayName} {appVersion}
         </div>
       </aside>
     </>

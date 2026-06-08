@@ -58,14 +58,35 @@ model Registro {
   clienteRel Cliente? @relation(fields: [clienteId], references: [id])
 }
 
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String                    // Company name (fixed, not editable by user)
+  slug      String   @unique          // URL-friendly identifier (e.g. "hualsa", "bill")
+  logo      String   @default("")     // base64 logo
+  fullName  String   @default("")     // Razón social
+  address   String   @default("")
+  city      String   @default("")
+  province  String   @default("")
+  cif       String   @default("")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
-  password  String
-  name      String   @default("Admin")
-  role      String   @default("admin")   // "admin" or "user"
+  password  String                    // hashed
+  name      String   @default("")
+  role      String   @default("user")  // "admin" or "user"
+  tenantId  String                     // which company this user belongs to
+  active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
 }
 
 model FacturaSeq {

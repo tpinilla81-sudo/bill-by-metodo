@@ -475,7 +475,18 @@ function FieldsManager({
   )
 }
 
-export function ConfiguracionView() {
+interface TenantInfo {
+  id: string
+  name: string
+  fullName: string
+  logo: string
+  address: string
+  city: string
+  province: string
+  cif: string
+}
+
+export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
   const { raw, config, update, loading } = useConfig()
   const [saving, setSaving] = useState(false)
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
@@ -609,14 +620,11 @@ export function ConfiguracionView() {
         </Button>
       </div>
 
-      <Tabs defaultValue="campos" className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
+      <Tabs defaultValue="empresa" className="w-full">
+        <TabsList className="grid w-full grid-cols-3 max-w-md">
           <TabsTrigger value="empresa"><Building2 className="h-4 w-4 mr-1.5" /> Empresa</TabsTrigger>
-          <TabsTrigger value="transfer"><ArrowRightLeft className="h-4 w-4 mr-1.5" /> Transfer</TabsTrigger>
           <TabsTrigger value="conceptos"><BookOpen className="h-4 w-4 mr-1.5" /> Conceptos</TabsTrigger>
           <TabsTrigger value="campos"><LayoutList className="h-4 w-4 mr-1.5" /> Campos</TabsTrigger>
-          <TabsTrigger value="secciones"><Tag className="h-4 w-4 mr-1.5" /> Secciones</TabsTrigger>
-          <TabsTrigger value="etiquetas"><Settings className="h-4 w-4 mr-1.5" /> Etiquetas</TabsTrigger>
         </TabsList>
 
         {/* ─── EMPRESA TAB ─────────────────────────────── */}
@@ -640,6 +648,21 @@ export function ConfiguracionView() {
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><Building2 className="h-4 w-4" /> Datos de la Empresa</CardTitle></CardHeader>
             <CardContent className="space-y-3">
+              {/* Tenant info banner */}
+              {tenant && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
+                  <Building2 className="h-5 w-5 text-[#005bb5] shrink-0" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-gray-800">{tenant.name}</span>
+                      <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-bold">FIJO</span>
+                    </div>
+                    {tenant.fullName && <p className="text-xs text-gray-500">{tenant.fullName}</p>}
+                    {tenant.cif && <p className="text-xs text-gray-500">CIF: {tenant.cif}</p>}
+                  </div>
+                  <p className="text-[10px] text-gray-400 text-right">Nombre de empresa asignado<br/>por el administrador</p>
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Nombre App (sidebar)</Label><Input value={appName} onChange={e => setAppName(e.target.value)} placeholder="MI APP PRO" /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Razón Social</Label><Input value={companyFullName} onChange={e => setCompanyFullName(e.target.value)} placeholder="Mi Empresa S.L." /></div>
@@ -659,39 +682,17 @@ export function ConfiguracionView() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        {/* ─── TRANSFER TAB ─────────────────────────────── */}
-        <TabsContent value="transfer" className="space-y-4 mt-4">
           <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><ArrowRightLeft className="h-4 w-4" /> Transferencia Entrada → Registros</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-gray-500">Configura cómo y cuándo las entradas pasan de la sección Entrada a Registros.</p>
-              <div className="space-y-3">
-                <Label className="text-sm font-bold text-slate-700">Modo de transferencia</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => setTransferMode('auto')} className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${transferMode === 'auto' ? 'border-[#005bb5] bg-blue-50 text-[#005bb5]' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'}`}>
-                    <Clock className="h-6 w-6" /><span className="text-sm font-bold">Automático</span><span className="text-[11px] text-center opacity-70">A la hora configurada</span>
-                  </button>
-                  <button onClick={() => setTransferMode('manual')} className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${transferMode === 'manual' ? 'border-[#2bb24c] bg-green-50 text-[#2bb24c]' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'}`}>
-                    <Zap className="h-6 w-6" /><span className="text-sm font-bold">Manual</span><span className="text-[11px] text-center opacity-70">Con botón "Pasar al registro"</span>
-                  </button>
-                </div>
-              </div>
-              {transferMode === 'auto' && (
-                <div className="space-y-2">
-                  <Label className="text-sm font-bold text-slate-700">Hora de transferencia automática</Label>
-                  <div className="flex items-center gap-3">
-                    <Input type="time" value={transferTime} onChange={e => setTransferTime(e.target.value)} className="w-40 text-lg font-mono" />
-                    <span className="text-sm text-gray-400">A esta hora, todas las entradas activas pasarán automáticamente a Registros</span>
-                  </div>
-                </div>
-              )}
-              <div className={`rounded-lg p-3 text-sm ${transferMode === 'auto' ? 'bg-blue-50 border border-blue-200 text-blue-700' : 'bg-green-50 border border-green-200 text-green-700'}`}>
-                {transferMode === 'auto'
-                  ? <p>Las entradas se transferirán automáticamente cada día a las <b>{transferTime}</b>. Debes tener la aplicación abierta para que se ejecute la transferencia.</p>
-                  : <p>Las entradas permanecerán en Entrada hasta que pulses el botón <b>"Pasar al registro"</b>. Tú decides cuándo transferirlas.</p>
-                }
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><Tag className="h-4 w-4" /> Nombres de Secciones</CardTitle></CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-500 mb-4">Personaliza los nombres de las secciones en el menú lateral.</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Entrada</Label><Input value={sectionEntrada} onChange={e => setSectionEntrada(e.target.value)} /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Registros</Label><Input value={sectionRegistros} onChange={e => setSectionRegistros(e.target.value)} /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Clientes</Label><Input value={sectionClientes} onChange={e => setSectionClientes(e.target.value)} /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Catálogo</Label><Input value={sectionCatalogo} onChange={e => setSectionCatalogo(e.target.value)} /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Facturas</Label><Input value={sectionFacturas} onChange={e => setSectionFacturas(e.target.value)} /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Seguridad</Label><Input value={sectionBackup} onChange={e => setSectionBackup(e.target.value)} /></div>
               </div>
             </CardContent>
           </Card>
@@ -755,92 +756,7 @@ export function ConfiguracionView() {
           />
         </TabsContent>
 
-        {/* ─── SECCIONES TAB ────────────────────────────── */}
-        <TabsContent value="secciones" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader><CardTitle className="text-base">Nombres de Secciones</CardTitle></CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-500 mb-4">Personaliza los nombres de las secciones en el menú lateral.</p>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Entrada</Label><Input value={sectionEntrada} onChange={e => setSectionEntrada(e.target.value)} /></div>
-                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Registros</Label><Input value={sectionRegistros} onChange={e => setSectionRegistros(e.target.value)} /></div>
-                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Clientes</Label><Input value={sectionClientes} onChange={e => setSectionClientes(e.target.value)} /></div>
-                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Catálogo</Label><Input value={sectionCatalogo} onChange={e => setSectionCatalogo(e.target.value)} /></div>
-                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Facturas</Label><Input value={sectionFacturas} onChange={e => setSectionFacturas(e.target.value)} /></div>
-                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Seguridad</Label><Input value={sectionBackup} onChange={e => setSectionBackup(e.target.value)} /></div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        {/* ─── ETIQUETAS TAB ────────────────────────────── */}
-        <TabsContent value="etiquetas" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader><CardTitle className="text-base">Etiquetas — Entrada</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {(Object.keys(DEFAULT_LABELS_ENTRADA) as (keyof typeof DEFAULT_LABELS_ENTRADA)[]).map(key => (
-                  <div key={key}>
-                    <Label className="text-xs uppercase font-bold text-slate-500">{key}</Label>
-                    <Input value={labelsEntrada[key] || ''} onChange={e => setLabelsEntrada(prev => ({ ...prev, [key]: e.target.value }))} />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle className="text-base">Etiquetas — Catálogo</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {(Object.keys(DEFAULT_LABELS_CATALOGO) as (keyof typeof DEFAULT_LABELS_CATALOGO)[]).map(key => (
-                  <div key={key}>
-                    <Label className="text-xs uppercase font-bold text-slate-500">{key}</Label>
-                    <Input value={labelsCatalogo[key] || ''} onChange={e => setLabelsCatalogo(prev => ({ ...prev, [key]: e.target.value }))} />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle className="text-base">Etiquetas — Registros</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {(Object.keys(DEFAULT_LABELS_REGISTROS) as (keyof typeof DEFAULT_LABELS_REGISTROS)[]).map(key => (
-                  <div key={key}>
-                    <Label className="text-xs uppercase font-bold text-slate-500">{key}</Label>
-                    <Input value={labelsRegistros[key] || ''} onChange={e => setLabelsRegistros(prev => ({ ...prev, [key]: e.target.value }))} />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle className="text-base">Etiquetas — Facturas</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {(Object.keys(DEFAULT_LABELS_FACTURAS) as (keyof typeof DEFAULT_LABELS_FACTURAS)[]).map(key => (
-                  <div key={key}>
-                    <Label className="text-xs uppercase font-bold text-slate-500">{key}</Label>
-                    <Input value={labelsFacturas[key] || ''} onChange={e => setLabelsFacturas(prev => ({ ...prev, [key]: e.target.value }))} />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle className="text-base">Etiquetas — Clientes</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {(Object.keys(DEFAULT_LABELS_CLIENTES) as (keyof typeof DEFAULT_LABELS_CLIENTES)[]).map(key => (
-                  <div key={key}>
-                    <Label className="text-xs uppercase font-bold text-slate-500">{key}</Label>
-                    <Input value={labelsClientes[key] || ''} onChange={e => setLabelsClientes(prev => ({ ...prev, [key]: e.target.value }))} />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
     </div>
   )
