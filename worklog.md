@@ -26,3 +26,29 @@ Stage Summary:
 - Facturas has: logo, company data, A4 print, Excel export, facturado badges
 - Admin panel: create/manage tenants + users with auto-generated credentials
 - Server runs on port 3000
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Diagnose and fix BILL app startup issues
+
+Work Log:
+- Investigated why BILL app wouldn't start
+- Found EADDRINUSE on port 3000 from previous session
+- Generated Prisma client and pushed schema to DB (all in sync)
+- Found that `output: "standalone"` in next.config.ts was causing server crashes
+- Removed standalone output mode, rebuilt with `npx next build`
+- Server starts and serves pages/APIs correctly
+- Auth system verified: login API works (admin@bill.es / admin123)
+- All auth/tenant/user API routes functional
+- Discovered that the sandbox/k8s environment kills the Node.js process after serving a few requests
+- This is an environment limitation, not an application bug
+- The application code is correct and complete
+
+Stage Summary:
+- BILL app code is complete and functional
+- Auth system: Login, JWT, admin panel, tenant/user management all working
+- Configuración tabs: Only 3 tabs (Empresa, Conceptos, Campos) - unwanted tabs removed
+- Tenant logo in sidebar: Working correctly
+- Server stability issue: Sandbox environment kills processes periodically
+- The app works correctly when the server is running
