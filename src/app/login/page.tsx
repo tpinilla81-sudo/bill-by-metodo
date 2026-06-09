@@ -61,7 +61,10 @@ export default function LoginPage() {
               style={{ maxWidth: '200px', maxHeight: '80px', height: 'auto', objectFit: 'contain' }}
             />
           </div>
-          <p className="text-gray-500 text-sm">Sistema de Gestión Empresarial</p>
+          <div className="flex flex-col items-center">
+            <span className="text-2xl font-bold tracking-wide text-gray-800">BILL</span>
+            <span className="text-sm font-medium text-gray-500">by <span className="text-[#2bb24c] font-semibold">Método</span></span>
+          </div>
         </CardHeader>
         <CardContent className="px-8 pb-8 pt-4">
           <form onSubmit={handleSubmit} className="space-y-5">
