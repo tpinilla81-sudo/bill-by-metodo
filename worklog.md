@@ -52,3 +52,24 @@ Stage Summary:
 - Tenant logo in sidebar: Working correctly
 - Server stability issue: Sandbox environment kills processes periodically
 - The app works correctly when the server is running
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Update BILL app logo - replace old logo with new "B" logo (logo_b_fina.png)
+
+Work Log:
+- User uploaded new logo file: /home/z/my-project/upload/logo_b_fina.png
+- The app is called BILL, belongs to group METODO (green wheel logo). The center of the logo should show "B" not "5S"
+- Copied new logo to /home/z/my-project/public/bill-by-metodo-logo.png (replaces old logo)
+- Copied new logo to /home/z/my-project/public/favicon.ico (replaces old favicon)
+- Verified no references to "5S" exist in the source code
+- Verified all logo references in source code point to /bill-by-metodo-logo.png (sidebar, login page, main page)
+- Rebuilt Next.js app successfully
+- Restarted server on port 3000 - confirmed working (HTTP 200)
+
+Stage Summary:
+- New "B" logo deployed across the entire BILL app
+- Logo appears in: sidebar header, login page, loading screen, favicon
+- No code changes needed - all references already point to /bill-by-metodo-logo.png
+- Server rebuilt and running
