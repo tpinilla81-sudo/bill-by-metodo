@@ -92,14 +92,18 @@ export function CatalogoView() {
     const effectiveClienteId = (clienteId === '__none__' || !clienteId) ? '' : clienteId
     const customDataStr = serializeCustomData(customValues)
     const body = { clienteId: effectiveClienteId, c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(finalPrice) || 0, customData: customDataStr }
-    if (editingId) {
-      await tenantFetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
-      showStatus('ok', 'Artículo actualizado ✓')
-    } else {
-      await tenantFetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      showStatus('ok', 'Artículo guardado ✓')
-    }
-    resetForm(); loadData()
+    try {
+      if (editingId) {
+        const res = await tenantFetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+        if (!res.ok) { const d = await res.json().catch(() => ({})); showStatus('err', d.error || 'Error al actualizar'); return }
+        showStatus('ok', 'Artículo actualizado ✓')
+      } else {
+        const res = await tenantFetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        if (!res.ok) { const d = await res.json().catch(() => ({})); showStatus('err', d.error || 'Error al guardar'); return }
+        showStatus('ok', 'Artículo guardado ✓')
+      }
+      resetForm(); loadData()
+    } catch { showStatus('err', 'Error de conexión') }
   }
 
   function handleEdit(x: CatalogoItem) {

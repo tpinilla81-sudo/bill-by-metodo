@@ -94,12 +94,18 @@ export function ClientesView() {
     if (!nombre) { alert('Nombre obligatorio'); return }
     const customDataStr = serializeCustomData(customValues)
     const body = { nombre, cif, mail, tel, dir, cp, ciudad, prov, customData: customDataStr }
-    if (editingId) {
-      await tenantFetch('/api/clientes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
-    } else {
-      await tenantFetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    try {
+      if (editingId) {
+        const res = await tenantFetch('/api/clientes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+        if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || 'Error al actualizar'); return }
+      } else {
+        const res = await tenantFetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || 'Error al guardar'); return }
+      }
+      resetForm(); loadData()
+    } catch (err) {
+      alert('Error de conexión')
     }
-    resetForm(); loadData()
   }
 
   function handleEdit(c: Cliente) {
@@ -112,7 +118,11 @@ export function ClientesView() {
 
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar cliente?')) return
-    await tenantFetch(`/api/clientes?id=${id}`, { method: 'DELETE' }); loadData()
+    try {
+      const res = await tenantFetch(`/api/clientes?id=${id}`, { method: 'DELETE' })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || 'Error al eliminar'); return }
+      loadData()
+    } catch { alert('Error de conexión') }
   }
 
   // Get display value from a cliente record for a field

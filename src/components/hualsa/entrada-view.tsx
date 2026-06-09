@@ -165,16 +165,20 @@ export function EntradaView() {
     const customDataStr = serializeCustomData(customValues)
     const body = { fecha, clienteId, cliente: cli?.nombre || '', c1, c2, cant: Number(cant), obs, customData: customDataStr }
 
-    if (editingId) {
-      await tenantFetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
-      setEditingId(null)
-      showStatus('ok', 'Entrada actualizada ✓')
-    } else {
-      await tenantFetch('/api/registros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      showStatus('ok', 'Entrada guardada ✓')
-    }
-    setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
-    loadData()
+    try {
+      if (editingId) {
+        const res = await tenantFetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+        if (!res.ok) { const d = await res.json().catch(() => ({})); showStatus('err', d.error || 'Error al actualizar'); return }
+        setEditingId(null)
+        showStatus('ok', 'Entrada actualizada ✓')
+      } else {
+        const res = await tenantFetch('/api/registros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        if (!res.ok) { const d = await res.json().catch(() => ({})); showStatus('err', d.error || 'Error al guardar'); return }
+        showStatus('ok', 'Entrada guardada ✓')
+      }
+      setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
+      loadData()
+    } catch { showStatus('err', 'Error de conexión') }
   }
 
   function handleEdit(r: Registro) {
