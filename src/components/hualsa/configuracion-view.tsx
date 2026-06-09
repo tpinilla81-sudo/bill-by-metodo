@@ -804,18 +804,17 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
                   <p className="text-[10px] text-gray-400 text-right">Nombre de empresa asignado<br/>por el administrador</p>
                 </div>
               )}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div><Label className="text-xs uppercase font-bold text-slate-500">Nombre App (sidebar)</Label><Input value={appName} onChange={e => setAppName(e.target.value)} placeholder="MI APP PRO" /></div>
-                <div><Label className="text-xs uppercase font-bold text-slate-500">Razón Social</Label><Input value={companyFullName} onChange={e => setCompanyFullName(e.target.value)} placeholder="Mi Empresa S.L." /></div>
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Razón Social</Label>
+                <Input value={companyFullName} onChange={e => setCompanyFullName(e.target.value)} placeholder="Mi Empresa S.L." />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div><Label className="text-xs uppercase font-bold text-slate-500">CIF</Label><Input value={companyCif} onChange={e => setCompanyCif(e.target.value)} placeholder="B12345678" /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Dirección</Label><Input value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} placeholder="C/ Example, Nº 1" /></div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Ciudad / C.P.</Label><Input value={companyCity} onChange={e => setCompanyCity(e.target.value)} placeholder="28001 Madrid" /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Provincia</Label><Input value={companyProvince} onChange={e => setCompanyProvince(e.target.value)} placeholder="Madrid" /></div>
-                <div><Label className="text-xs uppercase font-bold text-slate-500">Versión</Label><Input value={appVersion} onChange={e => setAppVersion(e.target.value)} placeholder="v2.0" /></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Moneda</Label><Input value={currency} onChange={e => setCurrency(e.target.value)} placeholder="€" className="w-24" /></div>

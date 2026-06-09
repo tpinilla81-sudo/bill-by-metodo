@@ -62,8 +62,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
       ? (configLogo.startsWith('data:') ? configLogo : `data:image/png;base64,${configLogo}`)
       : '/bill-by-metodo-logo.png'
 
-  const displayName = isSuperadmin ? activeTenantName : (tenant?.name || config?.appName || 'BILL by Metodo')
-  const appVersion = config?.appVersion || 'v3.0'
+  const displayName = isSuperadmin ? activeTenantName : (tenant?.name || 'BILL')
 
   function getRoleLabel(role: string) {
     switch (role) {
@@ -175,7 +174,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
         </div>
 
         <div className="p-3 text-center text-xs text-gray-500">
-          {displayName} {appVersion}
+          BILL
         </div>
       </aside>
     </>

@@ -25,7 +25,7 @@ function AppContent() {
   // Update page title dynamically
   useEffect(() => {
     if (config) {
-      document.title = `${config.appName} - ${config.companyFullName || 'Gestión'}`
+      document.title = `BILL - ${config.companyFullName || config.companyName || 'Gestión'}`
     }
   }, [config])
 
