@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, Eye, EyeOff, LayoutList, Pencil, Trash2, Plus, X, ChevronUp, ChevronDown } from 'lucide-react'
+import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, Eye, EyeOff, LayoutList, Pencil, Trash2, Plus, X, ChevronUp, ChevronDown, Users, Shield, Switch as SwitchIcon } from 'lucide-react'
 import {
   useConfig,
   DEFAULT_LABELS_ENTRADA,
@@ -24,7 +24,311 @@ import {
   type AppConfig,
   type FieldDef,
 } from '@/lib/config'
+import { useTenantFetch } from '@/lib/use-tenant-fetch'
+import { useAuth } from '@/lib/auth-context'
+import { Switch } from '@/components/ui/switch'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 
+
+// ─── UsuariosManager: CRUD for users with permissions ────────
+function UsuariosManager({ userRole }: { userRole: string }) {
+  const { tenantFetch } = useTenantFetch()
+  const [users, setUsers] = useState<Array<{
+    id: string; email: string; name: string; role: string;
+    tenantId: string; tenantName: string; active: boolean; createdAt: string
+  }>>([])
+  const [loading, setLoading] = useState(true)
+  const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [showDialog, setShowDialog] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
+
+  const [formEmail, setFormEmail] = useState('')
+  const [formPassword, setFormPassword] = useState('')
+  const [formName, setFormName] = useState('')
+  const [formRole, setFormRole] = useState('user')
+  const [formActive, setFormActive] = useState(true)
+
+  const loadData = useCallback(async () => {
+    try {
+      const res = await tenantFetch('/api/users')
+      if (res.ok) setUsers(await res.json())
+    } catch (err) {
+      console.error('Error loading users:', err)
+    }
+    setLoading(false)
+  }, [tenantFetch])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  function showMsg(type: 'ok' | 'err', text: string) {
+    setStatusMsg({ type, text })
+    setTimeout(() => setStatusMsg(null), 3000)
+  }
+
+  function resetForm() {
+    setEditId(null); setFormEmail(''); setFormPassword(''); setFormName('')
+    setFormRole('user'); setFormActive(true); setShowDialog(false); setShowPassword(false)
+  }
+
+  function openCreate() {
+    resetForm()
+    setShowDialog(true)
+  }
+
+  function openEdit(u: typeof users[0]) {
+    setEditId(u.id); setFormEmail(u.email); setFormPassword(''); setFormName(u.name)
+    setFormRole(u.role); setFormActive(u.active)
+    setShowDialog(true)
+  }
+
+  // Available roles based on current user's role
+  const availableRoles = userRole === 'superadmin'
+    ? [
+        { value: 'user', label: 'Usuario', desc: 'Trabaja con datos de su empresa' },
+        { value: 'admin', label: 'Administrador', desc: 'Gestiona su empresa y usuarios' },
+        { value: 'superadmin', label: 'GESTORAPP', desc: 'Dueño de la app. Acceso total' },
+      ]
+    : userRole === 'admin'
+    ? [
+        { value: 'user', label: 'Usuario', desc: 'Trabaja con datos de su empresa' },
+        { value: 'admin', label: 'Administrador', desc: 'Gestiona su empresa y usuarios' },
+      ]
+    : []
+
+  async function handleSave() {
+    if (!editId && (!formEmail.trim() || !formPassword.trim())) {
+      showMsg('err', 'Email y contraseña son obligatorios')
+      return
+    }
+
+    try {
+      if (editId) {
+        const body: Record<string, unknown> = {
+          id: editId, name: formName, role: formRole, active: formActive,
+        }
+        if (formPassword.trim()) body.password = formPassword.trim()
+        const res = await tenantFetch('/api/users', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+        showMsg('ok', 'Usuario actualizado ✓')
+      } else {
+        const res = await tenantFetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: formEmail.trim(), password: formPassword,
+            name: formName, role: formRole,
+          }),
+        })
+        if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+        showMsg('ok', 'Usuario creado ✓')
+      }
+      resetForm(); loadData()
+    } catch {
+      showMsg('err', 'Error de conexión')
+    }
+  }
+
+  async function handleToggleActive(u: typeof users[0]) {
+    const newActive = !u.active
+    try {
+      const res = await tenantFetch('/api/users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: u.id, active: newActive }),
+      })
+      if (!res.ok) { showMsg('err', 'Error al actualizar'); return }
+      showMsg('ok', `Usuario ${newActive ? 'activado' : 'desactivado'} ✓`)
+      loadData()
+    } catch {
+      showMsg('err', 'Error de conexión')
+    }
+  }
+
+  function getRoleBadge(role: string) {
+    switch (role) {
+      case 'superadmin':
+        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700"><Shield className="h-3 w-3" /> GESTORAPP</span>
+      case 'admin':
+        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700"><Shield className="h-3 w-3" /> Admin</span>
+      default:
+        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600"><Users className="h-3 w-3" /> Usuario</span>
+    }
+  }
+
+  // Permissions summary per role
+  const permissionsInfo = [
+    { role: 'GESTORAPP', color: 'red', perms: ['Crear/eliminar empresas', 'Gestionar todos los usuarios', 'Cambiar entre empresas', 'Acceso total al sistema'] },
+    { role: 'Admin', color: 'purple', perms: ['Gestionar su empresa', 'Crear/editar usuarios de su empresa', 'Acceso a configuración', 'Ver todas las secciones de datos'] },
+    { role: 'Usuario', color: 'gray', perms: ['Trabajar con datos de su empresa', 'Ver entradas, registros, facturas', 'Sin acceso a configuración', 'Sin gestión de usuarios'] },
+  ]
+
+  if (loading) return <div className="p-6 text-center text-gray-400">Cargando usuarios...</div>
+
+  return (
+    <div className="space-y-4">
+      {statusMsg && (
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+          {statusMsg.type === 'ok' && <CheckCircle className="h-4 w-4" />}
+          {statusMsg.text}
+        </div>
+      )}
+
+      {/* Permissions summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {permissionsInfo.map(p => (
+          <Card key={p.role} className={`border-l-4 ${
+            p.color === 'red' ? 'border-l-red-400 bg-red-50/30' :
+            p.color === 'purple' ? 'border-l-purple-400 bg-purple-50/30' :
+            'border-l-gray-400 bg-gray-50/30'
+          }`}>
+            <CardHeader className="pb-2 pt-3 px-4">
+              <CardTitle className="text-sm flex items-center gap-1.5">
+                <Shield className={`h-4 w-4 ${
+                  p.color === 'red' ? 'text-red-500' :
+                  p.color === 'purple' ? 'text-purple-500' :
+                  'text-gray-500'
+                }`} />
+                {p.role}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <ul className="space-y-1">
+                {p.perms.map(perm => (
+                  <li key={perm} className="text-[11px] text-gray-600 flex items-start gap-1.5">
+                    <span className="text-[#2bb24c] mt-0.5">✓</span>
+                    {perm}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        ))
+        }
+      </div>
+
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">Gestiona los usuarios y sus permisos.</p>
+        <Button onClick={openCreate} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
+          <Plus className="h-4 w-4 mr-1" /> Nuevo Usuario
+        </Button>
+      </div>
+
+      {/* Users table */}
+      <div className="bg-white rounded-lg border overflow-auto shadow-sm">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-blue-50">
+              <th className="p-3 text-left font-semibold border-b">Email</th>
+              <th className="p-3 text-left font-semibold border-b">Nombre</th>
+              <th className="p-3 text-center font-semibold border-b">Rol</th>
+              <th className="p-3 text-center font-semibold border-b">Estado</th>
+              <th className="p-3 text-center font-semibold border-b">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.id} className={`border-b hover:bg-gray-50 ${!u.active ? 'opacity-50' : ''}`}>
+                <td className="p-3 font-medium text-gray-800">{u.email}</td>
+                <td className="p-3 text-gray-600">{u.name || '—'}</td>
+                <td className="p-3 text-center">{getRoleBadge(u.role)}</td>
+                <td className="p-3 text-center">
+                  <button
+                    onClick={() => handleToggleActive(u)}
+                    className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                      u.active ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-600 hover:bg-red-200'
+                    }`
+                  }
+                  >
+                    {u.active ? 'Activo' : 'Inactivo'}
+                  </button>
+                </td>
+                <td className="p-3 text-center">
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-[#005bb5] hover:bg-blue-50" onClick={() => openEdit(u)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </td>
+              </tr>
+            ))}
+            {users.length === 0 && (
+              <tr><td colSpan={5} className="p-6 text-center text-gray-400">No hay usuarios</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Create/Edit Dialog */}
+      <Dialog open={showDialog} onOpenChange={(open) => { if (!open) resetForm() }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-[#005bb5]" />
+              {editId ? 'Editar Usuario' : 'Nuevo Usuario'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-xs uppercase font-bold text-slate-500">Email</Label>
+              <Input value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="usuario@ejemplo.com" className="mt-1" disabled={!!editId} />
+            </div>
+            <div>
+              <Label className="text-xs uppercase font-bold text-slate-500">
+                {editId ? 'Nueva Contraseña (dejar vacío para mantener)' : 'Contraseña'}
+              </Label>
+              <div className="relative mt-1">
+                <Input type={showPassword ? 'text' : 'password'} value={formPassword} onChange={e => setFormPassword(e.target.value)} placeholder={editId ? '••••••••' : 'Contraseña'} required={!editId} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs uppercase font-bold text-slate-500">Nombre</Label>
+              <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Nombre completo" className="mt-1" />
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Rol y Permisos</Label>
+                <Select value={formRole} onValueChange={setFormRole}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {availableRoles.map(r => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {availableRoles.find(r => r.value === formRole) && (
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {availableRoles.find(r => r.value === formRole)?.desc}
+                  </p>
+                )}
+              </div>
+            </div>
+            {editId && (
+              <div className="flex items-center gap-3">
+                <Label className="text-xs uppercase font-bold text-slate-500">Activo</Label>
+                <Switch checked={formActive} onCheckedChange={setFormActive} />
+                <span className={`text-xs font-bold ${formActive ? 'text-green-600' : 'text-red-500'}`}>
+                  {formActive ? 'Activo' : 'Inactivo'}
+                </span>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={resetForm}>Cancelar</Button>
+            <Button onClick={handleSave} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
+              <CheckCircle className="h-4 w-4 mr-1" /> {editId ? 'ACTUALIZAR' : 'CREAR'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
 
 // ─── FieldEditor: Edit a single field definition ─────────────
 function FieldEditor({
@@ -323,6 +627,8 @@ interface TenantInfo {
 
 export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
   const { raw, config, update, loading } = useConfig()
+  const { user } = useAuth()
+  const userRole = user?.role || 'user'
   const [saving, setSaving] = useState(false)
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
@@ -456,8 +762,9 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
       </div>
 
       <Tabs defaultValue="empresa" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
+        <TabsList className="grid w-full grid-cols-3 max-w-md">
           <TabsTrigger value="empresa"><Building2 className="h-4 w-4 mr-1.5" /> Empresa</TabsTrigger>
+          <TabsTrigger value="usuarios"><Users className="h-4 w-4 mr-1.5" /> Usuarios</TabsTrigger>
           <TabsTrigger value="campos"><LayoutList className="h-4 w-4 mr-1.5" /> Campos</TabsTrigger>
         </TabsList>
 
@@ -530,6 +837,11 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ─── USUARIOS TAB (with permissions) ──────────── */}
+        <TabsContent value="usuarios" className="space-y-4 mt-4">
+          <UsuariosManager userRole={userRole} />
         </TabsContent>
 
         {/* ─── CAMPOS TAB (Full CRUD for fields) ────────── */}

@@ -35,7 +35,7 @@ export async function GET() {
   }
 }
 
-// POST /api/users - Create new user (superadmin only)
+// POST /api/users - Create new user (admin or superadmin)
 export async function POST(request: Request) {
   try {
     const admin = await requireAdmin()
@@ -44,7 +44,14 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { email, password, name, role, tenantId } = body
+    const { email, password, name, role } = body
+    let { tenantId } = body
+
+    // If tenantId not provided, infer it from the effective tenant (x-tenant-id header for superadmin)
+    if (!tenantId) {
+      const { getEffectiveTenantId } = await import('@/lib/tenant')
+      tenantId = await getEffectiveTenantId(request) || undefined
+    }
 
     if (!email || !password || !tenantId) {
       return NextResponse.json({ error: 'Email, contraseña y empresa son obligatorios' }, { status: 400 })
