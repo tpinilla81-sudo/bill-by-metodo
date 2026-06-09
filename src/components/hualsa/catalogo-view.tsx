@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Pencil, Trash2, Save, RotateCcw, Filter, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, ChevronDown, Settings2 } from 'lucide-react'
-import { fmtCurrency, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
+import { fmtCurrency, safeArray, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_CATALOGO, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
 import { useTenantFetch } from '@/lib/use-tenant-fetch'
 
@@ -58,7 +58,7 @@ export function CatalogoView() {
 
   const loadData = useCallback(async () => {
     const [catRes, cRes] = await Promise.all([tenantFetch('/api/catalogo'), tenantFetch('/api/clientes')])
-    setData({ catalogo: await catRes.json(), clientes: await cRes.json() })
+    setData({ catalogo: safeArray(await catRes.json()), clientes: safeArray(await cRes.json()) })
   }, [tenantFetch])
 
   useEffect(() => { loadData() }, [loadData])

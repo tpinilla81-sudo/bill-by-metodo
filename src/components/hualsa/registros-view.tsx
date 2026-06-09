@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Filter, RotateCcw, FileSpreadsheet, Table2, CheckCircle2 } from 'lucide-react'
-import { fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
+import { fmtCurrency, fmtDate, getISOWeek, safeArray, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_REGISTROS, type FieldDef, parseCustomData } from '@/lib/config'
 import { useTenantFetch } from '@/lib/use-tenant-fetch'
 
@@ -26,7 +26,7 @@ function useRegistrosData(tenantFetch: (url: string, options?: RequestInit) => P
     const [rRes, cRes, catRes] = await Promise.all([
       tenantFetch('/api/registros?filter=registros'), tenantFetch('/api/clientes'), tenantFetch('/api/catalogo')
     ])
-    setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json() })
+    setData({ registros: safeArray(await rRes.json()), clientes: safeArray(await cRes.json()), catalogo: safeArray(await catRes.json()) })
     setLoading(false)
   }, [tenantFetch])
 

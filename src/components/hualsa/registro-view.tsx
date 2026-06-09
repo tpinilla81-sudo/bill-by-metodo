@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Pencil, Trash2, Save, RotateCcw, Filter } from 'lucide-react'
-import { fmtCurrency, fmtDate, getISOWeek, todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
+import { useTenantFetch } from '@/lib/use-tenant-fetch'
+import { fmtCurrency, fmtDate, getISOWeek, safeArray, todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 
 interface RegistroViewData {
   registros: Registro[]
@@ -15,24 +16,25 @@ interface RegistroViewData {
   catalogo: CatalogoItem[]
 }
 
-function useRegistroData() {
+function useRegistroData(tenantFetch: (url: string, options?: RequestInit) => Promise<Response>) {
   const [data, setData] = useState<RegistroViewData>({ registros: [], clientes: [], catalogo: [] })
   const [loading, setLoading] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
     const [rRes, cRes, catRes] = await Promise.all([
-      fetch('/api/registros'), fetch('/api/clientes'), fetch('/api/catalogo')
+      tenantFetch('/api/registros'), tenantFetch('/api/clientes'), tenantFetch('/api/catalogo')
     ])
-    setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json() })
+    setData({ registros: safeArray(await rRes.json()), clientes: safeArray(await cRes.json()), catalogo: safeArray(await catRes.json()) })
     setLoading(false)
-  }, [])
+  }, [tenantFetch])
 
   return { data, loadData, loading }
 }
 
 export function RegistroView() {
-  const { data, loadData, loading } = useRegistroData()
+  const { tenantFetch } = useTenantFetch()
+  const { data, loadData, loading } = useRegistroData(tenantFetch)
   const [editingId, setEditingId] = useState<string | null>(null)
 
   // Form
@@ -79,10 +81,10 @@ export function RegistroView() {
     const body = { fecha, clienteId, cliente: cli?.nombre || '', c1, c2, cant: Number(cant), obs }
 
     if (editingId) {
-      await fetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+      await tenantFetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
       setEditingId(null)
     } else {
-      await fetch('/api/registros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      await tenantFetch('/api/registros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     }
     setCant('1')
     setObs('')
@@ -101,7 +103,7 @@ export function RegistroView() {
 
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar registro?')) return
-    await fetch(`/api/registros?id=${id}`, { method: 'DELETE' })
+    await tenantFetch(`/api/registros?id=${id}`, { method: 'DELETE' })
     loadData()
   }
 

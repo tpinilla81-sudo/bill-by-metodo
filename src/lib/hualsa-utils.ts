@@ -1,5 +1,14 @@
 // Utility functions for HUALSA PRO
 
+/**
+ * Safely extract an array from a JSON response.
+ * If the response is an error object like {error: "..."}, returns [] instead.
+ */
+export function safeArray<T>(data: T[] | { error?: string } | unknown): T[] {
+  if (Array.isArray(data)) return data
+  return []
+}
+
 export function fmtCurrency(n: number, currency: string = '€'): string {
   return (Number(n) || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency
 }

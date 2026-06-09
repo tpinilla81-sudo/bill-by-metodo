@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Pencil, Trash2, Save, RotateCcw, Settings2, ChevronDown } from 'lucide-react'
-import type { Cliente } from '@/lib/hualsa-utils'
+import { safeArray, type Cliente } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_CLIENTES, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
 import { useTenantFetch } from '@/lib/use-tenant-fetch'
 
@@ -45,7 +45,7 @@ export function ClientesView() {
 
   const loadData = useCallback(async () => {
     const res = await tenantFetch('/api/clientes')
-    setClientes(await res.json())
+    setClientes(safeArray(await res.json()))
   }, [tenantFetch])
 
   useEffect(() => { loadData() }, [loadData])

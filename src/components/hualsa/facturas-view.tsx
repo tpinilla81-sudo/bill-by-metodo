@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Printer, FileSpreadsheet, Receipt, RotateCcw, ArrowLeftRight, CheckCircle2 } from 'lucide-react'
-import { fmtCurrency, fmtDate, fmtMonth, todayISO, currentYear, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
+import { fmtCurrency, fmtDate, fmtMonth, todayISO, currentYear, safeArray, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_FACTURAS } from '@/lib/config'
 import { useTenantFetch } from '@/lib/use-tenant-fetch'
 import * as XLSX from 'xlsx'
@@ -60,8 +60,9 @@ export function FacturasView() {
     const [rRes, cRes, catRes, seqRes] = await Promise.all([
       tenantFetch('/api/registros'), tenantFetch('/api/clientes'), tenantFetch('/api/catalogo'), tenantFetch('/api/factura-seq')
     ])
-    const seq = (await seqRes.json()).seq
-    setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json(), seq })
+    const seqData = await seqRes.json()
+    const seq = (seqData && typeof seqData === 'object' && 'seq' in seqData) ? seqData.seq : 1
+    setData({ registros: safeArray(await rRes.json()), clientes: safeArray(await cRes.json()), catalogo: safeArray(await catRes.json()), seq })
   }, [tenantFetch])
 
   useEffect(() => {

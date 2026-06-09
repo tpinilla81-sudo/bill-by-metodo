@@ -24,7 +24,7 @@ import {
   type AppConfig,
   type FieldDef,
 } from '@/lib/config'
-import type { CatalogoItem, Cliente } from '@/lib/hualsa-utils'
+import { safeArray, type CatalogoItem, type Cliente } from '@/lib/hualsa-utils'
 import { useTenantFetch } from '@/lib/use-tenant-fetch'
 
 // ─── ConceptosManager: Full CRUD for catalog concepts ─────────
@@ -48,8 +48,8 @@ function ConceptosManager() {
   const loadData = useCallback(async () => {
     try {
       const [catRes, cliRes] = await Promise.all([tenantFetch('/api/catalogo'), tenantFetch('/api/clientes')])
-      setCatalogo(await catRes.json())
-      setClientes(await cliRes.json())
+      setCatalogo(safeArray(await catRes.json()))
+      setClientes(safeArray(await cliRes.json()))
     } catch (err) {
       console.error('Error loading conceptos:', err)
     }

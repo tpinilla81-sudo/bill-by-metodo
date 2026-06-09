@@ -142,3 +142,30 @@ Stage Summary:
 - GESTORAPP can switch companies and all API calls will use the selected company's tenantId
 - The tenant object passed to Sidebar and ConfiguracionView now uses the active tenant info (effectiveTenantId, activeTenantName, activeTenantLogo)
 - Double coverage: TenantFetchProvider (global fetch patch) + useTenantFetch (explicit per-call) both inject the header
+
+---
+Task ID: 5
+Agent: Main Agent
+Task: Fix "data.catalogo.map is not a function" runtime error
+
+Work Log:
+- User reported app crash when opening after tenant switching implementation
+- Analyzed screenshot with VLM: error was "data.catalogo.map is not a function" at entrada-view.tsx line 145
+- Root cause: When API returns an error object (e.g., {error: "No autenticado"}) instead of an array, calling .map() on it crashes
+- Added `safeArray()` helper function to hualsa-utils.ts that returns [] if the JSON response is not an array
+- Updated ALL view components to wrap JSON responses with safeArray():
+  1. entrada-view.tsx - 3 calls (registros, clientes, catalogo)
+  2. registros-view.tsx - 3 calls (registros, clientes, catalogo)
+  3. catalogo-view.tsx - 2 calls (catalogo, clientes)
+  4. facturas-view.tsx - 3 calls + safe seq parsing (registros, clientes, catalogo)
+  5. clientes-view.tsx - 1 call (clientes)
+  6. configuracion-view.tsx (ConceptosManager) - 2 calls (catalogo, clientes)
+  7. registro-view.tsx - 3 calls + also migrated from fetch() to tenantFetch()
+- Build successful (18 routes, all compiled)
+- Server restarted on port 3000 (HTTP 200)
+
+Stage Summary:
+- Fixed runtime crash by making all API response parsing safe against non-array responses
+- safeArray() helper returns [] for any non-array response, preventing .map() errors
+- Also migrated the legacy registro-view.tsx to use tenantFetch and safeArray
+- App now handles authentication errors gracefully instead of crashing

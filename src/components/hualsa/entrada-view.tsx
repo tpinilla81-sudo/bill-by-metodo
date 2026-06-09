@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus } from 'lucide-react'
-import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
+import { todayISO, safeArray, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
 import { useTenantFetch } from '@/lib/use-tenant-fetch'
 
@@ -25,7 +25,7 @@ function useEntradaData(tenantFetch: (url: string, options?: RequestInit) => Pro
     const [rRes, cRes, catRes] = await Promise.all([
       tenantFetch('/api/registros?filter=entrada'), tenantFetch('/api/clientes'), tenantFetch('/api/catalogo')
     ])
-    setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json() })
+    setData({ registros: safeArray(await rRes.json()), clientes: safeArray(await cRes.json()), catalogo: safeArray(await catRes.json()) })
     setLoading(false)
   }, [tenantFetch])
 
