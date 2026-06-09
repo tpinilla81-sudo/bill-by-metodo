@@ -680,11 +680,16 @@ function UsersTab() {
                 <Select value={formRole} onValueChange={setFormRole}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="user">Usuario</SelectItem>
-                    <SelectItem value="admin">Administrador</SelectItem>
-                    <SelectItem value="superadmin">GESTORAPP</SelectItem>
+                    <SelectItem value="user">👤 Usuario</SelectItem>
+                    <SelectItem value="admin">🛡️ Administrador</SelectItem>
+                    <SelectItem value="superadmin">👑 GESTORAPP</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  {formRole === 'superadmin' && 'Dueño de la app. Acceso total.'}
+                  {formRole === 'admin' && 'Gestiona su empresa y sus usuarios.'}
+                  {formRole === 'user' && 'Trabaja con datos de su empresa.'}
+                </p>
               </div>
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">Empresa</Label>
@@ -724,10 +729,35 @@ function UsersTab() {
 export function AdminView() {
   return (
     <div className="max-w-5xl">
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-2">
         <Shield className="h-5 w-5 text-[#005bb5]" />
         <h2 className="text-lg font-bold text-gray-700">Administración</h2>
         <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">GESTORAPP</span>
+      </div>
+
+      {/* Permisos de roles */}
+      <div className="mb-4 grid grid-cols-3 gap-3">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Shield className="h-4 w-4 text-red-600" />
+            <span className="text-sm font-bold text-red-700">GESTORAPP</span>
+          </div>
+          <p className="text-[11px] text-red-600">Dueño de la app. Crea empresas, usuarios y asigna roles.</p>
+        </div>
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Shield className="h-4 w-4 text-purple-600" />
+            <span className="text-sm font-bold text-purple-700">Administrador</span>
+          </div>
+          <p className="text-[11px] text-purple-600">Gestiona su empresa. Puede crear usuarios en su empresa.</p>
+        </div>
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Users className="h-4 w-4 text-gray-600" />
+            <span className="text-sm font-bold text-gray-700">Usuario</span>
+          </div>
+          <p className="text-[11px] text-gray-600">Trabaja con los datos de su empresa (registros, facturas...).</p>
+        </div>
       </div>
 
       <Tabs defaultValue="empresas" className="w-full">
