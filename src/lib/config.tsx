@@ -221,7 +221,7 @@ function parseFieldDefs(jsonStr: string, defaults: FieldDef[]): FieldDef[] {
 
 export function resolveConfig(raw: AppConfig): ResolvedConfig {
   return {
-    companyName: raw.companyName || 'BILL by Metodo',
+    companyName: raw.companyName || '',
     companyFullName: raw.companyFullName || '',
     companyAddress: raw.companyAddress || '',
     companyCity: raw.companyCity || '',
@@ -230,8 +230,8 @@ export function resolveConfig(raw: AppConfig): ResolvedConfig {
     logo: raw.logo || '',
     currency: raw.currency || '€',
     defaultIva: raw.defaultIva ?? 21,
-    appName: raw.appName || 'BILL by Metodo',
-    appVersion: raw.appVersion || 'v3.0',
+    appName: raw.appName || 'BILL',
+    appVersion: raw.appVersion || '',
     sectionEntrada: raw.sectionEntrada || 'ENTRADA',
     sectionRegistros: raw.sectionRegistros || 'REGISTROS',
     sectionClientes: raw.sectionClientes || 'CLIENTES',

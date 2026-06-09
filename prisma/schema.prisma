@@ -108,7 +108,7 @@ model FacturaSeq {
 model Config {
   id              String   @id @default(cuid())
   tenantId        String
-  companyName     String   @default("BILL by Metodo")
+  companyName     String   @default("")
   companyFullName String   @default("")
   companyAddress  String   @default("")
   companyCity     String   @default("")
@@ -117,8 +117,8 @@ model Config {
   logo            String   @default("")   // base64 encoded logo image
   currency        String   @default("€")
   defaultIva      Float    @default(21)
-  appName         String   @default("BILL by Metodo")
-  appVersion      String   @default("v3.0")
+  appName         String   @default("BILL")
+  appVersion      String   @default("")
   // Configurable section labels (JSON strings)
   labelEntrada    String   @default("")   // JSON: { fecha, cliente, c1, c2, cantidad, observaciones }
   labelCatalogo   String   @default("")   // JSON: { c1, c2, coste, incremento, precioCliente, cliente }
