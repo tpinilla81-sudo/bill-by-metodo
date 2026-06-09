@@ -560,7 +560,7 @@ function UsersTab() {
   function getRoleBadge(role: string) {
     switch (role) {
       case 'superadmin':
-        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700"><Shield className="h-3 w-3" /> SuperAdmin</span>
+        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700"><Shield className="h-3 w-3" /> GESTORAPP</span>
       case 'admin':
         return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700"><Shield className="h-3 w-3" /> Admin</span>
       default:
@@ -682,7 +682,7 @@ function UsersTab() {
                   <SelectContent>
                     <SelectItem value="user">Usuario</SelectItem>
                     <SelectItem value="admin">Administrador</SelectItem>
-                    <SelectItem value="superadmin">SuperAdmin</SelectItem>
+                    <SelectItem value="superadmin">GESTORAPP</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -727,7 +727,7 @@ export function AdminView() {
       <div className="flex items-center gap-2 mb-4">
         <Shield className="h-5 w-5 text-[#005bb5]" />
         <h2 className="text-lg font-bold text-gray-700">Administración</h2>
-        <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">SUPERADMIN</span>
+        <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">GESTORAPP</span>
       </div>
 
       <Tabs defaultValue="empresas" className="w-full">

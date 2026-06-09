@@ -65,7 +65,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
 
   function getRoleLabel(role: string) {
     switch (role) {
-      case 'superadmin': return 'SuperAdmin'
+      case 'superadmin': return 'GESTORAPP'
       case 'admin': return 'Admin'
       default: return ''
     }
