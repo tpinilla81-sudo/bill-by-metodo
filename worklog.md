@@ -169,3 +169,25 @@ Stage Summary:
 - safeArray() helper returns [] for any non-array response, preventing .map() errors
 - Also migrated the legacy registro-view.tsx to use tenantFetch and safeArray
 - App now handles authentication errors gracefully instead of crashing
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: Delete BILL tenant from database (BILL is the app name, not a company)
+
+Work Log:
+- User clarified that "BILL" is the name of the app, not an empresa/company
+- Deleted Config record for BILL tenant (id: config-bill)
+- Deleted BILL tenant from database (slug: 'bill')
+- Only "Sistema" tenant remains (for GESTORAPP/superadmin)
+- Updated seed.ts: removed BILL tenant creation and BILL config creation
+- Verified no code references to the "bill" slug as a tenant (only localStorage key names like 'bill-active-tenant' which use "bill" as app name prefix)
+- Rebuilt Next.js app successfully
+- Restarted server and verified login works (GESTORAPP, superadmin)
+- Verified /api/tenants/mine only returns "Sistema" tenant
+
+Stage Summary:
+- BILL tenant deleted from database and seed
+- Only "Sistema" tenant exists (for GESTORAPP)
+- New companies will be created by GESTORAPP from the Admin panel
+- App login still works: admin@bill.es / admin123 (GESTORAPP superadmin, belongs to Sistema)
