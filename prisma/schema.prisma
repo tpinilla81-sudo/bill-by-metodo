@@ -9,6 +9,7 @@ datasource db {
 
 model Cliente {
   id          String   @id @default(cuid())
+  tenantId    String
   nombre      String
   cif         String   @default("")
   dir         String   @default("")
@@ -21,12 +22,14 @@ model Cliente {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  registros Registro[]
-  catalogo  Catalogo[]
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  registros  Registro[]
+  catalogo   Catalogo[]
 }
 
 model Catalogo {
   id          String   @id @default(cuid())
+  tenantId    String
   clienteId   String   @default("")
   c1          String
   c2          String
@@ -37,11 +40,13 @@ model Catalogo {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  cliente Cliente? @relation(fields: [clienteId], references: [id])
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  cliente  Cliente? @relation(fields: [clienteId], references: [id])
 }
 
 model Registro {
   id              String   @id @default(cuid())
+  tenantId        String
   fecha           String
   clienteId       String
   cliente         String   @default("")
@@ -55,7 +60,8 @@ model Registro {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  clienteRel Cliente? @relation(fields: [clienteId], references: [id])
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  clienteRel  Cliente? @relation(fields: [clienteId], references: [id])
 }
 
 model Tenant {
@@ -73,6 +79,10 @@ model Tenant {
   updatedAt DateTime @updatedAt
 
   users     User[]
+  clientes  Cliente[]
+  catalogos Catalogo[]
+  registros Registro[]
+  configs   Config[]
 }
 
 model User {
@@ -80,7 +90,7 @@ model User {
   email     String   @unique
   password  String                    // hashed
   name      String   @default("")
-  role      String   @default("user")  // "admin" or "user"
+  role      String   @default("user")  // "superadmin", "admin" or "user"
   tenantId  String                     // which company this user belongs to
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -90,12 +100,14 @@ model User {
 }
 
 model FacturaSeq {
-  id    String @id @default("main")
-  seq   Int    @default(1)
+  id        String @id @default("main")
+  tenantId  String @default("")
+  seq       Int    @default(1)
 }
 
 model Config {
-  id              String   @id @default("main")
+  id              String   @id @default(cuid())
+  tenantId        String
   companyName     String   @default("BILL by Metodo")
   companyFullName String   @default("")
   companyAddress  String   @default("")
@@ -130,4 +142,6 @@ model Config {
   fieldsRegistros String   @default("")   // JSON: FieldDef[]
   fieldsFacturas  String   @default("")   // JSON: FieldDef[]
   updatedAt       DateTime @updatedAt
+
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
 }

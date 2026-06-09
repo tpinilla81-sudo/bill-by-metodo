@@ -1,19 +1,20 @@
 import { db } from '@/lib/db'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import { requireAuthWithTenant } from '@/lib/tenant'
 
 // Default config values
 const DEFAULT_CONFIG = {
-  companyName: 'HUALSA PRO',
-  companyFullName: 'Transportes Hualsa 2021, S.L.',
-  companyAddress: 'C/ Moret y Aleson, Nº 30',
-  companyCity: '31320 Milagro',
-  companyProvince: 'Navarra',
+  companyName: 'BILL by Metodo',
+  companyFullName: '',
+  companyAddress: '',
+  companyCity: '',
+  companyProvince: '',
   companyCif: '',
   logo: '',
   currency: '€',
   defaultIva: 21,
-  appName: 'HUALSA PRO',
-  appVersion: 'v2.0',
+  appName: 'BILL by Metodo',
+  appVersion: 'v3.0',
   labelEntrada: '',
   labelCatalogo: '',
   labelRegistros: '',
@@ -34,12 +35,18 @@ const DEFAULT_CONFIG = {
   fieldsFacturas: '',
 }
 
-// GET /api/config - Retrieve configuration
-export async function GET() {
+// GET /api/config - Retrieve configuration for the effective tenant
+export async function GET(req: Request) {
   try {
-    let config = await db.config.findUnique({ where: { id: 'main' } })
+    const auth = await requireAuthWithTenant(req)
+    if ('error' in auth) return auth.error
+
+    // Find or create config for this tenant
+    let config = await db.config.findFirst({ where: { tenantId: auth.tenantId } })
     if (!config) {
-      config = await db.config.create({ data: { id: 'main', ...DEFAULT_CONFIG } })
+      config = await db.config.create({
+        data: { tenantId: auth.tenantId, ...DEFAULT_CONFIG }
+      })
     }
     return NextResponse.json(config)
   } catch (err) {
@@ -48,18 +55,23 @@ export async function GET() {
   }
 }
 
-// PUT /api/config - Update configuration
-export async function PUT(req: NextRequest) {
+// PUT /api/config - Update configuration for the effective tenant
+export async function PUT(req: Request) {
   try {
+    const auth = await requireAuthWithTenant(req)
+    if ('error' in auth) return auth.error
+
     const body = await req.json()
 
     // Validate numeric fields
     if (body.defaultIva !== undefined) body.defaultIva = Number(body.defaultIva) || 0
 
-    // Ensure config row exists
-    let config = await db.config.findUnique({ where: { id: 'main' } })
+    // Find or create config for this tenant
+    let config = await db.config.findFirst({ where: { tenantId: auth.tenantId } })
     if (!config) {
-      config = await db.config.create({ data: { id: 'main', ...DEFAULT_CONFIG } })
+      config = await db.config.create({
+        data: { tenantId: auth.tenantId, ...DEFAULT_CONFIG }
+      })
     }
 
     // Update with provided fields
@@ -81,7 +93,7 @@ export async function PUT(req: NextRequest) {
     }
 
     config = await db.config.update({
-      where: { id: 'main' },
+      where: { id: config.id },
       data: updateData,
     })
 

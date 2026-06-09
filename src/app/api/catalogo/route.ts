@@ -1,65 +1,110 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { requireAuthWithTenant } from '@/lib/tenant'
 
-export async function GET() {
-  const catalogo = await db.catalogo.findMany({ orderBy: [{ c1: 'asc' }, { c2: 'asc' }] })
-  return NextResponse.json(catalogo)
+export async function GET(req: Request) {
+  try {
+    const auth = await requireAuthWithTenant(req)
+    if ('error' in auth) return auth.error
+
+    const catalogo = await db.catalogo.findMany({
+      where: { tenantId: auth.tenantId },
+      orderBy: [{ c1: 'asc' }, { c2: 'asc' }]
+    })
+    return NextResponse.json(catalogo)
+  } catch (err) {
+    console.error('Catalogo GET error:', err)
+    return NextResponse.json({ error: 'Error del servidor' }, { status: 500 })
+  }
 }
 
 export async function POST(req: Request) {
-  const body = await req.json()
+  try {
+    const auth = await requireAuthWithTenant(req)
+    if ('error' in auth) return auth.error
 
-  // Batch import
-  if (body.batch && Array.isArray(body.batch)) {
-    const rows = body.batch as Array<{
-      clienteId: string; c1: string; c2: string;
-      coste: number; inc: number; final: number; customData?: string;
-    }>
+    const body = await req.json()
 
-    const validRows = rows.filter(r => r.c1 && r.c2)
-    if (validRows.length === 0) {
-      return NextResponse.json({ error: 'No hay filas válidas' }, { status: 400 })
+    // Batch import
+    if (body.batch && Array.isArray(body.batch)) {
+      const rows = body.batch as Array<{
+        clienteId: string; c1: string; c2: string;
+        coste: number; inc: number; final: number; customData?: string;
+      }>
+
+      const validRows = rows.filter(r => r.c1 && r.c2)
+      if (validRows.length === 0) {
+        return NextResponse.json({ error: 'No hay filas válidas' }, { status: 400 })
+      }
+
+      const created = await db.catalogo.createMany({
+        data: validRows.map(r => ({
+          tenantId: auth.tenantId,
+          clienteId: r.clienteId || '',
+          c1: r.c1,
+          c2: r.c2,
+          coste: Number(r.coste) || 0,
+          inc: Number(r.inc) || 0,
+          final: Number(r.final) || 0,
+          customData: r.customData || '',
+        }))
+      })
+
+      return NextResponse.json({ count: created.count }, { status: 201 })
     }
 
-    const created = await db.catalogo.createMany({
-      data: validRows.map(r => ({
-        clienteId: r.clienteId || '',
-        c1: r.c1,
-        c2: r.c2,
-        coste: Number(r.coste) || 0,
-        inc: Number(r.inc) || 0,
-        final: Number(r.final) || 0,
-        customData: r.customData || '',
-      }))
+    // Single entry
+    const { clienteId, c1, c2, coste, inc, final, customData } = body
+    if (!c1 || !c2) return NextResponse.json({ error: 'Grupo y servicio obligatorios' }, { status: 400 })
+    const item = await db.catalogo.create({
+      data: { tenantId: auth.tenantId, clienteId: clienteId || '', c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(final) || 0, customData: customData || '' }
     })
-
-    return NextResponse.json({ count: created.count }, { status: 201 })
+    return NextResponse.json(item, { status: 201 })
+  } catch (err) {
+    console.error('Catalogo POST error:', err)
+    return NextResponse.json({ error: 'Error del servidor' }, { status: 500 })
   }
-
-  // Single entry
-  const { clienteId, c1, c2, coste, inc, final, customData } = body
-  if (!c1 || !c2) return NextResponse.json({ error: 'Grupo y servicio obligatorios' }, { status: 400 })
-  const item = await db.catalogo.create({
-    data: { clienteId: clienteId || '', c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(final) || 0, customData: customData || '' }
-  })
-  return NextResponse.json(item, { status: 201 })
 }
 
 export async function PUT(req: Request) {
-  const body = await req.json()
-  const { id, clienteId, c1, c2, coste, inc, final, customData } = body
-  if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data: any = { clienteId: clienteId || '', c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(final) || 0 }
-  if (customData !== undefined) data.customData = customData
-  const item = await db.catalogo.update({ where: { id }, data })
-  return NextResponse.json(item)
+  try {
+    const auth = await requireAuthWithTenant(req)
+    if ('error' in auth) return auth.error
+
+    const body = await req.json()
+    const { id, clienteId, c1, c2, coste, inc, final, customData } = body
+    if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
+
+    const existing = await db.catalogo.findFirst({ where: { id, tenantId: auth.tenantId } })
+    if (!existing) return NextResponse.json({ error: 'Item no encontrado' }, { status: 404 })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any = { clienteId: clienteId || '', c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(final) || 0 }
+    if (customData !== undefined) data.customData = customData
+    const item = await db.catalogo.update({ where: { id }, data })
+    return NextResponse.json(item)
+  } catch (err) {
+    console.error('Catalogo PUT error:', err)
+    return NextResponse.json({ error: 'Error del servidor' }, { status: 500 })
+  }
 }
 
 export async function DELETE(req: Request) {
-  const { searchParams } = new URL(req.url)
-  const id = searchParams.get('id')
-  if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
-  await db.catalogo.delete({ where: { id } })
-  return NextResponse.json({ ok: true })
+  try {
+    const auth = await requireAuthWithTenant(req)
+    if ('error' in auth) return auth.error
+
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
+
+    const existing = await db.catalogo.findFirst({ where: { id, tenantId: auth.tenantId } })
+    if (!existing) return NextResponse.json({ error: 'Item no encontrado' }, { status: 404 })
+
+    await db.catalogo.delete({ where: { id } })
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('Catalogo DELETE error:', err)
+    return NextResponse.json({ error: 'Error del servidor' }, { status: 500 })
+  }
 }

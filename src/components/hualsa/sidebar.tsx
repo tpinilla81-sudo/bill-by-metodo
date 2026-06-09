@@ -1,8 +1,9 @@
 'use client'
 
-import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown } from 'lucide-react'
+import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useConfig } from '@/lib/config'
+import { useAuth } from '@/lib/auth-context'
 import type { View } from '@/app/page'
 
 interface TenantInfo {
@@ -36,6 +37,7 @@ interface SidebarProps {
 
 export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, tenant, onLogout }: SidebarProps) {
   const { config } = useConfig()
+  const { activeTenantId, activeTenantName, activeTenantLogo, tenants, switchTenant, effectiveTenantId } = useAuth()
 
   const isSuperadmin = user?.role === 'superadmin'
 
@@ -51,7 +53,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
   ]
 
   // Use tenant logo if available, otherwise fall back to config logo, then default
-  const tenantLogo = tenant?.logo
+  const tenantLogo = tenant?.logo || activeTenantLogo
   const configLogo = config?.logo
 
   const logoSrc = tenantLogo
@@ -60,7 +62,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
       ? (configLogo.startsWith('data:') ? configLogo : `data:image/png;base64,${configLogo}`)
       : '/bill-by-metodo-logo.png'
 
-  const displayName = tenant?.name || config?.appName || 'BILL by Metodo'
+  const displayName = isSuperadmin ? activeTenantName : (tenant?.name || config?.appName || 'BILL by Metodo')
   const appVersion = config?.appVersion || 'v3.0'
 
   function getRoleLabel(role: string) {
@@ -105,6 +107,26 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
             style={{ maxWidth: '180px', maxHeight: '65px', height: 'auto', objectFit: 'contain' }}
           />
         </div>
+
+        {/* Tenant selector for GESTORAPP */}
+        {isSuperadmin && tenants.length > 0 && (
+          <div className="px-3 py-2 border-b border-gray-700/50 bg-[#222]">
+            <label className="text-[9px] uppercase font-bold text-gray-500 tracking-wider mb-1 block">Empresa activa</label>
+            <div className="relative">
+              <select
+                value={activeTenantId || ''}
+                onChange={(e) => switchTenant(e.target.value)}
+                className="w-full bg-[#333] text-white text-xs font-medium rounded-md px-2 py-1.5 pr-6 border border-gray-600 appearance-none cursor-pointer hover:border-[#2bb24c] focus:border-[#2bb24c] focus:outline-none transition-colors"
+              >
+                {tenants.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+        )}
+
         <nav className="flex-1 flex flex-col overflow-y-auto">
           {navItems
             .filter(item => {

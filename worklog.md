@@ -73,3 +73,36 @@ Stage Summary:
 - Logo appears in: sidebar header, login page, loading screen, favicon
 - No code changes needed - all references already point to /bill-by-metodo-logo.png
 - Server rebuilt and running
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Implement full multi-tenancy + GESTORAPP company selector
+
+Work Log:
+- Updated Prisma schema: added tenantId to Registro, Cliente, Catalogo, Config models
+- Created system tenant "Sistema" for GESTORAPP (not a real company)
+- Each tenant has its own isolated data (clientes, registros, catalogo, config)
+- Updated auth-context with activeTenantId, switchTenant, effectiveTenantId
+- Added tenant selector dropdown in sidebar for GESTORAPP role
+- Created tenant.ts helper (getEffectiveTenantId, requireAuthWithTenant) for API routes
+- Created TenantFetchProvider that auto-injects x-tenant-id header for superadmin
+- Updated ALL API routes: registros, clientes, catalogo, config, backup, factura-seq, transfer
+  - All routes now filter by tenantId
+  - Superadmin can override tenant via x-tenant-id header
+- Config is now per-tenant (not singleton)
+- Views auto-refresh when tenant changes (key={effectiveTenantId})
+- Force-reset DB, ran seed, verified all APIs work
+- Build successful, server running
+
+Stage Summary:
+- GESTORAPP (superadmin) can:
+  - Create companies (empresas) from ADMIN panel
+  - Each company auto-gets an admin user
+  - Switch between companies using the sidebar selector
+  - All data views show data for the selected company
+- Admin users:
+  - Belong to their company, can only see their company data
+  - Can edit company data from CONFIGURACIÓN
+- Multi-tenancy is fully isolated at the database level
+- Login: admin@bill.es / admin123 (GESTORAPP)

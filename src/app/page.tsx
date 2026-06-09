@@ -12,14 +12,15 @@ import { ConfiguracionView } from '@/components/hualsa/configuracion-view'
 import { AdminView } from '@/components/hualsa/admin-view'
 import { ConfigProvider, useConfig } from '@/lib/config'
 import { AuthProvider, useAuth } from '@/lib/auth-context'
+import { TenantFetchProvider } from '@/lib/tenant-fetch-provider'
 
 export type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'facturas' | 'backup' | 'config' | 'admin'
 
 function AppContent() {
-  const { user, loading, login, logout } = useAuth()
+  const { user, loading, login, logout, effectiveTenantId } = useAuth()
   const [activeView, setActiveView] = useState<View>('entrada')
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { config } = useConfig()
+  const { config, reload: reloadConfig } = useConfig()
 
   // Update page title dynamically
   useEffect(() => {
@@ -27,6 +28,14 @@ function AppContent() {
       document.title = `${config.appName} - ${config.companyFullName || 'Gestión'}`
     }
   }, [config])
+
+  // When tenant changes, reload config and reset to entrada view
+  useEffect(() => {
+    if (effectiveTenantId) {
+      reloadConfig()
+      setActiveView('entrada')
+    }
+  }, [effectiveTenantId, reloadConfig])
 
   // Loading state
   if (loading) {
@@ -77,14 +86,14 @@ function AppContent() {
       />
       <main className="flex-1 min-w-0 overflow-x-hidden">
         <div className="p-3 md:p-6 pt-16 md:pt-6 pb-4">
-          {activeView === 'entrada' && <EntradaView />}
-          {activeView === 'registros' && <RegistrosView />}
-          {activeView === 'clientes' && <ClientesView />}
-          {activeView === 'catalogo' && <CatalogoView />}
-          {activeView === 'facturas' && <FacturasView />}
-          {activeView === 'backup' && <BackupView />}
-          {activeView === 'config' && <ConfiguracionView tenant={tenant} />}
-          {activeView === 'admin' && user.role === 'superadmin' && <AdminView />}
+          {activeView === 'entrada' && <EntradaView key={effectiveTenantId} />}
+          {activeView === 'registros' && <RegistrosView key={effectiveTenantId} />}
+          {activeView === 'clientes' && <ClientesView key={effectiveTenantId} />}
+          {activeView === 'catalogo' && <CatalogoView key={effectiveTenantId} />}
+          {activeView === 'facturas' && <FacturasView key={effectiveTenantId} />}
+          {activeView === 'backup' && <BackupView key={effectiveTenantId} />}
+          {activeView === 'config' && <ConfiguracionView key={effectiveTenantId} tenant={tenant} />}
+          {activeView === 'admin' && user.role === 'superadmin' && <AdminView key={effectiveTenantId} />}
         </div>
       </main>
     </div>
@@ -94,9 +103,11 @@ function AppContent() {
 export default function Home() {
   return (
     <AuthProvider>
-      <ConfigProvider>
-        <AppContent />
-      </ConfigProvider>
+      <TenantFetchProvider>
+        <ConfigProvider>
+          <AppContent />
+        </ConfigProvider>
+      </TenantFetchProvider>
     </AuthProvider>
   )
 }

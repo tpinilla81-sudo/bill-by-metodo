@@ -4,6 +4,18 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 async function main() {
+  // Create system tenant (for GESTORAPP - not a real company)
+  const systemTenant = await prisma.tenant.upsert({
+    where: { slug: 'sistema' },
+    update: {},
+    create: {
+      name: 'Sistema',
+      slug: 'sistema',
+      fullName: 'METODO - Sistema',
+      active: true,
+    },
+  })
+
   // Create default BILL tenant (the platform company)
   const billTenant = await prisma.tenant.upsert({
     where: { slug: 'bill' },
@@ -16,7 +28,7 @@ async function main() {
     },
   })
 
-  // Create superadmin user
+  // Create superadmin user (GESTORAPP) - belongs to system tenant
   const hashedPw = await bcrypt.hash('admin123', 12)
   await prisma.user.upsert({
     where: { email: 'admin@bill.es' },
@@ -24,14 +36,27 @@ async function main() {
     create: {
       email: 'admin@bill.es',
       password: hashedPw,
-      name: 'Administrador',
+      name: 'GESTORAPP',
       role: 'superadmin',
-      tenantId: billTenant.id,
+      tenantId: systemTenant.id,
       active: true,
     },
   })
 
-  console.log('Seed complete: admin@bill.es / admin123')
+  // Create default config for the BILL tenant
+  await prisma.config.upsert({
+    where: { id: 'config-bill' },
+    update: {},
+    create: {
+      id: 'config-bill',
+      tenantId: billTenant.id,
+      companyName: 'BILL by Metodo',
+      appName: 'BILL by Metodo',
+      appVersion: 'v3.0',
+    },
+  })
+
+  console.log('Seed complete: admin@bill.es / admin123 (GESTORAPP)')
 }
 
 main().catch(console.error).finally(() => prisma.$disconnect())
