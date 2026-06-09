@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Filter, RotateCcw, FileSpreadsheet, Table2, CheckCircle2 } from 'lucide-react'
 import { fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_REGISTROS, type FieldDef, parseCustomData } from '@/lib/config'
+import { useTenantFetch } from '@/lib/use-tenant-fetch'
 
 interface RegistrosViewData {
   registros: Registro[]
@@ -16,24 +17,25 @@ interface RegistrosViewData {
   catalogo: CatalogoItem[]
 }
 
-function useRegistrosData() {
+function useRegistrosData(tenantFetch: (url: string, options?: RequestInit) => Promise<Response>) {
   const [data, setData] = useState<RegistrosViewData>({ registros: [], clientes: [], catalogo: [] })
   const [loading, setLoading] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
     const [rRes, cRes, catRes] = await Promise.all([
-      fetch('/api/registros?filter=registros'), fetch('/api/clientes'), fetch('/api/catalogo')
+      tenantFetch('/api/registros?filter=registros'), tenantFetch('/api/clientes'), tenantFetch('/api/catalogo')
     ])
     setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json() })
     setLoading(false)
-  }, [])
+  }, [tenantFetch])
 
   return { data, loadData, loading }
 }
 
 export function RegistrosView() {
-  const { data, loadData, loading } = useRegistrosData()
+  const { tenantFetch } = useTenantFetch()
+  const { data, loadData, loading } = useRegistrosData(tenantFetch)
   const { config } = useConfig()
   const fieldDefs = config?.fieldsRegistros || DEFAULT_FIELDS_REGISTROS
   const visibleFields = fieldDefs.filter(f => f.visible)

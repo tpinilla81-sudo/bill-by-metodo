@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Printer, FileSpreadsheet, Receipt, RotateCcw, ArrowLeftRight, CheckCircle2 } from 'lucide-react'
 import { fmtCurrency, fmtDate, fmtMonth, todayISO, currentYear, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_FACTURAS } from '@/lib/config'
+import { useTenantFetch } from '@/lib/use-tenant-fetch'
 import * as XLSX from 'xlsx'
 
 interface FacturasData {
@@ -28,6 +29,7 @@ interface InvoiceData {
 }
 
 export function FacturasView() {
+  const { tenantFetch } = useTenantFetch()
   const { config } = useConfig()
   const L = config?.labelsFacturas || DEFAULT_LABELS_FACTURAS
   const [data, setData] = useState<FacturasData>({ registros: [], clientes: [], catalogo: [], seq: 1 })
@@ -56,11 +58,11 @@ export function FacturasView() {
 
   const loadData = useCallback(async () => {
     const [rRes, cRes, catRes, seqRes] = await Promise.all([
-      fetch('/api/registros'), fetch('/api/clientes'), fetch('/api/catalogo'), fetch('/api/factura-seq')
+      tenantFetch('/api/registros'), tenantFetch('/api/clientes'), tenantFetch('/api/catalogo'), tenantFetch('/api/factura-seq')
     ])
     const seq = (await seqRes.json()).seq
     setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json(), seq })
-  }, [])
+  }, [tenantFetch])
 
   useEffect(() => {
     loadData()
@@ -155,7 +157,7 @@ export function FacturasView() {
     // Mark selected registros as facturado
     const selectedIds = sel.map(r => r.id)
     try {
-      await fetch('/api/registros', {
+      await tenantFetch('/api/registros', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ batchFacturado: true, ids: selectedIds })
@@ -173,7 +175,7 @@ export function FacturasView() {
 
     // Increment seq
     const newSeq = data.seq + 1
-    await fetch('/api/factura-seq', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seq: newSeq }) })
+    await tenantFetch('/api/factura-seq', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seq: newSeq }) })
     setData(prev => ({ ...prev, seq: newSeq }))
   }
 

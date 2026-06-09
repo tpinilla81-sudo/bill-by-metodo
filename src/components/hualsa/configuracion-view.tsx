@@ -25,9 +25,11 @@ import {
   type FieldDef,
 } from '@/lib/config'
 import type { CatalogoItem, Cliente } from '@/lib/hualsa-utils'
+import { useTenantFetch } from '@/lib/use-tenant-fetch'
 
 // ─── ConceptosManager: Full CRUD for catalog concepts ─────────
 function ConceptosManager() {
+  const { tenantFetch } = useTenantFetch()
   const [catalogo, setCatalogo] = useState<CatalogoItem[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [loading, setLoading] = useState(true)
@@ -45,14 +47,14 @@ function ConceptosManager() {
 
   const loadData = useCallback(async () => {
     try {
-      const [catRes, cliRes] = await Promise.all([fetch('/api/catalogo'), fetch('/api/clientes')])
+      const [catRes, cliRes] = await Promise.all([tenantFetch('/api/catalogo'), tenantFetch('/api/clientes')])
       setCatalogo(await catRes.json())
       setClientes(await cliRes.json())
     } catch (err) {
       console.error('Error loading conceptos:', err)
     }
     setLoading(false)
-  }, [])
+  }, [tenantFetch])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -82,10 +84,10 @@ function ConceptosManager() {
     const finalNum = costeNum * (1 + incNum / 100)
     const body = { clienteId: formClienteId || '', c1: formC1, c2: formC2, coste: costeNum, inc: incNum, final: Number(finalNum.toFixed(2)) }
     if (editingId) {
-      await fetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+      await tenantFetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
       showMsg('ok', 'Concepto actualizado ✓')
     } else {
-      await fetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      await tenantFetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       showMsg('ok', 'Concepto añadido ✓')
     }
     resetForm(); loadData()
@@ -97,7 +99,7 @@ function ConceptosManager() {
 
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar este concepto?')) return
-    await fetch(`/api/catalogo?id=${id}`, { method: 'DELETE' }); showMsg('ok', 'Concepto eliminado'); loadData()
+    await tenantFetch(`/api/catalogo?id=${id}`, { method: 'DELETE' }); showMsg('ok', 'Concepto eliminado'); loadData()
   }
 
   async function handleRenameC1(oldName: string) {
@@ -105,7 +107,7 @@ function ConceptosManager() {
     if (!newName || newName === oldName) return
     const items = catalogo.filter(x => x.c1 === oldName)
     for (const item of items) {
-      await fetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, c1: newName, c2: item.c2, clienteId: item.clienteId || '', coste: item.coste, inc: item.inc, final: item.final }) })
+      await tenantFetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, c1: newName, c2: item.c2, clienteId: item.clienteId || '', coste: item.coste, inc: item.inc, final: item.final }) })
     }
     showMsg('ok', `Grupo "${oldName}" renombrado a "${newName}" ✓`); loadData()
   }
@@ -114,14 +116,14 @@ function ConceptosManager() {
     const count = catalogo.filter(x => x.c1 === name).length
     if (!confirm(`¿Eliminar el grupo "${name}" con ${count} concepto(s)?`)) return
     const items = catalogo.filter(x => x.c1 === name)
-    for (const item of items) { await fetch(`/api/catalogo?id=${item.id}`, { method: 'DELETE' }) }
+    for (const item of items) { await tenantFetch(`/api/catalogo?id=${item.id}`, { method: 'DELETE' }) }
     showMsg('ok', `Grupo "${name}" eliminado (${count} conceptos)`); loadData()
   }
 
   async function handleAddC1() {
     const name = prompt('Nombre del nuevo grupo (Concepto 1):')
     if (!name) return
-    await fetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ c1: name, c2: '(nuevo)', coste: 0, inc: 0, final: 0 }) })
+    await tenantFetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ c1: name, c2: '(nuevo)', coste: 0, inc: 0, final: 0 }) })
     showMsg('ok', `Grupo "${name}" creado ✓`); loadData()
   }
 

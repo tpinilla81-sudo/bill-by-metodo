@@ -8,8 +8,10 @@ import { Label } from '@/components/ui/label'
 import { Pencil, Trash2, Save, RotateCcw, Settings2, ChevronDown } from 'lucide-react'
 import type { Cliente } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_CLIENTES, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
+import { useTenantFetch } from '@/lib/use-tenant-fetch'
 
 export function ClientesView() {
+  const { tenantFetch } = useTenantFetch()
   const { config, update } = useConfig()
   const fieldDefs = config?.fieldsClientes || DEFAULT_FIELDS_CLIENTES
   const visibleFields = fieldDefs.filter(f => f.visible)
@@ -42,9 +44,9 @@ export function ClientesView() {
   const getLabel = (key: string) => localLabels[key] || key
 
   const loadData = useCallback(async () => {
-    const res = await fetch('/api/clientes')
+    const res = await tenantFetch('/api/clientes')
     setClientes(await res.json())
-  }, [])
+  }, [tenantFetch])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -93,9 +95,9 @@ export function ClientesView() {
     const customDataStr = serializeCustomData(customValues)
     const body = { nombre, cif, mail, tel, dir, cp, ciudad, prov, customData: customDataStr }
     if (editingId) {
-      await fetch('/api/clientes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+      await tenantFetch('/api/clientes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
     } else {
-      await fetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      await tenantFetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     }
     resetForm(); loadData()
   }
@@ -110,7 +112,7 @@ export function ClientesView() {
 
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar cliente?')) return
-    await fetch(`/api/clientes?id=${id}`, { method: 'DELETE' }); loadData()
+    await tenantFetch(`/api/clientes?id=${id}`, { method: 'DELETE' }); loadData()
   }
 
   // Get display value from a cliente record for a field

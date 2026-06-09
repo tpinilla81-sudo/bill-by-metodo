@@ -106,3 +106,39 @@ Stage Summary:
   - Can edit company data from CONFIGURACIÓN
 - Multi-tenancy is fully isolated at the database level
 - Login: admin@bill.es / admin123 (GESTORAPP)
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Fix multi-tenant data views - replace plain fetch() with useTenantFetch() for GESTORAPP company switching
+
+Work Log:
+- Identified that all data view components used plain `fetch()` instead of `useTenantFetch()`
+- When GESTORAPP switches companies, the API calls still used the superadmin's own tenantId from the session cookie
+- Updated 7 data view components to import and use `useTenantFetch` from `@/lib/use-tenant-fetch`
+- For custom hooks (useEntradaData, useRegistrosData), modified them to accept `tenantFetch` as a parameter since hooks can't call other hooks
+- Replaced every `fetch('/api/...')` call with `tenantFetch('/api/...')` across all views
+
+Files modified:
+1. entrada-view.tsx - Added useTenantFetch, modified useEntradaData to accept tenantFetch param, replaced 5 fetch calls
+2. registros-view.tsx - Added useTenantFetch, modified useRegistrosData to accept tenantFetch param, replaced 3 fetch calls
+3. clientes-view.tsx - Added useTenantFetch, replaced 4 fetch calls (loadData, handleSave PUT/POST, handleDelete)
+4. catalogo-view.tsx - Added useTenantFetch, replaced 6 fetch calls (loadData, handleSave PUT/POST, handleDelete, import clientes, import batch)
+5. facturas-view.tsx - Added useTenantFetch, replaced 6 fetch calls (loadData 4x, batchFacturado PUT, factura-seq PUT)
+6. backup-view.tsx - Added useTenantFetch, replaced 3 fetch calls (export, import, wipe)
+7. configuracion-view.tsx - Added useTenantFetch in ConceptosManager, replaced 7 fetch calls (loadData, save PUT/POST, delete, renameC1, deleteC1, addC1)
+
+- Updated page.tsx to build tenant object from auth context:
+  - Changed `const { user, loading, login, logout, effectiveTenantId } = useAuth()` to include `activeTenantName` and `activeTenantLogo`
+  - Changed tenant.id from `user.tenantId` to `effectiveTenantId || user.tenantId`
+  - Changed tenant.name from `user.tenantName` to `activeTenantName || user.tenantName`
+  - Changed tenant.logo from `user.tenantLogo` to `activeTenantLogo || user.tenantLogo`
+- Config reload useEffect was already using effectiveTenantId (no change needed)
+- Build successful (18 routes, all compiled)
+- Server restarted on port 3000 (HTTP 200)
+
+Stage Summary:
+- All data views now use tenantFetch which injects x-tenant-id header for superadmin users
+- GESTORAPP can switch companies and all API calls will use the selected company's tenantId
+- The tenant object passed to Sidebar and ConfiguracionView now uses the active tenant info (effectiveTenantId, activeTenantName, activeTenantLogo)
+- Double coverage: TenantFetchProvider (global fetch patch) + useTenantFetch (explicit per-call) both inject the header

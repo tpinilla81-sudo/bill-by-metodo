@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Pencil, Trash2, Save, RotateCcw, Filter, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, ChevronDown, Settings2 } from 'lucide-react'
 import { fmtCurrency, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_CATALOGO, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
+import { useTenantFetch } from '@/lib/use-tenant-fetch'
 
 interface CatalogoViewData {
   catalogo: CatalogoItem[]
@@ -17,6 +18,7 @@ interface CatalogoViewData {
 }
 
 export function CatalogoView() {
+  const { tenantFetch } = useTenantFetch()
   const { config, update } = useConfig()
   const fieldDefs = config?.fieldsCatalogo || DEFAULT_FIELDS_CATALOGO
   const visibleFields = fieldDefs.filter(f => f.visible)
@@ -55,9 +57,9 @@ export function CatalogoView() {
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   const loadData = useCallback(async () => {
-    const [catRes, cRes] = await Promise.all([fetch('/api/catalogo'), fetch('/api/clientes')])
+    const [catRes, cRes] = await Promise.all([tenantFetch('/api/catalogo'), tenantFetch('/api/clientes')])
     setData({ catalogo: await catRes.json(), clientes: await cRes.json() })
-  }, [])
+  }, [tenantFetch])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -91,10 +93,10 @@ export function CatalogoView() {
     const customDataStr = serializeCustomData(customValues)
     const body = { clienteId: effectiveClienteId, c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(finalPrice) || 0, customData: customDataStr }
     if (editingId) {
-      await fetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+      await tenantFetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
       showStatus('ok', 'Artículo actualizado ✓')
     } else {
-      await fetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      await tenantFetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       showStatus('ok', 'Artículo guardado ✓')
     }
     resetForm(); loadData()
@@ -109,7 +111,7 @@ export function CatalogoView() {
 
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar artículo?')) return
-    await fetch(`/api/catalogo?id=${id}`, { method: 'DELETE' }); showStatus('ok', 'Eliminado'); loadData()
+    await tenantFetch(`/api/catalogo?id=${id}`, { method: 'DELETE' }); showStatus('ok', 'Eliminado'); loadData()
   }
 
   const { catalogo, clientes } = data
@@ -140,7 +142,7 @@ export function CatalogoView() {
         const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', blankrows: false, raw: true })
         if (rawRows.length === 0) { setImportErrors(['El archivo está vacío']); setImportPreview([]); setImportModalOpen(true); return }
         const errors: string[] = []; const preview: Partial<CatalogoItem>[] = []
-        const clientesRes = await fetch('/api/clientes'); const clientesList: Cliente[] = await clientesRes.json()
+        const clientesRes = await tenantFetch('/api/clientes'); const clientesList: Cliente[] = await clientesRes.json()
         rawRows.forEach((row, idx) => {
           const rowNum = idx + 2
           const rawC1 = getRowVal(row, getLabel('c1'), 'CONCEPTO 1', 'C1', 'c1')
@@ -169,7 +171,7 @@ export function CatalogoView() {
     try {
       const validRows = importPreview.filter(r => r.c1 && r.c2)
       if (validRows.length === 0) { showStatus('err', 'No hay filas válidas'); setImporting(false); return }
-      const res = await fetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batch: validRows.map(r => ({ clienteId: r.clienteId || '', c1: r.c1 || '', c2: r.c2 || '', coste: r.coste || 0, inc: r.inc || 0, final: r.final || 0 })) }) })
+      const res = await tenantFetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batch: validRows.map(r => ({ clienteId: r.clienteId || '', c1: r.c1 || '', c2: r.c2 || '', coste: r.coste || 0, inc: r.inc || 0, final: r.final || 0 })) }) })
       if (res.ok) { const result = await res.json(); showStatus('ok', `${result.count || validRows.length} artículos importados ✓`); setImportModalOpen(false); setImportPreview([]); setImportErrors([]); loadData() }
       else { showStatus('err', 'Error importando') }
     } catch (err) { showStatus('err', 'Error: ' + String(err)) }

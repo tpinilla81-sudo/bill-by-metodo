@@ -17,7 +17,7 @@ import { TenantFetchProvider } from '@/lib/tenant-fetch-provider'
 export type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'facturas' | 'backup' | 'config' | 'admin'
 
 function AppContent() {
-  const { user, loading, login, logout, effectiveTenantId } = useAuth()
+  const { user, loading, login, logout, effectiveTenantId, activeTenantName, activeTenantLogo } = useAuth()
   const [activeView, setActiveView] = useState<View>('entrada')
   const [mobileOpen, setMobileOpen] = useState(false)
   const { config, reload: reloadConfig } = useConfig()
@@ -61,12 +61,12 @@ function AppContent() {
     return <InlineLogin onLogin={login} />
   }
 
-  // Build tenant info from auth user
+  // Build tenant info from auth context (uses effectiveTenantId for GESTORAPP)
   const tenant = {
-    id: user.tenantId,
-    name: user.tenantName,
+    id: effectiveTenantId || user.tenantId,
+    name: activeTenantName || user.tenantName,
     fullName: '',
-    logo: user.tenantLogo,
+    logo: activeTenantLogo || user.tenantLogo,
     address: '',
     city: '',
     province: '',

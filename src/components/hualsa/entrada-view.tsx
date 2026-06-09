@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus } from 'lucide-react'
 import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
+import { useTenantFetch } from '@/lib/use-tenant-fetch'
 
 interface EntradaViewData {
   registros: Registro[]
@@ -15,18 +16,18 @@ interface EntradaViewData {
   catalogo: CatalogoItem[]
 }
 
-function useEntradaData() {
+function useEntradaData(tenantFetch: (url: string, options?: RequestInit) => Promise<Response>) {
   const [data, setData] = useState<EntradaViewData>({ registros: [], clientes: [], catalogo: [] })
   const [loading, setLoading] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
     const [rRes, cRes, catRes] = await Promise.all([
-      fetch('/api/registros?filter=entrada'), fetch('/api/clientes'), fetch('/api/catalogo')
+      tenantFetch('/api/registros?filter=entrada'), tenantFetch('/api/clientes'), tenantFetch('/api/catalogo')
     ])
     setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json() })
     setLoading(false)
-  }, [])
+  }, [tenantFetch])
 
   return { data, loadData, loading }
 }
@@ -86,7 +87,8 @@ function ComboInput({
 }
 
 export function EntradaView() {
-  const { data, loadData, loading } = useEntradaData()
+  const { tenantFetch } = useTenantFetch()
+  const { data, loadData, loading } = useEntradaData(tenantFetch)
   const { config, update } = useConfig()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [transferring, setTransferring] = useState(false)
@@ -164,11 +166,11 @@ export function EntradaView() {
     const body = { fecha, clienteId, cliente: cli?.nombre || '', c1, c2, cant: Number(cant), obs, customData: customDataStr }
 
     if (editingId) {
-      await fetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+      await tenantFetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
       setEditingId(null)
       showStatus('ok', 'Entrada actualizada ✓')
     } else {
-      await fetch('/api/registros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      await tenantFetch('/api/registros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       showStatus('ok', 'Entrada guardada ✓')
     }
     setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
@@ -186,7 +188,7 @@ export function EntradaView() {
 
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar entrada?')) return
-    await fetch(`/api/registros?id=${id}`, { method: 'DELETE' })
+    await tenantFetch(`/api/registros?id=${id}`, { method: 'DELETE' })
     showStatus('ok', 'Eliminada')
     loadData()
   }
@@ -199,7 +201,7 @@ export function EntradaView() {
     if (data.registros.length === 0) return
     setTransferring(true)
     try {
-      const res = await fetch('/api/registros/transfer', { method: 'POST' })
+      const res = await tenantFetch('/api/registros/transfer', { method: 'POST' })
       const result = await res.json()
       showStatus('ok', `${result.transferred} entrada(s) pasadas al registro ✓`)
       loadData()

@@ -5,15 +5,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Download, Upload, Trash2, Database } from 'lucide-react'
 import { useConfig } from '@/lib/config'
+import { useTenantFetch } from '@/lib/use-tenant-fetch'
 
 export function BackupView() {
+  const { tenantFetch } = useTenantFetch()
   const { config } = useConfig()
   const [status, setStatus] = useState('')
 
   async function handleExport() {
     if (!confirm('¿Descargar copia de seguridad completa (JSON)?')) return
     try {
-      const res = await fetch('/api/backup')
+      const res = await tenantFetch('/api/backup')
       const data = await res.json()
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
       const a = document.createElement('a')
@@ -38,7 +40,7 @@ export function BackupView() {
       try {
         const text = await file.text()
         const data = JSON.parse(text)
-        await fetch('/api/backup', {
+        await tenantFetch('/api/backup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
@@ -54,7 +56,7 @@ export function BackupView() {
   async function handleWipe() {
     if (!confirm('Esto BORRA TODO el sistema. ¿Continuar?')) return
     if (!confirm('Última confirmación: ¿SEGURO que quieres borrar todo definitivamente?')) return
-    await fetch('/api/backup', { method: 'DELETE' })
+    await tenantFetch('/api/backup', { method: 'DELETE' })
     setStatus('Todo borrado')
   }
 
