@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Printer, FileSpreadsheet, Receipt, RotateCcw, ArrowLeftRight, CheckCircle2, X } from 'lucide-react'
+import { Printer, FileSpreadsheet, Receipt, RotateCcw, ArrowLeftRight, CheckCircle2, X, Filter } from 'lucide-react'
 import { fmtCurrency, fmtDate, fmtMonth, todayISO, currentYear, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_FACTURAS, type ResolvedConfig } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
@@ -53,6 +53,9 @@ export function FacturasView() {
 
   // Facturado filter
   const [showFacturados, setShowFacturados] = useState(true)
+
+  // UI collapse states
+  const [showFilters, setShowFilters] = useState(false)
 
   const loadData = useCallback(async () => {
     const [rRes, cRes, catRes, seqRes] = await Promise.all([
@@ -499,38 +502,52 @@ export function FacturasView() {
     <div className="flex flex-col flex-1 min-h-0">
       {/* ─── FIXED HEADER ─── */}
       <div className="flex-shrink-0 space-y-3 pb-2">
-        {/* Filters row 1 */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-3 items-end">
-              <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Desde</Label>
-                <Input type="date" value={fDesde} onChange={e => setFDesde(e.target.value)} />
+        {/* Title + toggle buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Receipt className="h-5 w-5 text-[#005bb5]" />
+          <h2 className="text-lg font-bold text-gray-700">Facturas</h2>
+          <button onClick={() => setShowFilters(!showFilters)} className={`ml-2 inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${showFilters ? 'bg-blue-50 text-[#005bb5] border-blue-200' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-blue-50 hover:text-[#005bb5]'}`}>
+            <Filter className="h-3 w-3" /> Filtros
+          </button>
+        </div>
+
+        {/* Collapsible Filters */}
+        {showFilters && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_auto_auto] gap-3 items-end">
+                <div>
+                  <Label className="text-xs uppercase font-bold text-slate-500">Desde</Label>
+                  <Input type="date" value={fDesde} onChange={e => setFDesde(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs uppercase font-bold text-slate-500">Hasta</Label>
+                  <Input type="date" value={fHasta} onChange={e => setFHasta(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs uppercase font-bold text-slate-500">Mes</Label>
+                  <Input type="month" value={fMes} onChange={e => setFMes(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs uppercase font-bold text-slate-500">Cliente</Label>
+                  <Select value={fCliente} onValueChange={setFCliente}>
+                    <SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">— Todos —</SelectItem>
+                      {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button className="bg-[#005bb5] hover:bg-[#003d7a] text-white">
+                  <Filter className="h-4 w-4 mr-1" /> FILTRAR
+                </Button>
+                <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFCliente('') }}>
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
               </div>
-              <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Hasta</Label>
-                <Input type="date" value={fHasta} onChange={e => setFHasta(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Mes</Label>
-                <Input type="month" value={fMes} onChange={e => setFMes(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Cliente</Label>
-                <Select value={fCliente} onValueChange={setFCliente}>
-                  <SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">— Todos —</SelectItem>
-                    {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button className="bg-[#005bb5] hover:bg-[#003d7a] text-white">
-                <Receipt className="h-4 w-4 mr-1" /> FILTRAR
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Invoice settings */}
         <Card>
