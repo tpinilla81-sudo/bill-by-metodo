@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import Image from 'next/image'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -9,10 +8,10 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Printer, FileSpreadsheet, Receipt, RotateCcw, ArrowLeftRight, CheckCircle2 } from 'lucide-react'
-import { fmtCurrency, fmtDate, fmtMonth, todayISO, currentYear, safeArray, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
-import { useConfig, DEFAULT_LABELS_FACTURAS } from '@/lib/config'
-import { useTenantFetch } from '@/lib/use-tenant-fetch'
+import { Printer, FileSpreadsheet, Receipt, RotateCcw, ArrowLeftRight, CheckCircle2, X } from 'lucide-react'
+import { fmtCurrency, fmtDate, fmtMonth, todayISO, currentYear, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
+import { useConfig, DEFAULT_LABELS_FACTURAS, type ResolvedConfig } from '@/lib/config'
+import { triggerBackup } from '@/lib/trigger-backup'
 import * as XLSX from 'xlsx'
 
 interface FacturasData {
@@ -29,7 +28,6 @@ interface InvoiceData {
 }
 
 export function FacturasView() {
-  const { tenantFetch } = useTenantFetch()
   const { config } = useConfig()
   const L = config?.labelsFacturas || DEFAULT_LABELS_FACTURAS
   const [data, setData] = useState<FacturasData>({ registros: [], clientes: [], catalogo: [], seq: 1 })
@@ -58,12 +56,11 @@ export function FacturasView() {
 
   const loadData = useCallback(async () => {
     const [rRes, cRes, catRes, seqRes] = await Promise.all([
-      tenantFetch('/api/registros'), tenantFetch('/api/clientes'), tenantFetch('/api/catalogo'), tenantFetch('/api/factura-seq')
+      fetch('/api/registros'), fetch('/api/clientes'), fetch('/api/catalogo'), fetch('/api/factura-seq')
     ])
-    const seqData = await seqRes.json()
-    const seq = (seqData && typeof seqData === 'object' && 'seq' in seqData) ? seqData.seq : 1
-    setData({ registros: safeArray(await rRes.json()), clientes: safeArray(await cRes.json()), catalogo: safeArray(await catRes.json()), seq })
-  }, [tenantFetch])
+    const seq = (await seqRes.json()).seq
+    setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json(), seq })
+  }, [])
 
   useEffect(() => {
     loadData()
@@ -124,6 +121,48 @@ export function FacturasView() {
     })
   }
 
+  async function handleQuitarFacturado() {
+    const facturados = selectedItems.filter(r => r.facturado === true)
+    if (!facturados.length) { alert('Selecciona registros facturados para quitar el estado'); return }
+    if (!confirm(`¿Quitar estado "Facturado" de ${facturados.length} registro(s)?`)) return
+    const ids = facturados.map(r => r.id)
+    try {
+      await fetch('/api/registros', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchQuitarFacturado: true, ids })
+      })
+      setData(prev => ({
+        ...prev,
+        registros: prev.registros.map(r =>
+          ids.includes(r.id) ? { ...r, facturado: false } : r
+        )
+      }))
+      triggerBackup()
+    } catch (err) {
+      console.error('Error quitando facturado:', err)
+    }
+  }
+
+  async function handleQuitarFacturadoSingle(id: string) {
+    try {
+      await fetch('/api/registros', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, facturado: false })
+      })
+      setData(prev => ({
+        ...prev,
+        registros: prev.registros.map(r =>
+          r.id === id ? { ...r, facturado: false } : r
+        )
+      }))
+      triggerBackup()
+    } catch (err) {
+      console.error('Error quitando facturado:', err)
+    }
+  }
+
   async function handleGenerar() {
     const sel = selectedItems
     if (!sel.length) { alert('No hay líneas seleccionadas'); return }
@@ -158,7 +197,7 @@ export function FacturasView() {
     // Mark selected registros as facturado
     const selectedIds = sel.map(r => r.id)
     try {
-      await tenantFetch('/api/registros', {
+      await fetch('/api/registros', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ batchFacturado: true, ids: selectedIds })
@@ -176,8 +215,185 @@ export function FacturasView() {
 
     // Increment seq
     const newSeq = data.seq + 1
-    await tenantFetch('/api/factura-seq', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seq: newSeq }) })
+    await fetch('/api/factura-seq', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seq: newSeq }) })
     setData(prev => ({ ...prev, seq: newSeq }))
+    triggerBackup()
+  }
+
+  function handlePrintInvoice(inv: InvoiceData, cat: CatalogoItem[], cfg: ResolvedConfig | null) {
+    const LL = cfg?.labelsFacturas || DEFAULT_LABELS_FACTURAS
+    const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total } = inv
+    const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
+
+    function pu(c1Val: string, c2Val: string, cliId: string): number {
+      let it = cat.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
+      if (!it) it = cat.find(x => x.c1 === c1Val && x.c2 === c2Val && !x.clienteId)
+      if (!it) it = cat.find(x => x.c1 === c1Val && x.c2 === c2Val)
+      return it ? Number(it.final) || 0 : 0
+    }
+
+    const logoSrc = cfg?.logo
+      ? (cfg.logo.startsWith('data:') ? cfg.logo : `data:image/png;base64,${cfg.logo}`)
+      : ''
+
+    const lineasHtml = lineas.map(r => {
+      const p = pu(r.c1, r.c2, r.clienteId)
+      return `<tr>
+        <td style="padding:7px 10px;border:1px solid #bbb;">${fechaLbl(r.fecha)}</td>
+        <td style="padding:7px 10px;border:1px solid #bbb;">${r.c1}${r.c2 ? ' - ' + r.c2 : ''}${r.obs ? ' (' + r.obs + ')' : ''}</td>
+        <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${r.cant}</td>
+        <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${p.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+        <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${(p * r.cant).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+      </tr>`
+    }).join('')
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Factura ${numero}</title>
+<style>
+  @page { size: A4 portrait; margin: 12mm 15mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+    color: #1a1a1a;
+    font-size: 11pt;
+    line-height: 1.45;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .page { width: 100%; max-width: 210mm; }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+    border-bottom: 3px solid #2bb24c;
+  }
+  .company-info { flex: 1; }
+  .company-name { font-size: 18pt; font-weight: 800; color: #1a1a1a; margin-bottom: 4px; }
+  .company-detail { font-size: 10pt; color: #444; line-height: 1.5; }
+  .company-detail b { color: #1a1a1a; }
+  .logo-area { margin-left: 20px; }
+  .logo-area img { max-width: 240px; max-height: 100px; object-fit: contain; }
+  .factura-badge {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 8px 16px;
+    border: 2px solid #1a1a1a;
+    background: #f5f5f5;
+    font-size: 11pt;
+    line-height: 1.6;
+  }
+  .factura-badge b { font-size: 11pt; }
+  .client-box {
+    border: 2px solid #1a1a1a;
+    padding: 14px 18px;
+    margin-bottom: 24px;
+    background: #f9f9f9;
+    font-size: 11pt;
+    line-height: 1.6;
+  }
+  .client-box b { color: #1a1a1a; }
+  .client-label { font-size: 9pt; text-transform: uppercase; color: #888; letter-spacing: 1px; margin-bottom: 4px; }
+  table.lines { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10.5pt; }
+  table.lines thead th {
+    background: #1a1a1a;
+    color: #fff;
+    padding: 9px 10px;
+    text-align: left;
+    font-size: 9.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 1px solid #1a1a1a;
+  }
+  table.lines thead th:nth-child(3),
+  table.lines thead th:nth-child(4),
+  table.lines thead th:nth-child(5) { text-align: right; }
+  table.lines tbody tr:nth-child(even) { background: #fafafa; }
+  table.lines tbody td { padding: 7px 10px; border: 1px solid #ccc; }
+  table.lines tbody td:nth-child(3),
+  table.lines tbody td:nth-child(4),
+  table.lines tbody td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; }
+  .totals { margin-left: auto; border-collapse: collapse; font-size: 11pt; }
+  .totals td { padding: 8px 14px; border: 1px solid #1a1a1a; }
+  .totals .label { background: #e8e8e8; font-weight: 700; text-align: right; min-width: 170px; }
+  .totals .value { text-align: right; min-width: 140px; font-variant-numeric: tabular-nums; }
+  .totals .total-row { background: #2bb24c; color: #fff; font-weight: 800; font-size: 13pt; }
+  .totals .total-row td { border-color: #2bb24c; }
+  .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #ddd; font-size: 8.5pt; color: #999; text-align: center; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="company-info">
+      <div class="company-name">${cfg?.companyFullName || 'EMPRESA'}</div>
+      <div class="company-detail">
+        ${cfg?.companyAddress ? cfg.companyAddress + '<br>' : ''}
+        ${cfg?.companyCity ? cfg.companyCity : ''}${cfg?.companyProvince ? ' ' + cfg.companyProvince : ''}${(cfg?.companyCity || cfg?.companyProvince) ? '<br>' : ''}
+        ${cfg?.companyCif ? '<b>CIF:</b> ' + cfg.companyCif : ''}
+      </div>
+      <div class="factura-badge">
+        <b>${LL.numero}:</b> ${numero}<br>
+        <b>${LL.fecha}:</b> ${fmtDate(fechaFact)}
+      </div>
+    </div>
+    ${logoSrc ? '<div class="logo-area"><img src="' + logoSrc + '" alt="Logo"></div>' : ''}
+  </div>
+
+  <div class="client-label">DATOS DEL CLIENTE</div>
+  <div class="client-box">
+    <b>${LL.cliente}:</b> ${cli.nombre}<br>
+    ${cli.cif ? '<b>CIF:</b> ' + cli.cif + '<br>' : ''}
+    ${cli.dir ? cli.dir + '<br>' : ''}
+    ${cli.cp || cli.ciudad || cli.prov ? (cli.cp ? cli.cp + ' ' : '') + (cli.ciudad || '') + (cli.prov ? ' (' + cli.prov + ')' : '') : ''}
+  </div>
+
+  <table class="lines">
+    <thead>
+      <tr>
+        <th style="width:90px;">${LL.fecha}</th>
+        <th>${LL.concepto}</th>
+        <th style="width:70px;">${LL.cantidad}</th>
+        <th style="width:120px;">${LL.precioUnitario}</th>
+        <th style="width:120px;">${LL.importe}</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${lineasHtml}
+    </tbody>
+  </table>
+
+  <table class="totals">
+    <tr>
+      <td class="label">${LL.baseImponible}</td>
+      <td class="value">${fmtCurrency(base)}</td>
+    </tr>
+    <tr>
+      <td class="label">IVA ${iva}%</td>
+      <td class="value">${fmtCurrency(ivaImp)}</td>
+    </tr>
+    <tr class="total-row">
+      <td>${LL.totalFactura}</td>
+      <td>${fmtCurrency(total)}</td>
+    </tr>
+  </table>
+
+  <div class="footer">${cfg?.companyFullName || 'EMPRESA'} &mdash; ${cfg?.companyAddress || ''} ${cfg?.companyCity || ''}</div>
+</div>
+<script>window.onload = function() { window.print(); }</script>
+</body>
+</html>`
+
+    const printWin = window.open('', '_blank', 'width=900,height=700')
+    if (printWin) {
+      printWin.document.write(html)
+      printWin.document.close()
+    }
   }
 
   function handleExportExcel() {
@@ -280,147 +496,162 @@ export function FacturasView() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Filters row 1 */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-3 items-end">
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Desde</Label>
-              <Input type="date" value={fDesde} onChange={e => setFDesde(e.target.value)} />
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* ─── FIXED HEADER ─── */}
+      <div className="flex-shrink-0 space-y-3 pb-2">
+        {/* Filters row 1 */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-3 items-end">
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Desde</Label>
+                <Input type="date" value={fDesde} onChange={e => setFDesde(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Hasta</Label>
+                <Input type="date" value={fHasta} onChange={e => setFHasta(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Mes</Label>
+                <Input type="month" value={fMes} onChange={e => setFMes(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Cliente</Label>
+                <Select value={fCliente} onValueChange={setFCliente}>
+                  <SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">— Todos —</SelectItem>
+                    {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button className="bg-[#005bb5] hover:bg-[#003d7a] text-white">
+                <Receipt className="h-4 w-4 mr-1" /> FILTRAR
+              </Button>
             </div>
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Hasta</Label>
-              <Input type="date" value={fHasta} onChange={e => setFHasta(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Mes</Label>
-              <Input type="month" value={fMes} onChange={e => setFMes(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Cliente</Label>
-              <Select value={fCliente} onValueChange={setFCliente}>
-                <SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">— Todos —</SelectItem>
-                  {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button className="bg-[#005bb5] hover:bg-[#003d7a] text-white">
-              <Receipt className="h-4 w-4 mr-1" /> FILTRAR
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Invoice settings */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_auto_auto_auto] gap-3 items-end">
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Nº Factura</Label>
-              <Input value={fNumero} onChange={e => setFNumero(e.target.value)} placeholder="auto" />
+        {/* Invoice settings */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_auto_auto_auto] gap-3 items-end">
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Nº Factura</Label>
+                <Input value={fNumero} onChange={e => setFNumero(e.target.value)} placeholder="auto" />
+              </div>
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Fecha factura</Label>
+                <Input type="date" value={fFechaFact} onChange={e => setFFechaFact(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">IVA %</Label>
+                <Input type="number" value={fIva} onChange={e => setFIva(e.target.value)} step="0.01" />
+              </div>
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Agrupar por</Label>
+                <Select value={fModo} onValueChange={v => setFModo(v as 'dia' | 'mes')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dia">Días</SelectItem>
+                    <SelectItem value="mes">Mes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button variant="outline" onClick={handleAlternos} title="Desmarca días alternos">
+                <ArrowLeftRight className="h-4 w-4 mr-1" /> Alternos
+              </Button>
+              <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFCliente(''); setFNumero('') }}>
+                <RotateCcw className="h-4 w-4 mr-1" /> Limpiar
+              </Button>
+              <Button onClick={handleGenerar} className="bg-green-600 hover:bg-green-700 text-white">
+                <Receipt className="h-4 w-4 mr-1" /> GENERAR
+              </Button>
             </div>
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Fecha factura</Label>
-              <Input type="date" value={fFechaFact} onChange={e => setFFechaFact(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">IVA %</Label>
-              <Input type="number" value={fIva} onChange={e => setFIva(e.target.value)} step="0.01" />
-            </div>
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Agrupar por</Label>
-              <Select value={fModo} onValueChange={v => setFModo(v as 'dia' | 'mes')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="dia">Días</SelectItem>
-                  <SelectItem value="mes">Mes</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button variant="outline" onClick={handleAlternos} title="Desmarca días alternos">
-              <ArrowLeftRight className="h-4 w-4 mr-1" /> Alternos
-            </Button>
-            <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFCliente(''); setFNumero('') }}>
-              <RotateCcw className="h-4 w-4 mr-1" /> Limpiar
-            </Button>
-            <Button onClick={handleGenerar} className="bg-green-600 hover:bg-green-700 text-white">
-              <Receipt className="h-4 w-4 mr-1" /> GENERAR
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Totals + Facturado filter */}
-      <div className="flex flex-wrap gap-4 bg-white rounded-lg px-4 py-3 shadow-sm text-sm font-bold items-center">
-        <span>Líneas:<b className="text-[#005bb5] ml-1">{filtered.length}</b></span>
-        <span>Seleccionadas:<b className="text-[#005bb5] ml-1">{selectedItems.length}</b></span>
-        <span>Cantidad:<b className="text-[#005bb5] ml-1">{totalCant}</b></span>
-        <span>Base:<b className="text-[#005bb5] ml-1">{fmtCurrency(totalBase)}</b></span>
-        <div className="ml-auto flex items-center gap-2">
-          <Checkbox
-            id="showFacturados"
-            checked={showFacturados}
-            onCheckedChange={(v) => setShowFacturados(v === true)}
-          />
-          <Label htmlFor="showFacturados" className="text-xs font-semibold text-slate-600 cursor-pointer select-none">
-            Mostrar facturados
-          </Label>
+        {/* Totals + Facturado filter */}
+        <div className="flex flex-wrap gap-4 bg-white rounded-lg px-4 py-2.5 shadow-sm text-sm font-bold border items-center">
+          <span>Líneas:<b className="text-[#005bb5] ml-1">{filtered.length}</b></span>
+          <span>Seleccionadas:<b className="text-[#005bb5] ml-1">{selectedItems.length}</b></span>
+          <span>Cantidad:<b className="text-[#005bb5] ml-1">{totalCant}</b></span>
+          <span>Base:<b className="text-[#005bb5] ml-1">{fmtCurrency(totalBase)}</b></span>
+          {selectedItems.some(r => r.facturado) && (
+            <Button variant="outline" size="sm" onClick={handleQuitarFacturado} className="text-orange-600 border-orange-300 hover:bg-orange-50 text-xs h-7">
+              <X className="h-3 w-3 mr-1" /> Quitar facturado
+            </Button>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            <Checkbox
+              id="showFacturados"
+              checked={showFacturados}
+              onCheckedChange={(v) => setShowFacturados(v === true)}
+            />
+            <Label htmlFor="showFacturados" className="text-xs font-semibold text-slate-600 cursor-pointer select-none">
+              Mostrar facturados
+            </Label>
+          </div>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-lg border overflow-auto shadow-sm">
-        <table className="w-full text-sm min-w-[700px]">
-          <thead>
-            <tr className="bg-indigo-50">
-              <th className="p-2 text-left border-b w-10">
-                <Checkbox checked={checkAll} onCheckedChange={toggleAll} />
-              </th>
-              <th className="p-2 text-left font-semibold border-b">Fecha</th>
-              <th className="p-2 text-left font-semibold border-b">Cliente</th>
-              <th className="p-2 text-left font-semibold border-b">C1</th>
-              <th className="p-2 text-left font-semibold border-b">C2</th>
-              <th className="p-2 text-left font-semibold border-b">Cant</th>
-              <th className="p-2 text-left font-semibold border-b">P.Unit</th>
-              <th className="p-2 text-left font-semibold border-b">Importe</th>
-              <th className="p-2 text-left font-semibold border-b">Obs</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(r => {
-              const pu = precioUnit(r.c1, r.c2, r.clienteId)
-              const imp = pu * r.cant
-              const sel = selection[r.id] !== false
-              const isFacturado = r.facturado === true
-              return (
-                <tr key={r.id} className={`border-b ${sel ? '' : 'opacity-40'} ${isFacturado ? 'border-l-4 border-l-green-500 bg-green-50/40' : ''}`}>
-                  <td className="p-2 flex items-center gap-1">
-                    <Checkbox checked={sel} onCheckedChange={() => toggleItem(r.id)} />
-                    {isFacturado && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                        <CheckCircle2 className="h-3 w-3" /> Facturado
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-2">{fmtDate(r.fecha)}</td>
-                  <td className="p-2">{r.cliente}</td>
-                  <td className="p-2">{r.c1}</td>
-                  <td className="p-2">{r.c2}</td>
-                  <td className="p-2">{r.cant}</td>
-                  <td className="p-2">{fmtCurrency(pu)}</td>
-                  <td className="p-2 font-bold">{fmtCurrency(imp)}</td>
-                  <td className="p-2">{r.obs}</td>
-                </tr>
-              )
-            })}
-            {filtered.length === 0 && (
-              <tr><td colSpan={9} className="p-6 text-center text-gray-400">No hay registros para facturar</td></tr>
-            )}
-          </tbody>
-        </table>
+      {/* ─── SCROLLABLE TABLE ─── */}
+      <div className="flex-1 min-h-0 bg-white rounded-lg border shadow-sm flex flex-col">
+        <div className="flex-1 min-h-0 overflow-auto">
+          <table className="w-full text-sm min-w-[700px]">
+            <thead className="sticky top-0 z-10 shadow-sm">
+              <tr className="bg-indigo-50">
+                <th className="p-2 text-left border-b w-10 bg-indigo-50">
+                  <Checkbox checked={checkAll} onCheckedChange={toggleAll} />
+                </th>
+                <th className="p-2 text-left font-semibold border-b bg-indigo-50">Fecha</th>
+                <th className="p-2 text-left font-semibold border-b bg-indigo-50">Cliente</th>
+                <th className="p-2 text-left font-semibold border-b bg-indigo-50">C1</th>
+                <th className="p-2 text-left font-semibold border-b bg-indigo-50">C2</th>
+                <th className="p-2 text-left font-semibold border-b bg-indigo-50">Cant</th>
+                <th className="p-2 text-left font-semibold border-b bg-indigo-50">P.Unit</th>
+                <th className="p-2 text-left font-semibold border-b bg-indigo-50">Importe</th>
+                <th className="p-2 text-left font-semibold border-b bg-indigo-50">Obs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(r => {
+                const pu = precioUnit(r.c1, r.c2, r.clienteId)
+                const imp = pu * r.cant
+                const sel = selection[r.id] !== false
+                const isFacturado = r.facturado === true
+                return (
+                  <tr key={r.id} className={`border-b ${sel ? '' : 'opacity-40'} ${isFacturado ? 'border-l-4 border-l-green-500 bg-green-50/40' : ''}`}>
+                    <td className="p-2 flex items-center gap-1">
+                      <Checkbox checked={sel} onCheckedChange={() => toggleItem(r.id)} />
+                      {isFacturado && (
+                        <button
+                          onClick={() => handleQuitarFacturadoSingle(r.id)}
+                          title="Quitar estado facturado"
+                          className="inline-flex items-center gap-0.5 text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap hover:bg-red-100 hover:text-red-600 transition-colors cursor-pointer"
+                        >
+                          <CheckCircle2 className="h-3 w-3" /> Facturado
+                          <X className="h-2.5 w-2.5 ml-0.5 opacity-60" />
+                        </button>
+                      )}
+                    </td>
+                    <td className="p-2">{fmtDate(r.fecha)}</td>
+                    <td className="p-2">{r.cliente}</td>
+                    <td className="p-2">{r.c1}</td>
+                    <td className="p-2">{r.c2}</td>
+                    <td className="p-2">{r.cant}</td>
+                    <td className="p-2">{fmtCurrency(pu)}</td>
+                    <td className="p-2 font-bold">{fmtCurrency(imp)}</td>
+                    <td className="p-2">{r.obs}</td>
+                  </tr>
+                )
+              })}
+              {filtered.length === 0 && (
+                <tr><td colSpan={9} className="p-6 text-center text-gray-400">No hay registros para facturar</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Invoice Modal */}
@@ -431,8 +662,8 @@ export function FacturasView() {
           </DialogHeader>
           {invoiceData && <InvoicePreview data={invoiceData} catalogo={catalogo} config={config} />}
           <div className="flex gap-3 justify-end mt-4">
-            <Button variant="outline" onClick={() => window.print()}>
-              <Printer className="h-4 w-4 mr-1" /> Imprimir
+            <Button variant="outline" onClick={() => handlePrintInvoice(invoiceData!, catalogo, config)}>
+              <Printer className="h-4 w-4 mr-1" /> Imprimir A4
             </Button>
             <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={handleExportExcel}>
               <FileSpreadsheet className="h-4 w-4 mr-1" /> Excel
@@ -440,30 +671,6 @@ export function FacturasView() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Print-only CSS for A4 format */}
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          #invoice-print-area,
-          #invoice-print-area * {
-            visibility: visible;
-          }
-          #invoice-print-area {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            padding: 15mm 20mm;
-          }
-          @page {
-            size: A4 portrait;
-            margin: 0;
-          }
-        }
-      `}</style>
     </div>
   )
 }

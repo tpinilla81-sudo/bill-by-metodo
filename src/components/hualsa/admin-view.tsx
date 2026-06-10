@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Building2, Users, Plus, Pencil, Trash2, CheckCircle, Upload, Lock, Shield, Copy, Eye, EyeOff, KeyRound } from 'lucide-react'
+import { Building2, Users, Plus, Pencil, Trash2, CheckCircle, Shield, Copy, Eye, EyeOff, KeyRound } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────
 interface Tenant {
@@ -55,18 +55,10 @@ function TenantsTab() {
   const [editId, setEditId] = useState<string | null>(null)
   const [createdCredentials, setCreatedCredentials] = useState<AutoUser | null>(null)
 
-  // Form state
+  // Form state — only name needed for creation
   const [formName, setFormName] = useState('')
   const [formSlug, setFormSlug] = useState('')
-  const [formFullName, setFormFullName] = useState('')
-  const [formAddress, setFormAddress] = useState('')
-  const [formCity, setFormCity] = useState('')
-  const [formProvince, setFormProvince] = useState('')
-  const [formCif, setFormCif] = useState('')
-  const [formLogo, setFormLogo] = useState('')
-  const [formLogoPreview, setFormLogoPreview] = useState('')
   const [formActive, setFormActive] = useState(true)
-  const logoInputRef = useRef<HTMLInputElement>(null)
 
   const loadData = useCallback(async () => {
     try {
@@ -87,9 +79,8 @@ function TenantsTab() {
   }
 
   function resetForm() {
-    setEditId(null); setFormName(''); setFormSlug(''); setFormFullName(''); setFormAddress('')
-    setFormCity(''); setFormProvince(''); setFormCif(''); setFormLogo('')
-    setFormLogoPreview(''); setFormActive(true); setShowDialog(false)
+    setEditId(null); setFormName(''); setFormSlug('')
+    setFormActive(true); setShowDialog(false)
   }
 
   function openCreate() {
@@ -98,23 +89,8 @@ function TenantsTab() {
   }
 
   function openEdit(t: Tenant) {
-    setEditId(t.id); setFormName(t.name); setFormSlug(t.slug); setFormFullName(t.fullName)
-    setFormAddress(t.address); setFormCity(t.city); setFormProvince(t.province)
-    setFormCif(t.cif); setFormLogo(t.logo); setFormLogoPreview(''); setFormActive(t.active)
+    setEditId(t.id); setFormName(t.name); setFormSlug(t.slug); setFormActive(t.active)
     setShowDialog(true)
-  }
-
-  function handleLogoSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (file.size > 2 * 1024 * 1024) { showMsg('err', 'El logo debe ser menor de 2MB'); return }
-    const reader = new FileReader()
-    reader.onload = (evt) => {
-      const dataUrl = evt.target?.result as string
-      setFormLogoPreview(dataUrl)
-      setFormLogo(dataUrl)
-    }
-    reader.readAsDataURL(file)
   }
 
   // Auto-generate slug from name
@@ -122,7 +98,7 @@ function TenantsTab() {
     setFormName(name)
     if (!editId) {
       const slug = name.trim().toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove accents
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9\s-]/g, '')
         .replace(/[\s_]+/g, '-')
         .replace(/-+/g, '-')
@@ -136,44 +112,28 @@ function TenantsTab() {
       showMsg('err', 'El nombre es obligatorio')
       return
     }
-    if (!editId && !formSlug.trim()) {
-      showMsg('err', 'El slug es obligatorio')
-      return
-    }
 
     try {
       if (editId) {
-        // Update (name and slug are NOT editable)
+        // Update — only active status can be changed by superadmin
         const res = await fetch('/api/tenants', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: editId,
-            fullName: formFullName,
-            address: formAddress,
-            city: formCity,
-            province: formProvince,
-            cif: formCif,
-            logo: formLogo === '' && !formLogoPreview ? undefined : formLogo,
             active: formActive,
           }),
         })
         if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
         showMsg('ok', 'Empresa actualizada ✓')
       } else {
-        // Create — this also auto-creates an admin user
+        // Create — name only, this also auto-creates an admin user
         const res = await fetch('/api/tenants', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: formName,
             slug: formSlug,
-            fullName: formFullName,
-            address: formAddress,
-            city: formCity,
-            province: formProvince,
-            cif: formCif,
-            logo: formLogo,
           }),
         })
         if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
@@ -193,7 +153,6 @@ function TenantsTab() {
 
   async function handleToggleActive(t: Tenant) {
     const newActive = !t.active
-    const action = newActive ? 'activar' : 'desactivar'
     if (!confirm(`¿${newActive ? 'Activar' : 'Desactivar'} la empresa "${t.name}"?`)) return
 
     try {
@@ -261,6 +220,9 @@ function TenantsTab() {
                 </span>
               </div>
             </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs text-amber-700">
+              El administrador de la empresa deberá completar los datos (razón social, CIF, dirección, logo...) desde Configuración.
+            </div>
             <div className="flex justify-end">
               <Button variant="outline" size="sm" onClick={() => setCreatedCredentials(null)}>
                 Cerrar
@@ -271,7 +233,7 @@ function TenantsTab() {
       )}
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">Gestiona las empresas (tenants) del sistema. Al crear una empresa se genera automáticamente un usuario admin.</p>
+        <p className="text-sm text-gray-500">Crea empresas con el nombre. Los datos, logo, etc. los completa el admin de cada empresa desde Configuración.</p>
         <Button onClick={openCreate} className="bg-[#005bb5] hover:bg-[#004a94] text-white">
           <Plus className="h-4 w-4 mr-1" /> Nueva Empresa
         </Button>
@@ -283,8 +245,6 @@ function TenantsTab() {
             <tr className="bg-blue-50">
               <th className="p-3 text-left font-semibold border-b">Nombre</th>
               <th className="p-3 text-left font-semibold border-b">Slug</th>
-              <th className="p-3 text-left font-semibold border-b">Razón Social</th>
-              <th className="p-3 text-left font-semibold border-b">CIF</th>
               <th className="p-3 text-center font-semibold border-b">Usuarios</th>
               <th className="p-3 text-center font-semibold border-b">Estado</th>
               <th className="p-3 text-center font-semibold border-b">Acciones</th>
@@ -295,8 +255,6 @@ function TenantsTab() {
               <tr key={t.id} className={`border-b hover:bg-gray-50 ${!t.active ? 'opacity-50' : ''}`}>
                 <td className="p-3 font-bold text-gray-800">{t.name}</td>
                 <td className="p-3 text-gray-500 font-mono text-xs">{t.slug}</td>
-                <td className="p-3 text-gray-600">{t.fullName || '—'}</td>
-                <td className="p-3 text-gray-600">{t.cif || '—'}</td>
                 <td className="p-3 text-center">
                   <span className="inline-flex items-center justify-center bg-blue-100 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-full">
                     {t.userCount}
@@ -315,7 +273,7 @@ function TenantsTab() {
               </tr>
             ))}
             {tenants.length === 0 && (
-              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay empresas creadas</td></tr>
+              <tr><td colSpan={5} className="p-6 text-center text-gray-400">No hay empresas creadas</td></tr>
             )}
           </tbody>
         </table>
@@ -323,7 +281,7 @@ function TenantsTab() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={showDialog} onOpenChange={(open) => { if (!open) resetForm() }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-[#005bb5]" />
@@ -331,55 +289,24 @@ function TenantsTab() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Nombre</Label>
-                {editId ? (
-                  <div className="flex items-center gap-2 mt-1">
-                    <Input value={formName} disabled className="bg-gray-50 text-gray-500" />
-                    <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-bold whitespace-nowrap">FIJO</span>
-                  </div>
-                ) : (
-                  <Input value={formName} onChange={e => handleNameChange(e.target.value)} placeholder="Ej: Transportes Hualsa" className="mt-1" />
-                )}
-              </div>
-              <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Slug (identificador)</Label>
-                {editId ? (
-                  <div className="flex items-center gap-2 mt-1">
-                    <Input value={formSlug} disabled className="bg-gray-50 text-gray-500 font-mono" />
-                    <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-bold whitespace-nowrap">FIJO</span>
-                  </div>
-                ) : (
-                  <Input value={formSlug} onChange={e => setFormSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} placeholder="ej: hualsa" className="mt-1 font-mono" />
-                )}
-                {!editId && <p className="text-[10px] text-gray-400 mt-1">Se autogenera a partir del nombre. Se usará para crear el email del admin: {formSlug || '...'}@bill.es</p>}
-              </div>
-            </div>
             <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Razón Social</Label>
-              <Input value={formFullName} onChange={e => setFormFullName(e.target.value)} placeholder="Mi Empresa S.L." className="mt-1" />
+              <Label className="text-xs uppercase font-bold text-slate-500">Nombre de la empresa</Label>
+              {editId ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <Input value={formName} disabled className="bg-gray-50 text-gray-500" />
+                  <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-bold whitespace-nowrap">FIJO</span>
+                </div>
+              ) : (
+                <Input value={formName} onChange={e => handleNameChange(e.target.value)} placeholder="Ej: Transportes Hualsa" className="mt-1" />
+              )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {!editId && formSlug && (
               <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">CIF</Label>
-                <Input value={formCif} onChange={e => setFormCif(e.target.value)} placeholder="B12345678" className="mt-1" />
+                <Label className="text-xs uppercase font-bold text-slate-500">Slug (auto-generado)</Label>
+                <Input value={formSlug} disabled className="bg-gray-50 text-gray-500 font-mono mt-1" />
+                <p className="text-[10px] text-gray-400 mt-1">Se creará el admin: <strong>{formSlug}@bill.es</strong></p>
               </div>
-              <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Dirección</Label>
-                <Input value={formAddress} onChange={e => setFormAddress(e.target.value)} placeholder="C/ Example, Nº 1" className="mt-1" />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Ciudad</Label>
-                <Input value={formCity} onChange={e => setFormCity(e.target.value)} placeholder="Madrid" className="mt-1" />
-              </div>
-              <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Provincia</Label>
-                <Input value={formProvince} onChange={e => setFormProvince(e.target.value)} placeholder="Madrid" className="mt-1" />
-              </div>
-            </div>
+            )}
 
             {/* Active toggle (only for edit) */}
             {editId && (
@@ -396,36 +323,12 @@ function TenantsTab() {
             {!editId && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
                 <KeyRound className="h-4 w-4 text-[#005bb5] mt-0.5 shrink-0" />
-                <p className="text-xs text-blue-700">
-                  Al crear la empresa se generará automáticamente un usuario administrador con email <strong>{formSlug || '...'}@bill.es</strong> y una contraseña aleatoria que se mostrará una sola vez.
-                </p>
+                <div className="text-xs text-blue-700 space-y-1">
+                  <p>Al crear la empresa se generará automáticamente un usuario administrador con email <strong>{formSlug || '...'}@bill.es</strong> y una contraseña aleatoria.</p>
+                  <p>El administrador de la empresa completará los datos (razón social, CIF, dirección, logo...) desde su sección de Configuración.</p>
+                </div>
               </div>
             )}
-
-            {/* Logo upload */}
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Logo</Label>
-              <div className="flex items-start gap-3 mt-1">
-                <div className="w-[140px] h-[50px] border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-white overflow-hidden shrink-0">
-                  {(formLogoPreview || (editId && formLogo)) ? (
-                    <img
-                      src={formLogoPreview || (formLogo.startsWith('data:') ? formLogo : `data:image/png;base64,${formLogo}`)}
-                      alt="Logo"
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  ) : (
-                    <span className="text-xs text-gray-400">Sin logo</span>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoSelect} />
-                  <Button variant="outline" size="sm" onClick={() => logoInputRef.current?.click()}>
-                    <Upload className="h-4 w-4 mr-1" /> Subir Logo
-                  </Button>
-                  <p className="text-[10px] text-gray-400">PNG, JPG, SVG. Máx 2MB.</p>
-                </div>
-              </div>
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={resetForm}>Cancelar</Button>
@@ -560,7 +463,7 @@ function UsersTab() {
   function getRoleBadge(role: string) {
     switch (role) {
       case 'superadmin':
-        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700"><Shield className="h-3 w-3" /> GESTORAPP</span>
+        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700"><Shield className="h-3 w-3" /> SuperAdmin</span>
       case 'admin':
         return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700"><Shield className="h-3 w-3" /> Admin</span>
       default:
@@ -680,16 +583,11 @@ function UsersTab() {
                 <Select value={formRole} onValueChange={setFormRole}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="user">👤 Usuario</SelectItem>
-                    <SelectItem value="admin">🛡️ Administrador</SelectItem>
-                    <SelectItem value="superadmin">👑 GESTORAPP</SelectItem>
+                    <SelectItem value="user">Usuario</SelectItem>
+                    <SelectItem value="admin">Administrador</SelectItem>
+                    <SelectItem value="superadmin">SuperAdmin</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-[10px] text-gray-400 mt-1">
-                  {formRole === 'superadmin' && 'Dueño de la app. Acceso total.'}
-                  {formRole === 'admin' && 'Gestiona su empresa y sus usuarios.'}
-                  {formRole === 'user' && 'Trabaja con datos de su empresa.'}
-                </p>
               </div>
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">Empresa</Label>
@@ -729,35 +627,10 @@ function UsersTab() {
 export function AdminView() {
   return (
     <div className="max-w-5xl">
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-4">
         <Shield className="h-5 w-5 text-[#005bb5]" />
         <h2 className="text-lg font-bold text-gray-700">Administración</h2>
-        <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">GESTORAPP</span>
-      </div>
-
-      {/* Permisos de roles */}
-      <div className="mb-4 grid grid-cols-3 gap-3">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Shield className="h-4 w-4 text-red-600" />
-            <span className="text-sm font-bold text-red-700">GESTORAPP</span>
-          </div>
-          <p className="text-[11px] text-red-600">Dueño de la app. Crea empresas, usuarios y asigna roles.</p>
-        </div>
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Shield className="h-4 w-4 text-purple-600" />
-            <span className="text-sm font-bold text-purple-700">Administrador</span>
-          </div>
-          <p className="text-[11px] text-purple-600">Gestiona su empresa. Puede crear usuarios en su empresa.</p>
-        </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Users className="h-4 w-4 text-gray-600" />
-            <span className="text-sm font-bold text-gray-700">Usuario</span>
-          </div>
-          <p className="text-[11px] text-gray-600">Trabaja con los datos de su empresa (registros, facturas...).</p>
-        </div>
+        <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">SUPERADMIN</span>
       </div>
 
       <Tabs defaultValue="empresas" className="w-full">

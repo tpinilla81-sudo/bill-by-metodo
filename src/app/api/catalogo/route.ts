@@ -1,27 +1,24 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { requireAuthWithTenant } from '@/lib/tenant'
+import { requireTenantId } from '@/lib/tenant-context'
 
 export async function GET(req: Request) {
   try {
-    const auth = await requireAuthWithTenant(req)
-    if ('error' in auth) return auth.error
+    const tid = await requireTenantId(req)
+    if (typeof tid !== 'string') return tid
 
-    const catalogo = await db.catalogo.findMany({
-      where: { tenantId: auth.tenantId },
-      orderBy: [{ c1: 'asc' }, { c2: 'asc' }]
-    })
+    const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, orderBy: [{ c1: 'asc' }, { c2: 'asc' }] })
     return NextResponse.json(catalogo)
   } catch (err) {
     console.error('Catalogo GET error:', err)
-    return NextResponse.json({ error: 'Error del servidor' }, { status: 500 })
+    return NextResponse.json({ error: 'Error cargando catálogo' }, { status: 500 })
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const auth = await requireAuthWithTenant(req)
-    if ('error' in auth) return auth.error
+    const tid = await requireTenantId(req)
+    if (typeof tid !== 'string') return tid
 
     const body = await req.json()
 
@@ -39,7 +36,7 @@ export async function POST(req: Request) {
 
       const created = await db.catalogo.createMany({
         data: validRows.map(r => ({
-          tenantId: auth.tenantId,
+          tenantId: tid,
           clienteId: r.clienteId || '',
           c1: r.c1,
           c2: r.c2,
@@ -57,26 +54,27 @@ export async function POST(req: Request) {
     const { clienteId, c1, c2, coste, inc, final, customData } = body
     if (!c1 || !c2) return NextResponse.json({ error: 'Grupo y servicio obligatorios' }, { status: 400 })
     const item = await db.catalogo.create({
-      data: { tenantId: auth.tenantId, clienteId: clienteId || '', c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(final) || 0, customData: customData || '' }
+      data: { tenantId: tid, clienteId: clienteId || '', c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(final) || 0, customData: customData || '' }
     })
     return NextResponse.json(item, { status: 201 })
   } catch (err) {
     console.error('Catalogo POST error:', err)
-    return NextResponse.json({ error: 'Error del servidor' }, { status: 500 })
+    return NextResponse.json({ error: 'Error creando artículo' }, { status: 500 })
   }
 }
 
 export async function PUT(req: Request) {
   try {
-    const auth = await requireAuthWithTenant(req)
-    if ('error' in auth) return auth.error
+    const tid = await requireTenantId(req)
+    if (typeof tid !== 'string') return tid
 
     const body = await req.json()
     const { id, clienteId, c1, c2, coste, inc, final, customData } = body
     if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
-    const existing = await db.catalogo.findFirst({ where: { id, tenantId: auth.tenantId } })
-    if (!existing) return NextResponse.json({ error: 'Item no encontrado' }, { status: 404 })
+    // Verify ownership
+    const existing = await db.catalogo.findFirst({ where: { id, tenantId: tid } })
+    if (!existing) return NextResponse.json({ error: 'Artículo no encontrado' }, { status: 404 })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = { clienteId: clienteId || '', c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(final) || 0 }
@@ -85,26 +83,27 @@ export async function PUT(req: Request) {
     return NextResponse.json(item)
   } catch (err) {
     console.error('Catalogo PUT error:', err)
-    return NextResponse.json({ error: 'Error del servidor' }, { status: 500 })
+    return NextResponse.json({ error: 'Error actualizando artículo' }, { status: 500 })
   }
 }
 
 export async function DELETE(req: Request) {
   try {
-    const auth = await requireAuthWithTenant(req)
-    if ('error' in auth) return auth.error
+    const tid = await requireTenantId(req)
+    if (typeof tid !== 'string') return tid
 
     const { searchParams } = new URL(req.url)
     const id = searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
-    const existing = await db.catalogo.findFirst({ where: { id, tenantId: auth.tenantId } })
-    if (!existing) return NextResponse.json({ error: 'Item no encontrado' }, { status: 404 })
+    // Verify ownership
+    const existing = await db.catalogo.findFirst({ where: { id, tenantId: tid } })
+    if (!existing) return NextResponse.json({ error: 'Artículo no encontrado' }, { status: 404 })
 
     await db.catalogo.delete({ where: { id } })
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('Catalogo DELETE error:', err)
-    return NextResponse.json({ error: 'Error del servidor' }, { status: 500 })
+    return NextResponse.json({ error: 'Error eliminando artículo' }, { status: 500 })
   }
 }

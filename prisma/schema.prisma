@@ -60,8 +60,8 @@ model Registro {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  clienteRel  Cliente? @relation(fields: [clienteId], references: [id])
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  clienteRel Cliente? @relation(fields: [clienteId], references: [id])
 }
 
 model Tenant {
@@ -80,9 +80,10 @@ model Tenant {
 
   users     User[]
   clientes  Cliente[]
-  catalogos Catalogo[]
+  catalogo  Catalogo[]
   registros Registro[]
   configs   Config[]
+  facturaSeqs FacturaSeq[]
 }
 
 model User {
@@ -90,7 +91,7 @@ model User {
   email     String   @unique
   password  String                    // hashed
   name      String   @default("")
-  role      String   @default("user")  // "superadmin", "admin" or "user"
+  role      String   @default("user")  // "admin" or "user"
   tenantId  String                     // which company this user belongs to
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -100,15 +101,19 @@ model User {
 }
 
 model FacturaSeq {
-  id        String @id @default("main")
-  tenantId  String @default("")
-  seq       Int    @default(1)
+  id        String   @id @default(cuid())
+  tenantId  String
+  seq       Int      @default(1)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId])
 }
 
 model Config {
   id              String   @id @default(cuid())
   tenantId        String
-  companyName     String   @default("")
+  companyName     String   @default("BILL by Metodo")
   companyFullName String   @default("")
   companyAddress  String   @default("")
   companyCity     String   @default("")
@@ -117,8 +122,8 @@ model Config {
   logo            String   @default("")   // base64 encoded logo image
   currency        String   @default("€")
   defaultIva      Float    @default(21)
-  appName         String   @default("BILL")
-  appVersion      String   @default("")
+  appName         String   @default("BILL by Metodo")
+  appVersion      String   @default("v3.0")
   // Configurable section labels (JSON strings)
   labelEntrada    String   @default("")   // JSON: { fecha, cliente, c1, c2, cantidad, observaciones }
   labelCatalogo   String   @default("")   // JSON: { c1, c2, coste, incremento, precioCliente, cliente }
@@ -143,5 +148,7 @@ model Config {
   fieldsFacturas  String   @default("")   // JSON: FieldDef[]
   updatedAt       DateTime @updatedAt
 
-  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId])
 }

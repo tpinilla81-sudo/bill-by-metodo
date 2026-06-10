@@ -12,30 +12,23 @@ import { ConfiguracionView } from '@/components/hualsa/configuracion-view'
 import { AdminView } from '@/components/hualsa/admin-view'
 import { ConfigProvider, useConfig } from '@/lib/config'
 import { AuthProvider, useAuth } from '@/lib/auth-context'
-import { TenantFetchProvider } from '@/lib/tenant-fetch-provider'
 
 export type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'facturas' | 'backup' | 'config' | 'admin'
 
 function AppContent() {
-  const { user, loading, login, logout, effectiveTenantId, activeTenantName, activeTenantLogo } = useAuth()
+  const { user, loading, login, logout } = useAuth()
   const [activeView, setActiveView] = useState<View>('entrada')
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { config, reload: reloadConfig } = useConfig()
+  const { config } = useConfig()
 
   // Update page title dynamically
   useEffect(() => {
     if (config) {
-      document.title = `BILL - ${config.companyFullName || config.companyName || 'Gestión'}`
+      document.title = `${config.appName} - ${config.companyFullName || 'Gestión'}`
     }
   }, [config])
 
-  // When tenant changes, reload config and reset to entrada view
-  useEffect(() => {
-    if (effectiveTenantId) {
-      reloadConfig()
-      setActiveView('entrada')
-    }
-  }, [effectiveTenantId, reloadConfig])
+
 
   // Loading state
   if (loading) {
@@ -61,12 +54,12 @@ function AppContent() {
     return <InlineLogin onLogin={login} />
   }
 
-  // Build tenant info from auth context (uses effectiveTenantId for GESTORAPP)
+  // Build tenant info from auth user
   const tenant = {
-    id: effectiveTenantId || user.tenantId,
-    name: activeTenantName || user.tenantName,
+    id: user.tenantId,
+    name: user.tenantName,
     fullName: '',
-    logo: activeTenantLogo || user.tenantLogo,
+    logo: user.tenantLogo,
     address: '',
     city: '',
     province: '',
@@ -84,16 +77,16 @@ function AppContent() {
         tenant={tenant}
         onLogout={logout}
       />
-      <main className="flex-1 min-w-0 overflow-x-hidden">
-        <div className="p-3 md:p-6 pt-16 md:pt-6 pb-4">
-          {activeView === 'entrada' && <EntradaView key={effectiveTenantId} />}
-          {activeView === 'registros' && <RegistrosView key={effectiveTenantId} />}
-          {activeView === 'clientes' && <ClientesView key={effectiveTenantId} />}
-          {activeView === 'catalogo' && <CatalogoView key={effectiveTenantId} />}
-          {activeView === 'facturas' && <FacturasView key={effectiveTenantId} />}
-          {activeView === 'backup' && <BackupView key={effectiveTenantId} />}
-          {activeView === 'config' && <ConfiguracionView key={effectiveTenantId} tenant={tenant} />}
-          {activeView === 'admin' && user.role === 'superadmin' && <AdminView key={effectiveTenantId} />}
+      <main className="flex-1 min-w-0 overflow-hidden flex flex-col">
+        <div className="p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 flex flex-col">
+          {activeView === 'entrada' && <EntradaView />}
+          {activeView === 'registros' && <div className="flex-1 min-h-0 flex flex-col"><RegistrosView /></div>}
+          {activeView === 'clientes' && <div className="flex-1 min-h-0 flex flex-col"><ClientesView /></div>}
+          {activeView === 'catalogo' && <div className="flex-1 min-h-0 flex flex-col"><CatalogoView /></div>}
+          {activeView === 'facturas' && <div className="flex-1 min-h-0 flex flex-col"><FacturasView /></div>}
+          {activeView === 'backup' && <BackupView />}
+          {activeView === 'config' && (user.role === 'admin' || user.role === 'superadmin') && <ConfiguracionView tenant={tenant} />}
+          {activeView === 'admin' && user.role === 'superadmin' && <AdminView />}
         </div>
       </main>
     </div>
@@ -103,11 +96,9 @@ function AppContent() {
 export default function Home() {
   return (
     <AuthProvider>
-      <TenantFetchProvider>
-        <ConfigProvider>
-          <AppContent />
-        </ConfigProvider>
-      </TenantFetchProvider>
+      <ConfigProvider>
+        <AppContent />
+      </ConfigProvider>
     </AuthProvider>
   )
 }
@@ -150,9 +141,9 @@ function InlineLogin({ onLogin }: { onLogin: (email: string, password: string) =
                 style={{ maxWidth: '200px', maxHeight: '80px', height: 'auto', objectFit: 'contain' }}
               />
             </div>
-            <div className="flex flex-col items-center">
-              <span className="text-2xl font-bold tracking-wide text-gray-800">BILL</span>
-              <span className="text-sm font-medium text-gray-500">by <span className="text-[#2bb24c] font-semibold">Método</span></span>
+            <div className="mt-2">
+              <p className="text-2xl font-extrabold text-gray-800 tracking-wider">BILL</p>
+              <p className="text-sm font-semibold tracking-widest">by <span className="text-[#2bb24c]">MÉTODO</span></p>
             </div>
           </div>
           <div className="px-8 pb-8 pt-4">

@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Pencil, Trash2, Save, RotateCcw, Filter, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, ChevronDown, Settings2 } from 'lucide-react'
-import { fmtCurrency, safeArray, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
+import { Pencil, Trash2, Save, RotateCcw, Filter, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, ChevronDown, Settings2, BookOpen } from 'lucide-react'
+import { fmtCurrency, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_CATALOGO, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
-import { useTenantFetch } from '@/lib/use-tenant-fetch'
+import { triggerBackup } from '@/lib/trigger-backup'
 
 interface CatalogoViewData {
   catalogo: CatalogoItem[]
@@ -18,7 +18,6 @@ interface CatalogoViewData {
 }
 
 export function CatalogoView() {
-  const { tenantFetch } = useTenantFetch()
   const { config, update } = useConfig()
   const fieldDefs = config?.fieldsCatalogo || DEFAULT_FIELDS_CATALOGO
   const visibleFields = fieldDefs.filter(f => f.visible)
@@ -46,6 +45,9 @@ export function CatalogoView() {
   const [fC1, setFC1] = useState('')
   const [fQ, setFQ] = useState('')
 
+  // UI collapse states
+  const [showFilters, setShowFilters] = useState(false)
+
   // Excel import
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<Partial<CatalogoItem>[]>([])
@@ -57,9 +59,9 @@ export function CatalogoView() {
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   const loadData = useCallback(async () => {
-    const [catRes, cRes] = await Promise.all([tenantFetch('/api/catalogo'), tenantFetch('/api/clientes')])
-    setData({ catalogo: safeArray(await catRes.json()), clientes: safeArray(await cRes.json()) })
-  }, [tenantFetch])
+    const [catRes, cRes] = await Promise.all([fetch('/api/catalogo'), fetch('/api/clientes')])
+    setData({ catalogo: await catRes.json(), clientes: await cRes.json() })
+  }, [])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -92,18 +94,14 @@ export function CatalogoView() {
     const effectiveClienteId = (clienteId === '__none__' || !clienteId) ? '' : clienteId
     const customDataStr = serializeCustomData(customValues)
     const body = { clienteId: effectiveClienteId, c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(finalPrice) || 0, customData: customDataStr }
-    try {
-      if (editingId) {
-        const res = await tenantFetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
-        if (!res.ok) { const d = await res.json().catch(() => ({})); showStatus('err', d.error || 'Error al actualizar'); return }
-        showStatus('ok', 'Artículo actualizado ✓')
-      } else {
-        const res = await tenantFetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-        if (!res.ok) { const d = await res.json().catch(() => ({})); showStatus('err', d.error || 'Error al guardar'); return }
-        showStatus('ok', 'Artículo guardado ✓')
-      }
-      resetForm(); loadData()
-    } catch { showStatus('err', 'Error de conexión') }
+    if (editingId) {
+      await fetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+      showStatus('ok', 'Artículo actualizado ✓')
+    } else {
+      await fetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      showStatus('ok', 'Artículo guardado ✓')
+    }
+    resetForm(); triggerBackup(); loadData()
   }
 
   function handleEdit(x: CatalogoItem) {
@@ -115,7 +113,7 @@ export function CatalogoView() {
 
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar artículo?')) return
-    await tenantFetch(`/api/catalogo?id=${id}`, { method: 'DELETE' }); showStatus('ok', 'Eliminado'); loadData()
+    await fetch(`/api/catalogo?id=${id}`, { method: 'DELETE' }); showStatus('ok', 'Eliminado'); triggerBackup(); loadData()
   }
 
   const { catalogo, clientes } = data
@@ -146,7 +144,7 @@ export function CatalogoView() {
         const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', blankrows: false, raw: true })
         if (rawRows.length === 0) { setImportErrors(['El archivo está vacío']); setImportPreview([]); setImportModalOpen(true); return }
         const errors: string[] = []; const preview: Partial<CatalogoItem>[] = []
-        const clientesRes = await tenantFetch('/api/clientes'); const clientesList: Cliente[] = await clientesRes.json()
+        const clientesRes = await fetch('/api/clientes'); const clientesList: Cliente[] = await clientesRes.json()
         rawRows.forEach((row, idx) => {
           const rowNum = idx + 2
           const rawC1 = getRowVal(row, getLabel('c1'), 'CONCEPTO 1', 'C1', 'c1')
@@ -175,8 +173,8 @@ export function CatalogoView() {
     try {
       const validRows = importPreview.filter(r => r.c1 && r.c2)
       if (validRows.length === 0) { showStatus('err', 'No hay filas válidas'); setImporting(false); return }
-      const res = await tenantFetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batch: validRows.map(r => ({ clienteId: r.clienteId || '', c1: r.c1 || '', c2: r.c2 || '', coste: r.coste || 0, inc: r.inc || 0, final: r.final || 0 })) }) })
-      if (res.ok) { const result = await res.json(); showStatus('ok', `${result.count || validRows.length} artículos importados ✓`); setImportModalOpen(false); setImportPreview([]); setImportErrors([]); loadData() }
+      const res = await fetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batch: validRows.map(r => ({ clienteId: r.clienteId || '', c1: r.c1 || '', c2: r.c2 || '', coste: r.coste || 0, inc: r.inc || 0, final: r.final || 0 })) }) })
+      if (res.ok) { const result = await res.json(); showStatus('ok', `${result.count || validRows.length} artículos importados ✓`); setImportModalOpen(false); setImportPreview([]); setImportErrors([]); triggerBackup(); loadData() }
       else { showStatus('err', 'Error importando') }
     } catch (err) { showStatus('err', 'Error: ' + String(err)) }
     setImporting(false)
@@ -238,108 +236,125 @@ export function CatalogoView() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {statusMsg && (
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-          {statusMsg.type === 'ok' ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}{statusMsg.text}
-        </div>
-      )}
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* ─── FIXED HEADER ─── */}
+      <div className="flex-shrink-0 space-y-3 pb-2">
+        {statusMsg && (
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+            {statusMsg.type === 'ok' ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}{statusMsg.text}
+          </div>
+        )}
 
-      {/* Form */}
-      <Card className={`border-l-4 ${editingId ? 'border-l-indigo-500 bg-indigo-50/30' : 'border-l-transparent'}`}>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_130px] gap-3 items-end">
-            {isVisible('cliente') && (
-              <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">{getLabel('cliente')}</Label>
-                <Select value={clienteId} onValueChange={setClienteId}>
-                  <SelectTrigger><SelectValue placeholder="— General —" /></SelectTrigger>
-                  <SelectContent><SelectItem value="__none__">— General —</SelectItem>{clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
-                </Select>
+        {/* Title + toggle buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <BookOpen className="h-5 w-5 text-[#005bb5]" />
+          <h2 className="text-lg font-bold text-gray-700">Catálogo</h2>
+          <button onClick={() => setShowFilters(!showFilters)} className={`ml-2 inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${showFilters ? 'bg-blue-50 text-[#005bb5] border-blue-200' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-blue-50 hover:text-[#005bb5]'}`}>
+            <Filter className="h-3 w-3" /> Filtros
+          </button>
+          <button onClick={() => setShowExcelTools(!showExcelTools)} className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${showExcelTools ? 'bg-blue-50 text-[#005bb5] border-blue-200' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-blue-50 hover:text-[#005bb5]'}`}>
+            <FileSpreadsheet className="h-3 w-3" /> Transferir tabla
+          </button>
+        </div>
+
+        {/* Form — always visible */}
+        <Card className={`border-l-4 ${editingId ? 'border-l-indigo-500 bg-indigo-50/30' : 'border-l-transparent'}`}>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_130px] gap-3 items-end">
+              {isVisible('cliente') && (
+                <div>
+                  <Label className="text-xs uppercase font-bold text-slate-500">{getLabel('cliente')}</Label>
+                  <Select value={clienteId} onValueChange={setClienteId}>
+                    <SelectTrigger><SelectValue placeholder="— General —" /></SelectTrigger>
+                    <SelectContent><SelectItem value="__none__">— General —</SelectItem>{clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              )}
+              {isVisible('c1') && <div><Label className="text-xs uppercase font-bold text-slate-500">Grupo ({getLabel('c1')})</Label><Input value={c1} onChange={e => setC1(e.target.value)} /></div>}
+              {isVisible('c2') && <div><Label className="text-xs uppercase font-bold text-slate-500">Servicio ({getLabel('c2')})</Label><Input value={c2} onChange={e => setC2(e.target.value)} /></div>}
+              {isVisible('coste') && <div><Label className="text-xs uppercase font-bold text-slate-500">{getLabel('coste')} ({config?.currency || '€'})</Label><Input type="number" step="0.01" value={coste} onChange={e => { setCoste(e.target.value); setFinalVal('') }} /></div>}
+              {isVisible('incremento') && <div><Label className="text-xs uppercase font-bold text-slate-500">{getLabel('incremento')} %</Label><Input type="number" step="0.01" value={inc} onChange={e => { setInc(e.target.value); setFinalVal('') }} /></div>}
+              {isVisible('precioCliente') && <div><Label className="text-xs uppercase font-bold text-slate-500">Precio Final</Label><Input type="number" step="0.01" value={finalVal || computedFinal} readOnly className="bg-gray-50" /></div>}
+              <div className="flex gap-2">
+                <Button onClick={handleSave} className="bg-[#005bb5] hover:bg-[#003d7a] text-white flex-1"><Save className="h-4 w-4 mr-1" />{editingId ? 'ACTUALIZAR' : 'GUARDAR'}</Button>
+                {editingId && <Button onClick={resetForm} variant="outline" size="icon"><RotateCcw className="h-4 w-4" /></Button>}
+              </div>
+            </div>
+            {visibleFields.some(f => f.isCustom) && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                {visibleFields.filter(f => f.isCustom).map(renderCustomFieldInput)}
               </div>
             )}
-            {isVisible('c1') && <div><Label className="text-xs uppercase font-bold text-slate-500">Grupo ({getLabel('c1')})</Label><Input value={c1} onChange={e => setC1(e.target.value)} /></div>}
-            {isVisible('c2') && <div><Label className="text-xs uppercase font-bold text-slate-500">Servicio ({getLabel('c2')})</Label><Input value={c2} onChange={e => setC2(e.target.value)} /></div>}
-            {isVisible('coste') && <div><Label className="text-xs uppercase font-bold text-slate-500">{getLabel('coste')} ({config?.currency || '€'})</Label><Input type="number" step="0.01" value={coste} onChange={e => { setCoste(e.target.value); setFinalVal('') }} /></div>}
-            {isVisible('incremento') && <div><Label className="text-xs uppercase font-bold text-slate-500">{getLabel('incremento')} %</Label><Input type="number" step="0.01" value={inc} onChange={e => { setInc(e.target.value); setFinalVal('') }} /></div>}
-            {isVisible('precioCliente') && <div><Label className="text-xs uppercase font-bold text-slate-500">Precio Final</Label><Input type="number" step="0.01" value={finalVal || computedFinal} readOnly className="bg-gray-50" /></div>}
-            <div className="flex gap-2">
-              <Button onClick={handleSave} className="bg-[#005bb5] hover:bg-[#003d7a] text-white flex-1"><Save className="h-4 w-4 mr-1" />{editingId ? 'ACTUALIZAR' : 'GUARDAR'}</Button>
-              {editingId && <Button onClick={resetForm} variant="outline" size="icon"><RotateCcw className="h-4 w-4" /></Button>}
-            </div>
-          </div>
-          {/* Custom fields row */}
-          {visibleFields.some(f => f.isCustom) && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-              {visibleFields.filter(f => f.isCustom).map(renderCustomFieldInput)}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Excel Import/Export */}
-      <Card>
-        <CardContent className="p-0">
-          <button onClick={() => setShowExcelTools(!showExcelTools)} className="w-full flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-2"><FileSpreadsheet className="h-5 w-5 text-[#005bb5]" /><span className="text-sm font-semibold text-gray-700">Excel / Importar Catálogo</span></div>
-            <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${showExcelTools ? 'rotate-180' : ''}`} />
-          </button>
-          {showExcelTools && (
-            <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
+        {/* Collapsible Filters */}
+        {showFilters && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_auto_auto] gap-3 items-end">
+                <div><Label className="text-xs uppercase font-bold text-slate-500">{getLabel('cliente')}</Label><Select value={fCli} onValueChange={setFCli}><SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger><SelectContent><SelectItem value="__all__">— Todos —</SelectItem><SelectItem value="__gen__">— Generales —</SelectItem>{clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent></Select></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Grupo {getLabel('c1')}</Label><Select value={fC1} onValueChange={setFC1}><SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger><SelectContent><SelectItem value="__all__">— Todos —</SelectItem>{c1FilterOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Buscar</Label><Input value={fQ} onChange={e => setFQ(e.target.value)} placeholder="C2, texto..." /></div>
+                <Button variant="default" className="bg-[#005bb5] hover:bg-[#003d7a] text-white"><Filter className="h-4 w-4 mr-1" /> FILTRAR</Button>
+                <Button variant="outline" onClick={() => { setFCli(''); setFC1(''); setFQ('') }}><RotateCcw className="h-4 w-4" /></Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Collapsible Transferir tabla */}
+        {showExcelTools && (
+          <Card>
+            <CardContent className="p-4">
               <div className="flex flex-wrap gap-3">
-                <Button onClick={() => fileInputRef.current?.click()} className="bg-[#005bb5] hover:bg-[#003d7a] text-white"><Upload className="h-4 w-4 mr-2" /> IMPORTAR EXCEL</Button>
+                <Button onClick={() => fileInputRef.current?.click()} className="bg-[#005bb5] hover:bg-[#003d7a] text-white"><Upload className="h-4 w-4 mr-2" /> IMPORTAR</Button>
                 <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileSelect} />
                 <Button onClick={handleExportData} variant="outline" disabled={catalogo.length === 0}><Download className="h-4 w-4 mr-2" /> EXPORTAR</Button>
                 <Button onClick={handleExportTemplate} variant="outline" className="border-dashed"><FileSpreadsheet className="h-4 w-4 mr-2" /> PLANTILLA</Button>
               </div>
-              <p className="text-[11px] text-gray-400 leading-relaxed">Columnas: {getLabel('c1')} · {getLabel('c2')} · {getLabel('coste')} · {getLabel('incremento')} · {getLabel('precioCliente')} · {getLabel('cliente')} (opcional)</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              <p className="text-[11px] text-gray-400 leading-relaxed mt-2">Columnas: {getLabel('c1')} · {getLabel('c2')} · {getLabel('coste')} · {getLabel('incremento')} · {getLabel('precioCliente')} · {getLabel('cliente')} (opcional)</p>
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_auto_auto] gap-3 items-end">
-            <div><Label className="text-xs uppercase font-bold text-slate-500">{getLabel('cliente')}</Label><Select value={fCli} onValueChange={setFCli}><SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger><SelectContent><SelectItem value="__all__">— Todos —</SelectItem><SelectItem value="__gen__">— Generales —</SelectItem>{clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent></Select></div>
-            <div><Label className="text-xs uppercase font-bold text-slate-500">Grupo {getLabel('c1')}</Label><Select value={fC1} onValueChange={setFC1}><SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger><SelectContent><SelectItem value="__all__">— Todos —</SelectItem>{c1FilterOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
-            <div><Label className="text-xs uppercase font-bold text-slate-500">Buscar</Label><Input value={fQ} onChange={e => setFQ(e.target.value)} placeholder="C2, texto..." /></div>
-            <Button variant="default" className="bg-[#005bb5] hover:bg-[#003d7a] text-white"><Filter className="h-4 w-4 mr-1" /> FILTRAR</Button>
-            <Button variant="outline" onClick={() => { setFCli(''); setFC1(''); setFQ('') }}><RotateCcw className="h-4 w-4" /></Button>
-          </div>
-        </CardContent>
-      </Card>
+        {/* Stats bar — always visible */}
+        <div className="flex flex-wrap gap-4 bg-white rounded-lg px-4 py-2.5 shadow-sm text-sm font-bold border">
+          <span>Artículos:<b className="text-[#005bb5] ml-1">{filtered.length}</b></span>
+        </div>
+      </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-lg border overflow-auto shadow-sm">
-        <table className="w-full text-sm min-w-[600px]">
-          <thead>
-            <tr className="bg-blue-50">
-              {visibleFields.map(f => (
-                <th key={f.key} className="p-2 text-left font-semibold border-b">{f.label}</th>
-              ))}
-              <th className="p-2 text-left font-semibold border-b">Acc.</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(x => (
-              <tr key={x.id} className="border-b hover:bg-gray-50">
-                {visibleFields.map(f => {
-                  const val = getDisplayValue(x, f)
-                  return <td key={f.key} className={`p-2 ${f.key === 'precioCliente' ? 'font-bold' : ''}`}>{val || (f.key === 'cliente' ? <i className="text-gray-400">— General —</i> : '')}</td>
-                })}
-                <td className="p-2">
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEdit(x)}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(x.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                </td>
+      {/* ─── SCROLLABLE TABLE ─── */}
+      <div className="flex-1 min-h-0 bg-white rounded-lg border shadow-sm flex flex-col">
+        <div className="flex-1 min-h-0 overflow-auto">
+          <table className="w-full text-sm min-w-[600px]">
+            <thead className="sticky top-0 z-10 shadow-sm">
+              <tr className="bg-blue-50">
+                {visibleFields.map(f => (
+                  <th key={f.key} className="p-2 text-left font-semibold border-b bg-blue-50">{f.label}</th>
+                ))}
+                <th className="p-2 text-left font-semibold border-b bg-blue-50">Acc.</th>
               </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr><td colSpan={visibleFields.length + 1} className="p-6 text-center text-gray-400">No hay artículos</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map(x => (
+                <tr key={x.id} className="border-b hover:bg-gray-50">
+                  {visibleFields.map(f => {
+                    const val = getDisplayValue(x, f)
+                    return <td key={f.key} className={`p-2 ${f.key === 'precioCliente' ? 'font-bold' : ''}`}>{val || (f.key === 'cliente' ? <i className="text-gray-400">— General —</i> : '')}</td>
+                  })}
+                  <td className="p-2">
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEdit(x)}><Pencil className="h-3.5 w-3.5" /></Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(x.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={visibleFields.length + 1} className="p-6 text-center text-gray-400">No hay artículos</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Import Preview Modal */}

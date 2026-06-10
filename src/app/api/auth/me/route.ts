@@ -9,7 +9,7 @@ export async function GET() {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    // Fetch tenant info for the response
+    // Also fetch tenant info for the response
     const tenant = await db.tenant.findUnique({
       where: { id: user.tenantId },
       select: { name: true, logo: true, slug: true },

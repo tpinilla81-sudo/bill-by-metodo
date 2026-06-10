@@ -28,7 +28,7 @@ export async function POST(request: Request) {
         data: {
           email: 'admin@bill.es',
           password: hashedPw,
-          name: 'GESTORAPP',
+          name: 'SuperAdmin',
           role: 'superadmin',
           tenantId: tenant.id,
           active: true,

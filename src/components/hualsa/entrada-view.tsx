@@ -1,14 +1,14 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus } from 'lucide-react'
-import { todayISO, safeArray, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
+import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
-import { useTenantFetch } from '@/lib/use-tenant-fetch'
+import { triggerBackup } from '@/lib/trigger-backup'
 
 interface EntradaViewData {
   registros: Registro[]
@@ -16,18 +16,18 @@ interface EntradaViewData {
   catalogo: CatalogoItem[]
 }
 
-function useEntradaData(tenantFetch: (url: string, options?: RequestInit) => Promise<Response>) {
+function useEntradaData() {
   const [data, setData] = useState<EntradaViewData>({ registros: [], clientes: [], catalogo: [] })
   const [loading, setLoading] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
     const [rRes, cRes, catRes] = await Promise.all([
-      tenantFetch('/api/registros?filter=entrada'), tenantFetch('/api/clientes'), tenantFetch('/api/catalogo')
+      fetch('/api/registros?filter=entrada'), fetch('/api/clientes'), fetch('/api/catalogo')
     ])
-    setData({ registros: safeArray(await rRes.json()), clientes: safeArray(await cRes.json()), catalogo: safeArray(await catRes.json()) })
+    setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json() })
     setLoading(false)
-  }, [tenantFetch])
+  }, [])
 
   return { data, loadData, loading }
 }
@@ -87,8 +87,7 @@ function ComboInput({
 }
 
 export function EntradaView() {
-  const { tenantFetch } = useTenantFetch()
-  const { data, loadData, loading } = useEntradaData(tenantFetch)
+  const { data, loadData, loading } = useEntradaData()
   const { config, update } = useConfig()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [transferring, setTransferring] = useState(false)
@@ -142,9 +141,34 @@ export function EntradaView() {
 
   const { clientes } = data
 
-  const c1Options = [...new Set(data.catalogo.map(x => x.c1))].sort()
-  const c2Options = [...new Set(data.catalogo.filter(x => (!c1 || x.c1 === c1) && (!x.clienteId || x.clienteId === clienteId)).map(x => x.c2))].sort()
+  // Cascading filters based on catalog + selections
+  // C1 options filtered by selected client
+  const c1Options = [...new Set(
+    data.catalogo
+      .filter(x => !clienteId || !x.clienteId || x.clienteId === clienteId)
+      .map(x => x.c1)
+  )].sort()
+
+  // C2 options filtered by selected client + C1
+  const c2Options = [...new Set(
+    data.catalogo
+      .filter(x => (!clienteId || !x.clienteId || x.clienteId === clienteId) && (!c1 || x.c1 === c1))
+      .map(x => x.c2)
+  )].sort()
+
   const allC2Options = [...new Set(data.catalogo.map(x => x.c2))].sort()
+
+  // Auto-price: when client, c1 and c2 are all selected, find the price
+  const autoPrice = useMemo(() => {
+    if (!clienteId || !c1 || !c2) return null
+    // First: exact match (client + c1 + c2)
+    let item = data.catalogo.find(x => x.clienteId === clienteId && x.c1 === c1 && x.c2 === c2)
+    // Fallback: generic (no client + c1 + c2)
+    if (!item) item = data.catalogo.find(x => !x.clienteId && x.c1 === c1 && x.c2 === c2)
+    // Fallback: any match c1 + c2
+    if (!item) item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
+    return item ? Number(item.final) || 0 : null
+  }, [data.catalogo, clienteId, c1, c2])
 
   function showStatus(type: 'ok' | 'err', text: string) {
     setStatusMsg({ type, text })
@@ -165,20 +189,17 @@ export function EntradaView() {
     const customDataStr = serializeCustomData(customValues)
     const body = { fecha, clienteId, cliente: cli?.nombre || '', c1, c2, cant: Number(cant), obs, customData: customDataStr }
 
-    try {
-      if (editingId) {
-        const res = await tenantFetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
-        if (!res.ok) { const d = await res.json().catch(() => ({})); showStatus('err', d.error || 'Error al actualizar'); return }
-        setEditingId(null)
-        showStatus('ok', 'Entrada actualizada ✓')
-      } else {
-        const res = await tenantFetch('/api/registros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-        if (!res.ok) { const d = await res.json().catch(() => ({})); showStatus('err', d.error || 'Error al guardar'); return }
-        showStatus('ok', 'Entrada guardada ✓')
-      }
-      setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
-      loadData()
-    } catch { showStatus('err', 'Error de conexión') }
+    if (editingId) {
+      await fetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+      setEditingId(null)
+      showStatus('ok', 'Entrada actualizada ✓')
+    } else {
+      await fetch('/api/registros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      showStatus('ok', 'Entrada guardada ✓')
+    }
+    setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
+    triggerBackup()
+    loadData()
   }
 
   function handleEdit(r: Registro) {
@@ -192,8 +213,9 @@ export function EntradaView() {
 
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar entrada?')) return
-    await tenantFetch(`/api/registros?id=${id}`, { method: 'DELETE' })
+    await fetch(`/api/registros?id=${id}`, { method: 'DELETE' })
     showStatus('ok', 'Eliminada')
+    triggerBackup()
     loadData()
   }
 
@@ -205,9 +227,10 @@ export function EntradaView() {
     if (data.registros.length === 0) return
     setTransferring(true)
     try {
-      const res = await tenantFetch('/api/registros/transfer', { method: 'POST' })
+      const res = await fetch('/api/registros/transfer', { method: 'POST' })
       const result = await res.json()
       showStatus('ok', `${result.transferred} entrada(s) pasadas al registro ✓`)
+      triggerBackup()
       loadData()
     } catch { showStatus('err', 'Error al transferir') }
     setTransferring(false)
@@ -217,6 +240,7 @@ export function EntradaView() {
     await update({ transferMode: localTransferMode, transferTime: localTransferTime })
     showStatus('ok', 'Ajustes de transferencia guardados ✓')
     setShowTransferSettings(false)
+    triggerBackup()
   }
 
   const activeEntries = data.registros
@@ -236,7 +260,7 @@ export function EntradaView() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-4 pt-3 pb-1"><Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
           <div className="px-4 pb-3">
-            <Select value={clienteId} onValueChange={v => { setClienteId(v); setC2('') }}>
+            <Select value={clienteId} onValueChange={v => { setClienteId(v); setC1(''); setC2('') }}>
               <SelectTrigger className="h-12 text-lg border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder="Selecciona cliente..." /></SelectTrigger>
               <SelectContent>{clientes.map(c => <SelectItem key={c.id} value={c.id} className="text-base py-3">{c.nombre}</SelectItem>)}</SelectContent>
             </Select>
@@ -351,6 +375,20 @@ export function EntradaView() {
           {visibleFields.map(field => (
             <div key={field.key}>{renderFieldInput(field)}</div>
           ))}
+
+          {/* Auto-price indicator */}
+          {autoPrice !== null && (
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl border border-green-200 p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-green-600 uppercase tracking-wider">Precio del catálogo</p>
+                <p className="text-2xl font-extrabold text-green-700">{autoPrice.toLocaleString('es-ES', { minimumFractionDigits: 2 })} {config?.currency || '€'}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-green-500">Total</p>
+                <p className="text-lg font-bold text-green-700">{(autoPrice * (Number(cant) || 1)).toLocaleString('es-ES', { minimumFractionDigits: 2 })} {config?.currency || '€'}</p>
+              </div>
+            </div>
+          )}
 
           {/* GUARDAR Button */}
           <button onClick={handleSave} disabled={loading} className="w-full h-14 rounded-2xl bg-[#2bb24c] hover:bg-[#23963e] active:scale-[0.98] transition-all text-white text-lg font-bold shadow-lg shadow-green-200 disabled:opacity-50 flex items-center justify-center gap-2">

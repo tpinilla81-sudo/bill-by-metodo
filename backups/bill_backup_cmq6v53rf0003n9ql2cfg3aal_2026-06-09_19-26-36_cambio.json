@@ -1,0 +1,68 @@
+{
+  "_meta": {
+    "version": 2,
+    "tenantId": "cmq6v53rf0003n9ql2cfg3aal",
+    "createdAt": "2026-06-09T19:26:36.254Z",
+    "type": "cambio"
+  },
+  "clientes": [],
+  "catalogo": [],
+  "registros": [],
+  "facturaSeq": 1,
+  "config": {
+    "id": "cmq7023i20001n94hppe03jcc",
+    "tenantId": "cmq6v53rf0003n9ql2cfg3aal",
+    "companyName": "BILL by Metodo",
+    "companyFullName": "",
+    "companyAddress": "",
+    "companyCity": "",
+    "companyProvince": "",
+    "companyCif": "",
+    "logo": "",
+    "currency": "€",
+    "defaultIva": 21,
+    "appName": "BILL by Metodo",
+    "appVersion": "v3.0",
+    "labelEntrada": "",
+    "labelCatalogo": "",
+    "labelRegistros": "",
+    "labelFacturas": "",
+    "labelClientes": "",
+    "sectionEntrada": "ENTRADA",
+    "sectionRegistros": "REGISTROS",
+    "sectionClientes": "CLIENTES",
+    "sectionCatalogo": "CATÁLOGO",
+    "sectionFacturas": "FACTURAS",
+    "sectionBackup": "SEGURIDAD",
+    "transferMode": "auto",
+    "transferTime": "00:00",
+    "fieldsEntrada": "",
+    "fieldsClientes": "",
+    "fieldsCatalogo": "",
+    "fieldsRegistros": "",
+    "fieldsFacturas": "",
+    "updatedAt": "2026-06-09T18:55:11.931Z"
+  },
+  "users": [
+    {
+      "id": "cmq6v53z60005n9qlxm99hvzr",
+      "email": "mural-plastic-surgery-slp@bill.es",
+      "name": "Admin MURAL PLASTIC SURGERY SLP.",
+      "role": "admin",
+      "tenantId": "cmq6v53rf0003n9ql2cfg3aal",
+      "active": true,
+      "createdAt": "2026-06-09T16:37:34.435Z",
+      "updatedAt": "2026-06-09T16:37:34.435Z"
+    },
+    {
+      "id": "cmq716esf0003n94hrrjo3f4w",
+      "email": "juliomurillozardoya@gmail.com",
+      "name": "Julio Murillo",
+      "role": "user",
+      "tenantId": "cmq6v53rf0003n9ql2cfg3aal",
+      "active": true,
+      "createdAt": "2026-06-09T19:26:32.799Z",
+      "updatedAt": "2026-06-09T19:26:32.799Z"
+    }
+  ]
+}

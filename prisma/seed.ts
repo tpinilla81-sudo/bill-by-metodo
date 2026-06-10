@@ -4,19 +4,19 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 async function main() {
-  // Create system tenant (for GESTORAPP - not a real company)
-  const systemTenant = await prisma.tenant.upsert({
-    where: { slug: 'sistema' },
+  // Create default BILL tenant (the platform company)
+  const billTenant = await prisma.tenant.upsert({
+    where: { slug: 'bill' },
     update: {},
     create: {
-      name: 'Sistema',
-      slug: 'sistema',
-      fullName: 'METODO - Sistema',
+      name: 'BILL',
+      slug: 'bill',
+      fullName: 'BILL Sistema de Gestión',
       active: true,
     },
   })
 
-  // Create superadmin user (GESTORAPP) - belongs to system tenant
+  // Create superadmin user
   const hashedPw = await bcrypt.hash('admin123', 12)
   await prisma.user.upsert({
     where: { email: 'admin@bill.es' },
@@ -24,14 +24,14 @@ async function main() {
     create: {
       email: 'admin@bill.es',
       password: hashedPw,
-      name: 'GESTORAPP',
+      name: 'Administrador',
       role: 'superadmin',
-      tenantId: systemTenant.id,
+      tenantId: billTenant.id,
       active: true,
     },
   })
 
-  console.log('Seed complete: admin@bill.es / admin123 (GESTORAPP)')
+  console.log('Seed complete: admin@bill.es / admin123')
 }
 
 main().catch(console.error).finally(() => prisma.$disconnect())

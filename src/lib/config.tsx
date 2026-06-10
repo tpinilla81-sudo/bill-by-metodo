@@ -1,6 +1,7 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react'
+import { useAuth } from '@/lib/auth-context'
 
 // ─── Field Definition type ────────────────────────────────────
 export interface FieldDef {
@@ -221,7 +222,7 @@ function parseFieldDefs(jsonStr: string, defaults: FieldDef[]): FieldDef[] {
 
 export function resolveConfig(raw: AppConfig): ResolvedConfig {
   return {
-    companyName: raw.companyName || '',
+    companyName: raw.companyName || 'BILL by Metodo',
     companyFullName: raw.companyFullName || '',
     companyAddress: raw.companyAddress || '',
     companyCity: raw.companyCity || '',
@@ -230,8 +231,8 @@ export function resolveConfig(raw: AppConfig): ResolvedConfig {
     logo: raw.logo || '',
     currency: raw.currency || '€',
     defaultIva: raw.defaultIva ?? 21,
-    appName: raw.appName || 'BILL',
-    appVersion: raw.appVersion || '',
+    appName: raw.appName || 'BILL by Metodo',
+    appVersion: raw.appVersion || 'v3.0',
     sectionEntrada: raw.sectionEntrada || 'ENTRADA',
     sectionRegistros: raw.sectionRegistros || 'REGISTROS',
     sectionClientes: raw.sectionClientes || 'CLIENTES',
@@ -273,13 +274,20 @@ const ConfigContext = createContext<ConfigContextType>({
 export function ConfigProvider({ children }: { children: ReactNode }) {
   const [raw, setRaw] = useState<AppConfig | null>(null)
   const [loading, setLoading] = useState(true)
+  const { effectiveTenantId } = useAuth()
+  const lastLoadedTenantId = useRef<string | null>(null)
 
   const reload = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch('/api/config')
-      const data = await res.json()
-      setRaw(data)
+      if (res.ok) {
+        const data = await res.json()
+        setRaw(data)
+      } else {
+        // Don't overwrite valid config with error response
+        console.error('Config fetch failed:', res.status)
+      }
     } catch (err) {
       console.error('Failed to load config:', err)
     }
@@ -302,9 +310,13 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // Re-fetch config when the effective tenant changes (e.g. after login/logout)
   useEffect(() => {
-    reload()
-  }, [reload])
+    if (effectiveTenantId && effectiveTenantId !== lastLoadedTenantId.current) {
+      lastLoadedTenantId.current = effectiveTenantId
+      reload()
+    }
+  }, [effectiveTenantId, reload])
 
   const config = raw ? resolveConfig(raw) : null
 

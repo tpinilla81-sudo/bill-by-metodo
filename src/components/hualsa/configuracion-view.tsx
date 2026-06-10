@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, Eye, EyeOff, LayoutList, Pencil, Trash2, Plus, X, ChevronUp, ChevronDown, Users, Shield, Switch as SwitchIcon } from 'lucide-react'
+import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, ArrowRightLeft, Clock, Zap, Eye, EyeOff, LayoutList, Pencil, Trash2, Plus, X, GripVertical, ChevronUp, ChevronDown, Users, UserPlus, Shield, Lock } from 'lucide-react'
 import {
   useConfig,
   DEFAULT_LABELS_ENTRADA,
@@ -24,35 +24,47 @@ import {
   type AppConfig,
   type FieldDef,
 } from '@/lib/config'
+import type { CatalogoItem, Cliente } from '@/lib/hualsa-utils'
 import { useTenantFetch } from '@/lib/use-tenant-fetch'
 import { useAuth } from '@/lib/auth-context'
-import { Switch } from '@/components/ui/switch'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { triggerBackup } from '@/lib/trigger-backup'
 
+// ─── UsersManager: CRUD for users with permissions ────────────
+interface UserItem {
+  id: string
+  email: string
+  name: string
+  role: string
+  tenantId: string
+  tenantName: string
+  active: boolean
+  createdAt: string
+}
 
-// ─── UsuariosManager: CRUD for users with permissions ────────
-function UsuariosManager({ userRole }: { userRole: string }) {
+function UsersManager() {
   const { tenantFetch } = useTenantFetch()
-  const [users, setUsers] = useState<Array<{
-    id: string; email: string; name: string; role: string;
-    tenantId: string; tenantName: string; active: boolean; createdAt: string
-  }>>([])
+  const { user: currentUser } = useAuth()
+  const [users, setUsers] = useState<UserItem[]>([])
   const [loading, setLoading] = useState(true)
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
-  const [showDialog, setShowDialog] = useState(false)
-  const [editId, setEditId] = useState<string | null>(null)
-  const [showPassword, setShowPassword] = useState(false)
 
+  // Form state
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [formEmail, setFormEmail] = useState('')
-  const [formPassword, setFormPassword] = useState('')
   const [formName, setFormName] = useState('')
+  const [formPassword, setFormPassword] = useState('')
   const [formRole, setFormRole] = useState('user')
   const [formActive, setFormActive] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+
+  const isSuperadmin = currentUser?.role === 'superadmin'
 
   const loadData = useCallback(async () => {
     try {
       const res = await tenantFetch('/api/users')
-      if (res.ok) setUsers(await res.json())
+      if (res.ok) {
+        setUsers(await res.json())
+      }
     } catch (err) {
       console.error('Error loading users:', err)
     }
@@ -67,105 +79,85 @@ function UsuariosManager({ userRole }: { userRole: string }) {
   }
 
   function resetForm() {
-    setEditId(null); setFormEmail(''); setFormPassword(''); setFormName('')
-    setFormRole('user'); setFormActive(true); setShowDialog(false); setShowPassword(false)
+    setEditingId(null)
+    setFormEmail(''); setFormName(''); setFormPassword(''); setFormRole('user'); setFormActive(true)
+    setShowForm(false)
   }
 
-  function openCreate() {
-    resetForm()
-    setShowDialog(true)
+  function handleEditUser(u: UserItem) {
+    setEditingId(u.id)
+    setFormEmail(u.email); setFormName(u.name); setFormPassword(''); setFormRole(u.role); setFormActive(u.active)
+    setShowForm(true)
   }
 
-  function openEdit(u: typeof users[0]) {
-    setEditId(u.id); setFormEmail(u.email); setFormPassword(''); setFormName(u.name)
-    setFormRole(u.role); setFormActive(u.active)
-    setShowDialog(true)
-  }
-
-  // Available roles based on current user's role
-  const availableRoles = userRole === 'superadmin'
-    ? [
-        { value: 'user', label: 'Usuario', desc: 'Trabaja con datos de su empresa' },
-        { value: 'admin', label: 'Administrador', desc: 'Gestiona su empresa y usuarios' },
-        { value: 'superadmin', label: 'GESTORAPP', desc: 'Dueño de la app. Acceso total' },
-      ]
-    : userRole === 'admin'
-    ? [
-        { value: 'user', label: 'Usuario', desc: 'Trabaja con datos de su empresa' },
-        { value: 'admin', label: 'Administrador', desc: 'Gestiona su empresa y usuarios' },
-      ]
-    : []
-
-  async function handleSave() {
-    if (!editId && (!formEmail.trim() || !formPassword.trim())) {
-      showMsg('err', 'Email y contraseña son obligatorios')
-      return
-    }
+  async function handleSaveUser() {
+    if (!formEmail) { showMsg('err', 'El email es obligatorio'); return }
+    if (!editingId && !formPassword) { showMsg('err', 'La contraseña es obligatoria para nuevos usuarios'); return }
 
     try {
-      if (editId) {
-        const body: Record<string, unknown> = {
-          id: editId, name: formName, role: formRole, active: formActive,
-        }
-        if (formPassword.trim()) body.password = formPassword.trim()
-        const res = await tenantFetch('/api/users', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+      if (editingId) {
+        const body: Record<string, unknown> = { id: editingId, email: formEmail, name: formName, role: formRole, active: formActive }
+        if (formPassword) body.password = formPassword
+        const res = await tenantFetch('/api/users', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        if (!res.ok) { const d = await res.json().catch(() => ({})); showMsg('err', d.error || 'Error al actualizar'); return }
         showMsg('ok', 'Usuario actualizado ✓')
       } else {
-        const res = await tenantFetch('/api/users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: formEmail.trim(), password: formPassword,
-            name: formName, role: formRole,
-          }),
-        })
-        if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+        const body = { email: formEmail, name: formName, password: formPassword, role: formRole, tenantId: currentUser?.tenantId }
+        const res = await tenantFetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        if (!res.ok) { const d = await res.json().catch(() => ({})); showMsg('err', d.error || 'Error al crear usuario'); return }
         showMsg('ok', 'Usuario creado ✓')
       }
-      resetForm(); loadData()
-    } catch {
-      showMsg('err', 'Error de conexión')
-    }
+      resetForm(); triggerBackup(); loadData()
+    } catch { showMsg('err', 'Error de conexión') }
   }
 
-  async function handleToggleActive(u: typeof users[0]) {
-    const newActive = !u.active
+  async function handleToggleActive(u: UserItem) {
+    if (u.id === currentUser?.id) { showMsg('err', 'No puedes desactivar tu propia cuenta'); return }
     try {
       const res = await tenantFetch('/api/users', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: u.id, active: newActive }),
+        body: JSON.stringify({ id: u.id, active: !u.active }),
       })
-      if (!res.ok) { showMsg('err', 'Error al actualizar'); return }
-      showMsg('ok', `Usuario ${newActive ? 'activado' : 'desactivado'} ✓`)
+      if (!res.ok) { const d = await res.json().catch(() => ({})); showMsg('err', d.error || 'Error'); return }
+      showMsg('ok', u.active ? 'Usuario desactivado' : 'Usuario activado')
+      triggerBackup()
       loadData()
-    } catch {
-      showMsg('err', 'Error de conexión')
-    }
+    } catch { showMsg('err', 'Error de conexión') }
+  }
+
+  async function handleDeleteUser(u: UserItem) {
+    if (u.id === currentUser?.id) { showMsg('err', 'No puedes eliminar tu propia cuenta'); return }
+    if (!confirm(`¿Desactivar al usuario "${u.name || u.email}"?`)) return
+    try {
+      const res = await tenantFetch(`/api/users?id=${u.id}`, { method: 'DELETE' })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); showMsg('err', d.error || 'Error'); return }
+      showMsg('ok', 'Usuario desactivado ✓')
+      triggerBackup()
+      loadData()
+    } catch { showMsg('err', 'Error de conexión') }
   }
 
   function getRoleBadge(role: string) {
     switch (role) {
       case 'superadmin':
-        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700"><Shield className="h-3 w-3" /> GESTORAPP</span>
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200">SUPERADMIN</span>
       case 'admin':
-        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700"><Shield className="h-3 w-3" /> Admin</span>
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700 border border-blue-200">ADMIN</span>
       default:
-        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600"><Users className="h-3 w-3" /> Usuario</span>
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">USUARIO</span>
     }
   }
 
-  // Permissions summary per role
-  const permissionsInfo = [
-    { role: 'GESTORAPP', color: 'red', perms: ['Crear/eliminar empresas', 'Gestionar todos los usuarios', 'Cambiar entre empresas', 'Acceso total al sistema'] },
-    { role: 'Admin', color: 'purple', perms: ['Gestionar su empresa', 'Crear/editar usuarios de su empresa', 'Acceso a configuración', 'Ver todas las secciones de datos'] },
-    { role: 'Usuario', color: 'gray', perms: ['Trabajar con datos de su empresa', 'Ver entradas, registros, facturas', 'Sin acceso a configuración', 'Sin gestión de usuarios'] },
-  ]
+  const roleOptions = isSuperadmin
+    ? [
+        { value: 'admin', label: 'Admin', desc: 'Acceso completo a su empresa' },
+        { value: 'user', label: 'Usuario', desc: 'Solo lectura y entradas' },
+      ]
+    : [
+        { value: 'admin', label: 'Admin', desc: 'Acceso completo a su empresa' },
+        { value: 'user', label: 'Usuario', desc: 'Solo lectura y entradas' },
+      ]
 
   if (loading) return <div className="p-6 text-center text-gray-400">Cargando usuarios...</div>
 
@@ -173,84 +165,129 @@ function UsuariosManager({ userRole }: { userRole: string }) {
     <div className="space-y-4">
       {statusMsg && (
         <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-          {statusMsg.type === 'ok' && <CheckCircle className="h-4 w-4" />}
+          {statusMsg.type === 'ok' ? <CheckCircle className="h-4 w-4" /> : null}
           {statusMsg.text}
         </div>
       )}
 
-      {/* Permissions summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {permissionsInfo.map(p => (
-          <Card key={p.role} className={`border-l-4 ${
-            p.color === 'red' ? 'border-l-red-400 bg-red-50/30' :
-            p.color === 'purple' ? 'border-l-purple-400 bg-purple-50/30' :
-            'border-l-gray-400 bg-gray-50/30'
-          }`}>
-            <CardHeader className="pb-2 pt-3 px-4">
-              <CardTitle className="text-sm flex items-center gap-1.5">
-                <Shield className={`h-4 w-4 ${
-                  p.color === 'red' ? 'text-red-500' :
-                  p.color === 'purple' ? 'text-purple-500' :
-                  'text-gray-500'
-                }`} />
-                {p.role}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-3">
-              <ul className="space-y-1">
-                {p.perms.map(perm => (
-                  <li key={perm} className="text-[11px] text-gray-600 flex items-start gap-1.5">
-                    <span className="text-[#2bb24c] mt-0.5">✓</span>
-                    {perm}
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        ))
-        }
-      </div>
-
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">Gestiona los usuarios y sus permisos.</p>
-        <Button onClick={openCreate} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
-          <Plus className="h-4 w-4 mr-1" /> Nuevo Usuario
-        </Button>
+        <p className="text-sm text-gray-500">Gestiona los usuarios de tu empresa y sus permisos de acceso.</p>
+        {!showForm && (
+          <Button onClick={() => { resetForm(); setShowForm(true) }} className="bg-[#005bb5] hover:bg-[#003d7a] text-white">
+            <UserPlus className="h-4 w-4 mr-1.5" /> Nuevo Usuario
+          </Button>
+        )}
       </div>
 
-      {/* Users table */}
+      {/* Create/Edit Form */}
+      {showForm && (
+        <Card className={`border-l-4 ${editingId ? 'border-l-indigo-500' : 'border-l-[#005bb5]'}`}>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              {editingId ? <Pencil className="h-4 w-4 text-indigo-500" /> : <UserPlus className="h-4 w-4 text-[#005bb5]" />}
+              {editingId ? 'Editar Usuario' : 'Nuevo Usuario'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Email *</Label>
+                <Input type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="usuario@empresa.com" />
+              </div>
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Nombre</Label>
+                <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Nombre completo" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Contraseña {editingId ? '(dejar vacío para no cambiar)' : '*'}</Label>
+                <Input type="password" value={formPassword} onChange={e => setFormPassword(e.target.value)} placeholder={editingId ? '••••••••' : 'Mínimo 6 caracteres'} />
+              </div>
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Rol / Permisos</Label>
+                <Select value={formRole} onValueChange={setFormRole}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {roleOptions.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label} — {opt.desc}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Role explanation */}
+            <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 space-y-2">
+              <div className="flex items-center gap-2 font-bold text-slate-700"><Shield className="h-3.5 w-3.5" /> Permisos por rol:</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div className="flex items-start gap-2">
+                  <span className="font-bold text-blue-700 shrink-0">Admin:</span>
+                  <span>Acceso completo a todas las secciones de su empresa. Puede crear, editar y eliminar registros, clientes, catálogo y facturas. Puede gestionar usuarios de su empresa.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="font-bold text-gray-700 shrink-0">Usuario:</span>
+                  <span>Puede ver todas las secciones y crear/editar entradas y registros. No puede gestionar usuarios ni modificar la configuración de la empresa.</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button onClick={handleSaveUser} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
+                <Save className="h-4 w-4 mr-1" />{editingId ? 'ACTUALIZAR' : 'CREAR USUARIO'}
+              </Button>
+              <Button onClick={resetForm} variant="outline">
+                <X className="h-4 w-4 mr-1" /> Cancelar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Users Table */}
       <div className="bg-white rounded-lg border overflow-auto shadow-sm">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-blue-50">
-              <th className="p-3 text-left font-semibold border-b">Email</th>
-              <th className="p-3 text-left font-semibold border-b">Nombre</th>
-              <th className="p-3 text-center font-semibold border-b">Rol</th>
-              <th className="p-3 text-center font-semibold border-b">Estado</th>
-              <th className="p-3 text-center font-semibold border-b">Acciones</th>
+            <tr className="bg-[#005bb5] text-white">
+              <th className="p-2.5 text-left font-semibold">Nombre</th>
+              <th className="p-2.5 text-left font-semibold">Email</th>
+              <th className="p-2.5 text-left font-semibold">Rol</th>
+              <th className="p-2.5 text-center font-semibold">Estado</th>
+              <th className="p-2.5 text-center font-semibold">Acc.</th>
             </tr>
           </thead>
           <tbody>
             {users.map(u => (
-              <tr key={u.id} className={`border-b hover:bg-gray-50 ${!u.active ? 'opacity-50' : ''}`}>
-                <td className="p-3 font-medium text-gray-800">{u.email}</td>
-                <td className="p-3 text-gray-600">{u.name || '—'}</td>
-                <td className="p-3 text-center">{getRoleBadge(u.role)}</td>
-                <td className="p-3 text-center">
+              <tr key={u.id} className={`border-b hover:bg-gray-50 ${!u.active ? 'opacity-50' : ''} ${editingId === u.id ? 'bg-indigo-50' : ''}`}>
+                <td className="p-2.5 font-medium">{u.name || '—'}</td>
+                <td className="p-2.5 text-gray-600">{u.email}</td>
+                <td className="p-2.5">{getRoleBadge(u.role)}</td>
+                <td className="p-2.5 text-center">
                   <button
                     onClick={() => handleToggleActive(u)}
-                    className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
-                      u.active ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-600 hover:bg-red-200'
+                    className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-colors ${
+                      u.active
+                        ? 'bg-green-50 text-green-700 border-green-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200'
+                        : 'bg-red-50 text-red-600 border-red-200 hover:bg-green-50 hover:text-green-700 hover:border-green-200'
                     }`
-                  }
+                    }
+                    title={u.active ? 'Click para desactivar' : 'Click para activar'}
+                    disabled={u.id === currentUser?.id}
                   >
-                    {u.active ? 'Activo' : 'Inactivo'}
+                    {u.active ? '● Activo' : '○ Inactivo'}
                   </button>
                 </td>
-                <td className="p-3 text-center">
-                  <Button size="icon" variant="ghost" className="h-8 w-8 text-[#005bb5] hover:bg-blue-50" onClick={() => openEdit(u)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
+                <td className="p-2.5 text-center">
+                  <div className="flex justify-center gap-1">
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEditUser(u)} title="Editar usuario">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:bg-rose-50" onClick={() => handleDeleteUser(u)} title="Desactivar usuario" disabled={u.id === currentUser?.id}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -260,72 +297,6 @@ function UsuariosManager({ userRole }: { userRole: string }) {
           </tbody>
         </table>
       </div>
-
-      {/* Create/Edit Dialog */}
-      <Dialog open={showDialog} onOpenChange={(open) => { if (!open) resetForm() }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-[#005bb5]" />
-              {editId ? 'Editar Usuario' : 'Nuevo Usuario'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Email</Label>
-              <Input value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="usuario@ejemplo.com" className="mt-1" disabled={!!editId} />
-            </div>
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">
-                {editId ? 'Nueva Contraseña (dejar vacío para mantener)' : 'Contraseña'}
-              </Label>
-              <div className="relative mt-1">
-                <Input type={showPassword ? 'text' : 'password'} value={formPassword} onChange={e => setFormPassword(e.target.value)} placeholder={editId ? '••••••••' : 'Contraseña'} required={!editId} />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-            <div>
-              <Label className="text-xs uppercase font-bold text-slate-500">Nombre</Label>
-              <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Nombre completo" className="mt-1" />
-            </div>
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Rol y Permisos</Label>
-                <Select value={formRole} onValueChange={setFormRole}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {availableRoles.map(r => (
-                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {availableRoles.find(r => r.value === formRole) && (
-                  <p className="text-[10px] text-gray-400 mt-1">
-                    {availableRoles.find(r => r.value === formRole)?.desc}
-                  </p>
-                )}
-              </div>
-            </div>
-            {editId && (
-              <div className="flex items-center gap-3">
-                <Label className="text-xs uppercase font-bold text-slate-500">Activo</Label>
-                <Switch checked={formActive} onCheckedChange={setFormActive} />
-                <span className={`text-xs font-bold ${formActive ? 'text-green-600' : 'text-red-500'}`}>
-                  {formActive ? 'Activo' : 'Inactivo'}
-                </span>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={resetForm}>Cancelar</Button>
-            <Button onClick={handleSave} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
-              <CheckCircle className="h-4 w-4 mr-1" /> {editId ? 'ACTUALIZAR' : 'CREAR'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
@@ -627,8 +598,6 @@ interface TenantInfo {
 
 export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
   const { raw, config, update, loading } = useConfig()
-  const { user } = useAuth()
-  const userRole = user?.role || 'user'
   const [saving, setSaving] = useState(false)
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
@@ -643,7 +612,6 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
   const [currency, setCurrency] = useState('€')
   const [defaultIva, setDefaultIva] = useState('21')
   const [appName, setAppName] = useState('')
-  const [appVersion, setAppVersion] = useState('')
 
   const [sectionEntrada, setSectionEntrada] = useState('')
   const [sectionRegistros, setSectionRegistros] = useState('')
@@ -671,22 +639,27 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
   const [logoPreview, setLogoPreview] = useState('')
   const [logoBase64, setLogoBase64] = useState('')
 
-  // Initialize local state from config when loaded
-  const [initDone, setInitDone] = useState(false)
-  if (config && raw && !initDone) {
-    setInitDone(true)
-    setCompanyName(raw.companyName); setCompanyFullName(raw.companyFullName); setCompanyAddress(raw.companyAddress)
-    setCompanyCity(raw.companyCity); setCompanyProvince(raw.companyProvince); setCompanyCif(raw.companyCif)
-    setCurrency(raw.currency); setDefaultIva(String(raw.defaultIva)); setAppName(raw.appName); setAppVersion(raw.appVersion)
-    setSectionEntrada(raw.sectionEntrada); setSectionRegistros(raw.sectionRegistros); setSectionClientes(raw.sectionClientes)
-    setSectionCatalogo(raw.sectionCatalogo); setSectionFacturas(raw.sectionFacturas); setSectionBackup(raw.sectionBackup)
-    setTransferMode(raw.transferMode || 'auto'); setTransferTime(raw.transferTime || '00:00')
-    setLabelsEntrada(config.labelsEntrada); setLabelsCatalogo(config.labelsCatalogo)
-    setLabelsRegistros(config.labelsRegistros); setLabelsFacturas(config.labelsFacturas); setLabelsClientes(config.labelsClientes)
-    setFieldsEntrada(config.fieldsEntrada); setFieldsClientes(config.fieldsClientes)
-    setFieldsCatalogo(config.fieldsCatalogo); setFieldsRegistros(config.fieldsRegistros); setFieldsFacturas(config.fieldsFacturas)
-    if (raw.logo) { setLogoPreview(raw.logo.startsWith('data:') ? raw.logo : `data:image/png;base64,${raw.logo}`) }
-  }
+  // Initialize local state from config whenever the config data changes (e.g. after tenant switch)
+  // Use raw?.id as a stable reference to avoid infinite re-render loops
+  useEffect(() => {
+    if (config && raw) {
+      setCompanyName(raw.companyName); setCompanyFullName(raw.companyFullName); setCompanyAddress(raw.companyAddress)
+      setCompanyCity(raw.companyCity); setCompanyProvince(raw.companyProvince); setCompanyCif(raw.companyCif)
+      setCurrency(raw.currency); setDefaultIva(String(raw.defaultIva)); setAppName(raw.appName)
+      setSectionEntrada(raw.sectionEntrada); setSectionRegistros(raw.sectionRegistros); setSectionClientes(raw.sectionClientes)
+      setSectionCatalogo(raw.sectionCatalogo); setSectionFacturas(raw.sectionFacturas); setSectionBackup(raw.sectionBackup)
+      setTransferMode(raw.transferMode || 'auto'); setTransferTime(raw.transferTime || '00:00')
+      setLabelsEntrada(config.labelsEntrada); setLabelsCatalogo(config.labelsCatalogo)
+      setLabelsRegistros(config.labelsRegistros); setLabelsFacturas(config.labelsFacturas); setLabelsClientes(config.labelsClientes)
+      setFieldsEntrada(config.fieldsEntrada); setFieldsClientes(config.fieldsClientes)
+      setFieldsCatalogo(config.fieldsCatalogo); setFieldsRegistros(config.fieldsRegistros); setFieldsFacturas(config.fieldsFacturas)
+      if (raw.logo) { setLogoPreview(raw.logo.startsWith('data:') ? raw.logo : `data:image/png;base64,${raw.logo}`) }
+      else { setLogoPreview('') }
+      // Reset logo base64 since we just loaded from server
+      setLogoBase64('')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raw?.id, raw?.tenantId])
 
   function showStatus(type: 'ok' | 'err', text: string) {
     setStatusMsg({ type, text })
@@ -721,7 +694,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
     try {
       const partial: Partial<AppConfig> = {
         companyName, companyFullName, companyAddress, companyCity, companyProvince, companyCif,
-        currency, defaultIva: Number(defaultIva) || 21, appName, appVersion,
+        currency, defaultIva: Number(defaultIva) || 21, appName,
         sectionEntrada, sectionRegistros, sectionClientes, sectionCatalogo, sectionFacturas, sectionBackup,
         transferMode, transferTime,
         labelEntrada: JSON.stringify(labelsEntrada), labelCatalogo: JSON.stringify(labelsCatalogo),
@@ -733,6 +706,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
       }
       if (logoBase64 === 'REMOVE') { partial.logo = '' } else if (logoBase64) { partial.logo = logoBase64 }
       await update(partial)
+      triggerBackup()
       showStatus('ok', 'Configuración guardada ✓')
     } catch (err) { showStatus('err', 'Error guardando: ' + String(err)) }
     setSaving(false)
@@ -804,22 +778,20 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
                   <p className="text-[10px] text-gray-400 text-right">Nombre de empresa asignado<br/>por el administrador</p>
                 </div>
               )}
-              <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Razón Social</Label>
-                <Input value={companyFullName} onChange={e => setCompanyFullName(e.target.value)} placeholder="Mi Empresa S.L." />
-              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Razón Social</Label><Input value={companyFullName} onChange={e => setCompanyFullName(e.target.value)} placeholder="Mi Empresa S.L." /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">CIF</Label><Input value={companyCif} onChange={e => setCompanyCif(e.target.value)} placeholder="B12345678" /></div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Dirección</Label><Input value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} placeholder="C/ Example, Nº 1" /></div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Ciudad / C.P.</Label><Input value={companyCity} onChange={e => setCompanyCity(e.target.value)} placeholder="28001 Madrid" /></div>
-                <div><Label className="text-xs uppercase font-bold text-slate-500">Provincia</Label><Input value={companyProvince} onChange={e => setCompanyProvince(e.target.value)} placeholder="Madrid" /></div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Provincia</Label><Input value={companyProvince} onChange={e => setCompanyProvince(e.target.value)} placeholder="Madrid" /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Moneda</Label><Input value={currency} onChange={e => setCurrency(e.target.value)} placeholder="€" className="w-24" /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">IVA por defecto (%)</Label><Input type="number" step="0.01" value={defaultIva} onChange={e => setDefaultIva(e.target.value)} className="w-32" /></div>
               </div>
+
             </CardContent>
           </Card>
           <Card>
@@ -838,9 +810,9 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
           </Card>
         </TabsContent>
 
-        {/* ─── USUARIOS TAB (with permissions) ──────────── */}
+        {/* ─── USUARIOS TAB ────────────────────────────── */}
         <TabsContent value="usuarios" className="space-y-4 mt-4">
-          <UsuariosManager userRole={userRole} />
+          <UsersManager />
         </TabsContent>
 
         {/* ─── CAMPOS TAB (Full CRUD for fields) ────────── */}

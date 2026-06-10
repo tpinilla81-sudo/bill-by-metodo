@@ -1,14 +1,5 @@
 // Utility functions for HUALSA PRO
 
-/**
- * Safely extract an array from a JSON response.
- * If the response is an error object like {error: "..."}, returns [] instead.
- */
-export function safeArray<T>(data: T[] | { error?: string } | unknown): T[] {
-  if (Array.isArray(data)) return data
-  return []
-}
-
 export function fmtCurrency(n: number, currency: string = '€'): string {
   return (Number(n) || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency
 }
@@ -19,10 +10,14 @@ export function fmtDate(iso: string): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso
 }
 
+const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+
 export function fmtMonth(iso: string): string {
   if (!iso) return ''
   const m = String(iso).match(/^(\d{4})-(\d{2})/)
-  return m ? `${m[2]}/${m[1]}` : iso
+  if (!m) return iso
+  const monthNum = parseInt(m[2], 10)
+  return `${MESES[monthNum - 1]} ${m[1]}`
 }
 
 export function getISOWeek(dateStr: string): number {
