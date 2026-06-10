@@ -10,10 +10,40 @@ import { FacturasView } from '@/components/hualsa/facturas-view'
 import { BackupView } from '@/components/hualsa/backup-view'
 import { ConfiguracionView } from '@/components/hualsa/configuracion-view'
 import { AdminView } from '@/components/hualsa/admin-view'
+import { PlansView } from '@/components/hualsa/plans-view'
 import { ConfigProvider, useConfig } from '@/lib/config'
 import { AuthProvider, useAuth } from '@/lib/auth-context'
 
-export type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'facturas' | 'backup' | 'config' | 'admin'
+export type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'facturas' | 'backup' | 'config' | 'admin' | 'suscripcion'
+
+// Screen permission keys
+const SCREEN_PERMISSIONS = ['entrada', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
+
+// Parse permissions from JSON string to array
+function parsePermissions(permissionsStr: string): string[] {
+  if (!permissionsStr || permissionsStr.trim() === '') return []
+  try {
+    const parsed = JSON.parse(permissionsStr)
+    if (Array.isArray(parsed)) return parsed.filter((p: string) => (SCREEN_PERMISSIONS as readonly string[]).includes(p))
+    return []
+  } catch {
+    return []
+  }
+}
+
+// Check if user has permission to access a screen
+function hasPermission(userRole: string, userPermissions: string, screenKey: string): boolean {
+  // Admin and superadmin always have access
+  if (userRole === 'admin' || userRole === 'superadmin') return true
+
+  // For regular users: check permissions
+  const perms = parsePermissions(userPermissions)
+
+  // Empty permissions = all screens accessible (backwards compat)
+  if (perms.length === 0) return true
+
+  return perms.includes(screenKey)
+}
 
 function AppContent() {
   const { user, loading, login, logout } = useAuth()
@@ -28,7 +58,19 @@ function AppContent() {
     }
   }, [config])
 
-
+  // When user logs in, check if the default view is accessible
+  // If not, find the first accessible view
+  useEffect(() => {
+    if (user && !loading) {
+      if (!hasPermission(user.role, user.permissions, activeView)) {
+        // Find first accessible view
+        const viewOrder: View[] = ['entrada', 'registros', 'clientes', 'catalogo', 'facturas', 'backup']
+        const accessible = viewOrder.find(v => hasPermission(user.role, user.permissions, v))
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (accessible) setActiveView(accessible)
+      }
+    }
+  }, [user, loading, activeView])
 
   // Loading state
   if (loading) {
@@ -66,27 +108,68 @@ function AppContent() {
     cif: '',
   }
 
+  // Build session user for sidebar (with permissions)
+  const sessionUser = {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    tenantId: user.tenantId,
+    permissions: user.permissions || '',
+  }
+
+  // Handle navigation with permission check
+  function handleNavigate(view: View) {
+    // Admin/superadmin can always navigate
+    if (user.role === 'admin' || user.role === 'superadmin') {
+      setActiveView(view)
+      return
+    }
+    // For regular users, check permissions for screen views
+    if (['entrada', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'].includes(view)) {
+      if (hasPermission(user.role, user.permissions, view)) {
+        setActiveView(view)
+      }
+      return
+    }
+    // config and admin are handled by sidebar visibility
+    setActiveView(view)
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-[#f4f7f6]">
       <Sidebar
         active={activeView}
-        onNavigate={setActiveView}
+        onNavigate={handleNavigate}
         mobileOpen={mobileOpen}
         onMobileToggle={() => setMobileOpen(!mobileOpen)}
-        user={user}
+        user={sessionUser}
         tenant={tenant}
         onLogout={logout}
       />
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         <div className="p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 flex flex-col overflow-hidden">
-          {activeView === 'entrada' && <div className="flex-1 min-h-0 flex flex-col"><EntradaView /></div>}
-          {activeView === 'registros' && <div className="flex-1 min-h-0 flex flex-col"><RegistrosView /></div>}
-          {activeView === 'clientes' && <div className="flex-1 min-h-0 flex flex-col"><ClientesView /></div>}
-          {activeView === 'catalogo' && <div className="flex-1 min-h-0 flex flex-col"><CatalogoView /></div>}
-          {activeView === 'facturas' && <div className="flex-1 min-h-0 flex flex-col"><FacturasView /></div>}
-          {activeView === 'backup' && <BackupView />}
+          {activeView === 'entrada' && hasPermission(user.role, user.permissions, 'entrada') && <div className="flex-1 min-h-0 flex flex-col"><EntradaView /></div>}
+          {activeView === 'registros' && hasPermission(user.role, user.permissions, 'registros') && <div className="flex-1 min-h-0 flex flex-col"><RegistrosView /></div>}
+          {activeView === 'clientes' && hasPermission(user.role, user.permissions, 'clientes') && <div className="flex-1 min-h-0 flex flex-col"><ClientesView /></div>}
+          {activeView === 'catalogo' && hasPermission(user.role, user.permissions, 'catalogo') && <div className="flex-1 min-h-0 flex flex-col"><CatalogoView /></div>}
+          {activeView === 'facturas' && hasPermission(user.role, user.permissions, 'facturas') && <div className="flex-1 min-h-0 flex flex-col"><FacturasView /></div>}
+          {activeView === 'backup' && hasPermission(user.role, user.permissions, 'backup') && <BackupView />}
+          {activeView === 'suscripcion' && (user.role === 'admin' || user.role === 'superadmin') && <PlansView tenantId={user.tenantId} />}
           {activeView === 'config' && (user.role === 'admin' || user.role === 'superadmin') && <ConfiguracionView tenant={tenant} />}
           {activeView === 'admin' && user.role === 'superadmin' && <AdminView />}
+
+          {/* No permission view */}
+          {['entrada', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'].includes(activeView) && !hasPermission(user.role, user.permissions, activeView) && (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center space-y-3">
+                <div className="text-4xl">🔒</div>
+                <h3 className="text-lg font-bold text-gray-600">Sin acceso</h3>
+                <p className="text-sm text-gray-400">No tienes permiso para ver esta pantalla.</p>
+                <p className="text-xs text-gray-400">Contacta con tu administrador para solicitar acceso.</p>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

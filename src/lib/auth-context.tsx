@@ -11,6 +11,7 @@ export interface AuthUser {
   tenantName: string
   tenantLogo: string
   tenantSlug: string
+  permissions: string  // JSON array string e.g. '["entrada","registros"]'
 }
 
 interface AuthContextType {

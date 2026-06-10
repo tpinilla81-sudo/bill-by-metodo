@@ -1,6 +1,6 @@
 'use client'
 
-import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown } from 'lucide-react'
+import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown, CreditCard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useConfig } from '@/lib/config'
 import type { View } from '@/app/page'
@@ -22,6 +22,7 @@ interface SessionUser {
   name: string
   role: string    // "superadmin", "admin", "user"
   tenantId: string
+  permissions: string  // JSON array string e.g. '["entrada","registros"]'
 }
 
 interface SidebarProps {
@@ -34,20 +35,39 @@ interface SidebarProps {
   onLogout: () => void
 }
 
+// All available screen permission keys
+const SCREEN_PERMISSIONS = ['entrada', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
+
+// Parse permissions from JSON string to array
+function parsePermissions(permissionsStr: string): string[] {
+  if (!permissionsStr || permissionsStr.trim() === '') return []
+  try {
+    const parsed = JSON.parse(permissionsStr)
+    if (Array.isArray(parsed)) return parsed.filter((p: string) => SCREEN_PERMISSIONS.includes(p as any))
+    return []
+  } catch {
+    return []
+  }
+}
+
 export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, tenant, onLogout }: SidebarProps) {
   const { config } = useConfig()
 
   const isSuperadmin = user?.role === 'superadmin'
-
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
 
-  const navItems: { key: View; label: string; icon: React.ReactNode; color: string; adminOnly?: boolean; superadminOnly?: boolean }[] = [
-    { key: 'entrada', label: config?.sectionEntrada || 'ENTRADA', icon: <FileInput className="h-4 w-4" />, color: 'text-green-400' },
-    { key: 'registros', label: config?.sectionRegistros || 'REGISTROS', icon: <Table2 className="h-4 w-4" />, color: 'text-blue-400' },
-    { key: 'clientes', label: config?.sectionClientes || 'CLIENTES', icon: <Users className="h-4 w-4" />, color: 'text-purple-400' },
-    { key: 'catalogo', label: config?.sectionCatalogo || 'CATÁLOGO', icon: <BookOpen className="h-4 w-4" />, color: 'text-amber-400' },
-    { key: 'facturas', label: config?.sectionFacturas || 'FACTURAS', icon: <Receipt className="h-4 w-4" />, color: 'text-rose-400' },
-    { key: 'backup', label: config?.sectionBackup || 'SEGURIDAD', icon: <Shield className="h-4 w-4" />, color: 'text-cyan-400' },
+  // Parse user permissions
+  const userPermissions = parsePermissions(user?.permissions || '')
+  const hasNoPermissions = userPermissions.length === 0 // empty = all accessible (backwards compat)
+
+  const navItems: { key: View; label: string; icon: React.ReactNode; color: string; adminOnly?: boolean; superadminOnly?: boolean; permissionKey?: string }[] = [
+    { key: 'entrada', label: config?.sectionEntrada || 'ENTRADA', icon: <FileInput className="h-4 w-4" />, color: 'text-green-400', permissionKey: 'entrada' },
+    { key: 'registros', label: config?.sectionRegistros || 'REGISTROS', icon: <Table2 className="h-4 w-4" />, color: 'text-blue-400', permissionKey: 'registros' },
+    { key: 'clientes', label: config?.sectionClientes || 'CLIENTES', icon: <Users className="h-4 w-4" />, color: 'text-purple-400', permissionKey: 'clientes' },
+    { key: 'catalogo', label: config?.sectionCatalogo || 'CATÁLOGO', icon: <BookOpen className="h-4 w-4" />, color: 'text-amber-400', permissionKey: 'catalogo' },
+    { key: 'facturas', label: config?.sectionFacturas || 'FACTURAS', icon: <Receipt className="h-4 w-4" />, color: 'text-rose-400', permissionKey: 'facturas' },
+    { key: 'backup', label: config?.sectionBackup || 'SEGURIDAD', icon: <Shield className="h-4 w-4" />, color: 'text-cyan-400', permissionKey: 'backup' },
+    { key: 'suscripcion', label: 'SUSCRIPCIÓN', icon: <CreditCard className="h-4 w-4" />, color: 'text-emerald-400', adminOnly: true, superadminOnly: false },
     { key: 'config', label: 'CONFIGURACIÓN', icon: <Settings className="h-4 w-4" />, color: 'text-gray-400', adminOnly: true },
     { key: 'admin', label: 'ADMIN', icon: <Crown className="h-4 w-4" />, color: 'text-amber-300', superadminOnly: true },
   ]
@@ -109,8 +129,23 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
         <nav className="flex-1 flex flex-col overflow-y-auto">
           {navItems
             .filter(item => {
+              // Superadmin-only items
               if (item.superadminOnly && !isSuperadmin) return false
+
+              // Admin-only items (config, suscripcion)
               if (item.adminOnly && !isAdmin) return false
+
+              // Suscripción: only for admin (not superadmin)
+              if (item.key === 'suscripcion' && isSuperadmin) return false
+
+              // Permission-based filtering for regular users
+              if (user?.role === 'user' && item.permissionKey) {
+                // If permissions array is empty, show all (backwards compat)
+                if (hasNoPermissions) return true
+                // Otherwise only show if the screen is in their permissions
+                return userPermissions.includes(item.permissionKey)
+              }
+
               return true
             })
             .map((item) => (

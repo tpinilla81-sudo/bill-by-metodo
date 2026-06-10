@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdmin, hashPassword } from '@/lib/auth'
+import { requireAdmin, hashPassword, getSessionUser } from '@/lib/auth'
 
 // GET /api/users - List all users (admin or superadmin)
 export async function GET() {
@@ -27,6 +27,7 @@ export async function GET() {
       tenantId: u.tenantId,
       tenantName: u.tenant.name,
       active: u.active,
+      permissions: u.permissions || '',
       createdAt: u.createdAt,
     })))
   } catch (error) {
@@ -35,7 +36,7 @@ export async function GET() {
   }
 }
 
-// POST /api/users - Create new user (superadmin only)
+// POST /api/users - Create new user (admin or superadmin)
 export async function POST(request: Request) {
   try {
     const admin = await requireAdmin()
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { email, password, name, role, tenantId } = body
+    const { email, password, name, role, tenantId, permissions } = body
 
     if (!email || !password || !tenantId) {
       return NextResponse.json({ error: 'Email, contraseña y empresa son obligatorios' }, { status: 400 })
@@ -72,6 +73,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Empresa no encontrada' }, { status: 400 })
     }
 
+    // Enforce plan limits: check maxUsers
+    const currentUserCount = await db.user.count({ where: { tenantId, active: true } })
+    if (tenant.maxUsers > 0 && currentUserCount >= tenant.maxUsers) {
+      return NextResponse.json({
+        error: `Has alcanzado el límite de usuarios (${tenant.maxUsers}) para el plan "${tenant.plan}". Actualiza tu suscripción para añadir más usuarios.`,
+      }, { status: 400 })
+    }
+
+    // Parse and validate permissions
+    let permsValue = ''
+    if (role === 'user' && permissions) {
+      // Store as JSON string
+      if (typeof permissions === 'string') {
+        permsValue = permissions
+      } else if (Array.isArray(permissions)) {
+        permsValue = JSON.stringify(permissions)
+      }
+    }
+    // For admin/superadmin, permissions are ignored (they see everything)
+
     const hashedPw = await hashPassword(password)
 
     const user = await db.user.create({
@@ -81,6 +102,7 @@ export async function POST(request: Request) {
         name: name || '',
         role: role || 'user',
         tenantId,
+        permissions: permsValue,
       },
       include: { tenant: { select: { name: true } } },
     })
@@ -93,6 +115,7 @@ export async function POST(request: Request) {
       tenantId: user.tenantId,
       tenantName: user.tenant.name,
       active: user.active,
+      permissions: user.permissions || '',
     }, { status: 201 })
   } catch (error) {
     console.error('Users POST error:', error)
@@ -109,7 +132,7 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json()
-    const { id, email, name, role, tenantId, active, password } = body
+    const { id, email, name, role, tenantId, active, password, permissions } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID es obligatorio' }, { status: 400 })
@@ -149,6 +172,20 @@ export async function PUT(request: Request) {
       }
     }
 
+    // Enforce plan limits on role change: if activating a user or changing tenant
+    if (active === true && !existing.active) {
+      const targetTenantId = tenantId || existing.tenantId
+      const tenant = await db.tenant.findUnique({ where: { id: targetTenantId } })
+      if (tenant && tenant.maxUsers > 0) {
+        const currentUserCount = await db.user.count({ where: { tenantId: targetTenantId, active: true } })
+        if (currentUserCount >= tenant.maxUsers) {
+          return NextResponse.json({
+            error: `Has alcanzado el límite de usuarios (${tenant.maxUsers}) para el plan "${tenant.plan}". Actualiza tu suscripción para añadir más usuarios.`,
+          }, { status: 400 })
+        }
+      }
+    }
+
     const updateData: Record<string, unknown> = {}
     if (email !== undefined) updateData.email = email.toLowerCase().trim()
     if (name !== undefined) updateData.name = name
@@ -156,6 +193,26 @@ export async function PUT(request: Request) {
     if (tenantId !== undefined && admin.role === 'superadmin') updateData.tenantId = tenantId
     if (active !== undefined) updateData.active = active
     if (password) updateData.password = await hashPassword(password)
+
+    // Handle permissions
+    if (permissions !== undefined) {
+      const effectiveRole = role || existing.role
+      if (effectiveRole === 'user') {
+        if (typeof permissions === 'string') {
+          updateData.permissions = permissions
+        } else if (Array.isArray(permissions)) {
+          updateData.permissions = JSON.stringify(permissions)
+        } else {
+          updateData.permissions = ''
+        }
+      } else {
+        // Admin/superadmin: clear permissions (they see everything)
+        updateData.permissions = ''
+      }
+    } else if (role !== undefined && role !== 'user' && existing.role === 'user') {
+      // If changing from user to admin/superadmin, clear permissions
+      updateData.permissions = ''
+    }
 
     const user = await db.user.update({
       where: { id },
@@ -171,6 +228,7 @@ export async function PUT(request: Request) {
       tenantId: user.tenantId,
       tenantName: user.tenant.name,
       active: user.active,
+      permissions: user.permissions || '',
     })
   } catch (error) {
     console.error('Users PUT error:', error)

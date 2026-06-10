@@ -67,6 +67,7 @@ export async function POST(request: Request) {
       name: user.name,
       role: user.role,
       tenantId: user.tenantId,
+      permissions: user.permissions || '',
     })
 
     await setSessionCookie(token)
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
         tenantId: user.tenantId,
         tenantName: user.tenant?.name || '',
         tenantLogo: user.tenant?.logo || '',
+        permissions: user.permissions || '',
       },
     })
   } catch (error) {

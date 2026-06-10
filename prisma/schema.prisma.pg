@@ -1,9 +1,13 @@
+// PostgreSQL schema for production deployment on Vercel
+// To use: copy this file over schema.prisma before deploying,
+// or set DATABASE_PROVIDER=postgresql and swap this file in.
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

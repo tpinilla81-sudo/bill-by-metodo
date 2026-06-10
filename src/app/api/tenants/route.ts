@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireSuperadmin, hashPassword } from '@/lib/auth'
+import { requireSuperadmin, hashPassword, getSessionUser, requireAdmin, isAdminRole } from '@/lib/auth'
+
+// Plan limits configuration
+const PLAN_LIMITS: Record<string, { maxUsers: number; maxRegistros: number }> = {
+  gratuito: { maxUsers: 1, maxRegistros: 100 },
+  mensual: { maxUsers: 5, maxRegistros: 5000 },
+  trimestral: { maxUsers: 15, maxRegistros: 20000 },
+  anual: { maxUsers: 999, maxRegistros: 999999 },
+}
 
 // GET /api/tenants - List all tenants (superadmin only)
 export async function GET() {
@@ -15,7 +23,7 @@ export async function GET() {
         slug: { not: 'sistema' }  // Hide system tenant from company list
       },
       include: {
-        _count: { select: { users: true } },
+        _count: { select: { users: true, registros: true } },
       },
       orderBy: { createdAt: 'asc' },
     })
@@ -31,7 +39,13 @@ export async function GET() {
       cif: t.cif,
       logo: t.logo,
       active: t.active,
+      plan: t.plan,
+      planStatus: t.planStatus,
+      planExpiresAt: t.planExpiresAt,
+      maxUsers: t.maxUsers,
+      maxRegistros: t.maxRegistros,
       userCount: t._count.users,
+      registroCount: t._count.registros,
       createdAt: t.createdAt,
     })))
   } catch (error) {
@@ -74,7 +88,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Ya existe una empresa con ese nombre' }, { status: 400 })
     }
 
-    // Create tenant
+    // Default plan: gratuito
+    const defaultPlan = PLAN_LIMITS.gratuito
+
+    // Create tenant with default plan
     const tenant = await db.tenant.create({
       data: {
         name: name.trim(),
@@ -86,6 +103,10 @@ export async function POST(request: Request) {
         cif: cif || '',
         logo: logo || '',
         active: true,
+        plan: 'gratuito',
+        planStatus: 'activo',
+        maxUsers: defaultPlan.maxUsers,
+        maxRegistros: defaultPlan.maxRegistros,
       },
     })
 
@@ -117,6 +138,10 @@ export async function POST(request: Request) {
         cif: tenant.cif,
         logo: tenant.logo,
         active: tenant.active,
+        plan: tenant.plan,
+        planStatus: tenant.planStatus,
+        maxUsers: tenant.maxUsers,
+        maxRegistros: tenant.maxRegistros,
         createdAt: tenant.createdAt,
       },
       autoUser: {
@@ -142,7 +167,7 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json()
-    const { id, fullName, address, city, province, cif, logo, active } = body
+    const { id, fullName, address, city, province, cif, logo, active, plan, planStatus, planExpiresAt } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID es obligatorio' }, { status: 400 })
@@ -153,18 +178,34 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Empresa no encontrada' }, { status: 404 })
     }
 
+    // Build update data
+    const updateData: Record<string, unknown> = {
+      ...(fullName !== undefined && { fullName }),
+      ...(address !== undefined && { address }),
+      ...(city !== undefined && { city }),
+      ...(province !== undefined && { province }),
+      ...(cif !== undefined && { cif }),
+      ...(logo !== undefined && { logo }),
+      ...(active !== undefined && { active }),
+      ...(planStatus !== undefined && { planStatus }),
+      ...(planExpiresAt !== undefined && { planExpiresAt: planExpiresAt ? new Date(planExpiresAt) : null }),
+    }
+
+    // Handle plan change: update limits when plan changes
+    if (plan !== undefined && plan !== existing.plan) {
+      const limits = PLAN_LIMITS[plan]
+      if (!limits) {
+        return NextResponse.json({ error: 'Plan no válido. Opciones: gratuito, mensual, trimestral, anual' }, { status: 400 })
+      }
+      updateData.plan = plan
+      updateData.maxUsers = limits.maxUsers
+      updateData.maxRegistros = limits.maxRegistros
+    }
+
     // name and slug are NOT editable after creation
     const tenant = await db.tenant.update({
       where: { id },
-      data: {
-        ...(fullName !== undefined && { fullName }),
-        ...(address !== undefined && { address }),
-        ...(city !== undefined && { city }),
-        ...(province !== undefined && { province }),
-        ...(cif !== undefined && { cif }),
-        ...(logo !== undefined && { logo }),
-        ...(active !== undefined && { active }),
-      },
+      data: updateData,
     })
 
     return NextResponse.json(tenant)

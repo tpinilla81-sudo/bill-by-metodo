@@ -8,8 +8,9 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Building2, Users, Plus, Pencil, Trash2, CheckCircle, Shield, Copy, Eye, EyeOff, KeyRound } from 'lucide-react'
+import { Building2, Users, Plus, Pencil, Trash2, CheckCircle, Shield, Copy, Eye, EyeOff, KeyRound, CreditCard, Zap, Clock, TrendingUp } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────
 interface Tenant {
@@ -23,7 +24,13 @@ interface Tenant {
   cif: string
   logo: string
   active: boolean
+  plan: string
+  planStatus: string
+  planExpiresAt: string | null
+  maxUsers: number
+  maxRegistros: number
   userCount: number
+  registroCount: number
   createdAt: string
 }
 
@@ -43,7 +50,38 @@ interface UserItem {
   tenantId: string
   tenantName: string
   active: boolean
+  permissions: string
   createdAt: string
+}
+
+// Screen permissions available for regular users
+const SCREEN_OPTIONS = [
+  { key: 'entrada', label: 'Entrada' },
+  { key: 'registros', label: 'Registros' },
+  { key: 'clientes', label: 'Clientes' },
+  { key: 'catalogo', label: 'Catálogo' },
+  { key: 'facturas', label: 'Facturas' },
+  { key: 'backup', label: 'Seguridad (Backup)' },
+] as const
+
+// Plan configuration
+const PLAN_CONFIG: Record<string, { label: string; maxUsers: number; maxRegistros: number; desc: string; color: string }> = {
+  gratuito: { label: 'Gratuito', maxUsers: 1, maxRegistros: 100, desc: 'Sin soporte', color: 'bg-gray-100 text-gray-700' },
+  mensual: { label: 'Mensual', maxUsers: 5, maxRegistros: 5000, desc: 'Soporte email', color: 'bg-blue-100 text-blue-700' },
+  trimestral: { label: 'Trimestral', maxUsers: 15, maxRegistros: 20000, desc: 'Soporte prioritario', color: 'bg-purple-100 text-purple-700' },
+  anual: { label: 'Anual', maxUsers: 999, maxRegistros: 999999, desc: 'Soporte dedicado', color: 'bg-amber-100 text-amber-700' },
+}
+
+// Parse permissions from JSON string
+function parsePermissions(permsStr: string): string[] {
+  if (!permsStr || permsStr.trim() === '') return []
+  try {
+    const parsed = JSON.parse(permsStr)
+    if (Array.isArray(parsed)) return parsed
+    return []
+  } catch {
+    return []
+  }
 }
 
 // ─── Tenants Tab ─────────────────────────────────────────────
@@ -245,35 +283,50 @@ function TenantsTab() {
             <tr className="bg-blue-50">
               <th className="p-3 text-left font-semibold border-b">Nombre</th>
               <th className="p-3 text-left font-semibold border-b">Slug</th>
+              <th className="p-3 text-center font-semibold border-b">Plan</th>
               <th className="p-3 text-center font-semibold border-b">Usuarios</th>
+              <th className="p-3 text-center font-semibold border-b">Registros</th>
               <th className="p-3 text-center font-semibold border-b">Estado</th>
               <th className="p-3 text-center font-semibold border-b">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {tenants.map(t => (
-              <tr key={t.id} className={`border-b hover:bg-gray-50 ${!t.active ? 'opacity-50' : ''}`}>
-                <td className="p-3 font-bold text-gray-800">{t.name}</td>
-                <td className="p-3 text-gray-500 font-mono text-xs">{t.slug}</td>
-                <td className="p-3 text-center">
-                  <span className="inline-flex items-center justify-center bg-blue-100 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-full">
-                    {t.userCount}
-                  </span>
-                </td>
-                <td className="p-3 text-center">
-                  <button onClick={() => handleToggleActive(t)} className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full cursor-pointer transition-colors ${t.active ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}>
-                    {t.active ? 'Activo' : 'Inactivo'}
-                  </button>
-                </td>
-                <td className="p-3 text-center">
-                  <Button size="icon" variant="ghost" className="h-8 w-8 text-[#005bb5] hover:bg-blue-50" onClick={() => openEdit(t)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                </td>
-              </tr>
-            ))}
+            {tenants.map(t => {
+              const planCfg = PLAN_CONFIG[t.plan] || PLAN_CONFIG.gratuito
+              return (
+                <tr key={t.id} className={`border-b hover:bg-gray-50 ${!t.active ? 'opacity-50' : ''}`}>
+                  <td className="p-3 font-bold text-gray-800">{t.name}</td>
+                  <td className="p-3 text-gray-500 font-mono text-xs">{t.slug}</td>
+                  <td className="p-3 text-center">
+                    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${planCfg.color}`}>
+                      {planCfg.label}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
+                    <span className={`inline-flex items-center justify-center text-xs font-bold px-2.5 py-1 rounded-full ${t.userCount >= t.maxUsers && t.maxUsers > 0 ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {t.userCount}/{t.maxUsers >= 999 ? '∞' : t.maxUsers}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
+                    <span className={`inline-flex items-center justify-center text-xs font-bold px-2.5 py-1 rounded-full ${t.registroCount >= t.maxRegistros && t.maxRegistros < 999999 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                      {t.registroCount}/{t.maxRegistros >= 999999 ? '∞' : t.maxRegistros.toLocaleString()}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
+                    <button onClick={() => handleToggleActive(t)} className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full cursor-pointer transition-colors ${t.active ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}>
+                      {t.active ? 'Activo' : 'Inactivo'}
+                    </button>
+                  </td>
+                  <td className="p-3 text-center">
+                    <Button size="icon" variant="ghost" className="h-8 w-8 text-[#005bb5] hover:bg-blue-50" onClick={() => openEdit(t)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </td>
+                </tr>
+              )
+            })}
             {tenants.length === 0 && (
-              <tr><td colSpan={5} className="p-6 text-center text-gray-400">No hay empresas creadas</td></tr>
+              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay empresas creadas</td></tr>
             )}
           </tbody>
         </table>
@@ -326,6 +379,7 @@ function TenantsTab() {
                 <div className="text-xs text-blue-700 space-y-1">
                   <p>Al crear la empresa se generará automáticamente un usuario administrador con email <strong>{formSlug || '...'}@bill.es</strong> y una contraseña aleatoria.</p>
                   <p>El administrador de la empresa completará los datos (razón social, CIF, dirección, logo...) desde su sección de Configuración.</p>
+                  <p>La empresa se crea con el plan <strong>Gratuito</strong> (1 usuario, 100 registros). Puedes cambiar el plan desde la pestaña Suscripciones.</p>
                 </div>
               </div>
             )}
@@ -359,6 +413,7 @@ function UsersTab() {
   const [formRole, setFormRole] = useState('user')
   const [formTenantId, setFormTenantId] = useState('')
   const [formActive, setFormActive] = useState(true)
+  const [formPermissions, setFormPermissions] = useState<string[]>([])
 
   const loadData = useCallback(async () => {
     try {
@@ -382,7 +437,7 @@ function UsersTab() {
   function resetForm() {
     setEditId(null); setFormEmail(''); setFormPassword(''); setFormName('')
     setFormRole('user'); setFormTenantId(''); setFormActive(true); setShowDialog(false)
-    setShowPassword(false)
+    setShowPassword(false); setFormPermissions([])
   }
 
   function openCreate() {
@@ -394,7 +449,14 @@ function UsersTab() {
   function openEdit(u: UserItem) {
     setEditId(u.id); setFormEmail(u.email); setFormPassword(''); setFormName(u.name)
     setFormRole(u.role); setFormTenantId(u.tenantId); setFormActive(u.active)
+    setFormPermissions(parsePermissions(u.permissions || ''))
     setShowDialog(true)
+  }
+
+  function togglePermission(key: string) {
+    setFormPermissions(prev =>
+      prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]
+    )
   }
 
   async function handleSave() {
@@ -415,6 +477,7 @@ function UsersTab() {
           role: formRole,
           tenantId: formTenantId,
           active: formActive,
+          permissions: formRole === 'user' ? formPermissions : [],
         }
         if (formEmail.trim()) body.email = formEmail.trim()
         if (formPassword.trim()) body.password = formPassword.trim()
@@ -436,6 +499,7 @@ function UsersTab() {
             name: formName,
             role: formRole,
             tenantId: formTenantId,
+            permissions: formRole === 'user' ? formPermissions : [],
           }),
         })
         if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
@@ -471,6 +535,19 @@ function UsersTab() {
     }
   }
 
+  function getPermsSummary(permsStr: string) {
+    const perms = parsePermissions(permsStr)
+    if (perms.length === 0) return <span className="text-xs text-gray-400">Todo</span>
+    return (
+      <div className="flex flex-wrap gap-1">
+        {perms.map(p => {
+          const opt = SCREEN_OPTIONS.find(o => o.key === p)
+          return <span key={p} className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">{opt?.label || p}</span>
+        })}
+      </div>
+    )
+  }
+
   if (loading) return <div className="p-6 text-center text-gray-400">Cargando usuarios...</div>
 
   return (
@@ -497,6 +574,7 @@ function UsersTab() {
               <th className="p-3 text-left font-semibold border-b">Nombre</th>
               <th className="p-3 text-center font-semibold border-b">Rol</th>
               <th className="p-3 text-left font-semibold border-b">Empresa</th>
+              <th className="p-3 text-left font-semibold border-b">Permisos</th>
               <th className="p-3 text-center font-semibold border-b">Estado</th>
               <th className="p-3 text-center font-semibold border-b">Acciones</th>
             </tr>
@@ -508,6 +586,7 @@ function UsersTab() {
                 <td className="p-3 text-gray-600">{u.name || '—'}</td>
                 <td className="p-3 text-center">{getRoleBadge(u.role)}</td>
                 <td className="p-3 text-gray-600">{u.tenantName}</td>
+                <td className="p-3">{u.role === 'user' ? getPermsSummary(u.permissions) : <span className="text-xs text-gray-400">Todo</span>}</td>
                 <td className="p-3 text-center">
                   <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${u.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                     {u.active ? 'Activo' : 'Inactivo'}
@@ -526,7 +605,7 @@ function UsersTab() {
               </tr>
             ))}
             {users.length === 0 && (
-              <tr><td colSpan={6} className="p-6 text-center text-gray-400">No hay usuarios creados</td></tr>
+              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay usuarios creados</td></tr>
             )}
           </tbody>
         </table>
@@ -534,7 +613,7 @@ function UsersTab() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={showDialog} onOpenChange={(open) => { if (!open) resetForm() }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5 text-[#005bb5]" />
@@ -580,7 +659,10 @@ function UsersTab() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">Rol</Label>
-                <Select value={formRole} onValueChange={setFormRole}>
+                <Select value={formRole} onValueChange={(val) => {
+                  setFormRole(val)
+                  if (val !== 'user') setFormPermissions([])
+                }}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="user">Usuario</SelectItem>
@@ -601,6 +683,33 @@ function UsersTab() {
                 </Select>
               </div>
             </div>
+
+            {/* Permissions Section - only for "user" role */}
+            {formRole === 'user' && (
+              <div className="border rounded-lg p-3 bg-gray-50/50">
+                <Label className="text-xs uppercase font-bold text-slate-500 mb-2 block">Permisos de Pantallas</Label>
+                <p className="text-[11px] text-gray-500 mb-3">Selecciona las pantallas a las que este usuario tendrá acceso. Si no seleccionas ninguna, tendrá acceso a todo.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {SCREEN_OPTIONS.map(opt => (
+                    <label key={opt.key} className="flex items-center gap-2 px-3 py-2 rounded-md border bg-white hover:bg-blue-50/50 cursor-pointer transition-colors">
+                      <Checkbox
+                        checked={formPermissions.includes(opt.key)}
+                        onCheckedChange={() => togglePermission(opt.key)}
+                      />
+                      <span className="text-sm text-gray-700">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Info for admin/superadmin role */}
+            {formRole !== 'user' && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+                Los administradores tienen acceso a todas las pantallas. No es necesario configurar permisos.
+              </div>
+            )}
+
             {editId && (
               <div className="flex items-center gap-3">
                 <Label className="text-xs uppercase font-bold text-slate-500">Activo</Label>
@@ -623,6 +732,229 @@ function UsersTab() {
   )
 }
 
+// ─── Subscriptions Tab ───────────────────────────────────────
+function SubscriptionsTab() {
+  const [tenants, setTenants] = useState<Tenant[]>([])
+  const [loading, setLoading] = useState(true)
+  const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [showDialog, setShowDialog] = useState(false)
+  const [editTenant, setEditTenant] = useState<Tenant | null>(null)
+
+  // Form state
+  const [formPlan, setFormPlan] = useState('gratuito')
+  const [formPlanStatus, setFormPlanStatus] = useState('activo')
+  const [formPlanExpiresAt, setFormPlanExpiresAt] = useState('')
+
+  const loadData = useCallback(async () => {
+    try {
+      const res = await fetch('/api/tenants')
+      if (res.ok) setTenants(await res.json())
+    } catch (err) {
+      console.error('Error loading tenants:', err)
+    }
+    setLoading(false)
+  }, [])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadData() }, [loadData])
+
+  function showMsg(type: 'ok' | 'err', text: string) {
+    setStatusMsg({ type, text })
+    setTimeout(() => setStatusMsg(null), 5000)
+  }
+
+  function openChangePlan(t: Tenant) {
+    setEditTenant(t)
+    setFormPlan(t.plan)
+    setFormPlanStatus(t.planStatus)
+    setFormPlanExpiresAt(t.planExpiresAt ? new Date(t.planExpiresAt).toISOString().split('T')[0] : '')
+    setShowDialog(true)
+  }
+
+  async function handleSavePlan() {
+    if (!editTenant) return
+
+    try {
+      const body: Record<string, unknown> = {
+        id: editTenant.id,
+        plan: formPlan,
+        planStatus: formPlanStatus,
+      }
+      if (formPlanExpiresAt) {
+        body.planExpiresAt = new Date(formPlanExpiresAt).toISOString()
+      } else {
+        body.planExpiresAt = null
+      }
+
+      const res = await fetch('/api/tenants', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+      showMsg('ok', `Plan de "${editTenant.name}" actualizado a ${PLAN_CONFIG[formPlan]?.label || formPlan} ✓`)
+      setShowDialog(false)
+      setEditTenant(null)
+      loadData()
+    } catch {
+      showMsg('err', 'Error de conexión')
+    }
+  }
+
+  if (loading) return <div className="p-6 text-center text-gray-400">Cargando suscripciones...</div>
+
+  return (
+    <div className="space-y-4">
+      {statusMsg && (
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+          {statusMsg.type === 'ok' && <CheckCircle className="h-4 w-4" />}
+          {statusMsg.text}
+        </div>
+      )}
+
+      <p className="text-sm text-gray-500">Gestiona los planes de suscripción de cada empresa. Al cambiar el plan se actualizan los límites automáticamente.</p>
+
+      <div className="bg-white rounded-lg border overflow-auto shadow-sm">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-blue-50">
+              <th className="p-3 text-left font-semibold border-b">Empresa</th>
+              <th className="p-3 text-center font-semibold border-b">Plan</th>
+              <th className="p-3 text-center font-semibold border-b">Estado</th>
+              <th className="p-3 text-center font-semibold border-b">Expiración</th>
+              <th className="p-3 text-center font-semibold border-b">Usuarios</th>
+              <th className="p-3 text-center font-semibold border-b">Registros</th>
+              <th className="p-3 text-center font-semibold border-b">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tenants.map(t => {
+              const planCfg = PLAN_CONFIG[t.plan] || PLAN_CONFIG.gratuito
+              const isExpired = t.planExpiresAt && new Date(t.planExpiresAt) < new Date()
+              return (
+                <tr key={t.id} className={`border-b hover:bg-gray-50 ${!t.active ? 'opacity-50' : ''}`}>
+                  <td className="p-3 font-bold text-gray-800">{t.name}</td>
+                  <td className="p-3 text-center">
+                    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${planCfg.color}`}>
+                      {planCfg.label}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
+                    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${
+                      isExpired ? 'bg-red-100 text-red-700' :
+                      t.planStatus === 'activo' ? 'bg-green-100 text-green-700' :
+                      t.planStatus === 'trial' ? 'bg-amber-100 text-amber-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>
+                      {isExpired ? 'Expirado' : t.planStatus === 'activo' ? 'Activo' : t.planStatus === 'trial' ? 'Trial' : 'Inactivo'}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center text-gray-500 text-xs">
+                    {t.planExpiresAt ? new Date(t.planExpiresAt).toLocaleDateString('es-ES') : '—'}
+                  </td>
+                  <td className="p-3 text-center">
+                    <span className={`text-xs font-bold ${t.userCount >= t.maxUsers && t.maxUsers > 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                      {t.userCount}/{t.maxUsers >= 999 ? '∞' : t.maxUsers}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
+                    <span className={`text-xs font-bold ${t.registroCount >= t.maxRegistros && t.maxRegistros < 999999 ? 'text-red-600' : 'text-gray-600'}`}>
+                      {t.registroCount}/{t.maxRegistros >= 999999 ? '∞' : t.maxRegistros.toLocaleString()}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
+                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => openChangePlan(t)}>
+                      <CreditCard className="h-3.5 w-3.5 mr-1" /> Cambiar Plan
+                    </Button>
+                  </td>
+                </tr>
+              )
+            })}
+            {tenants.length === 0 && (
+              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay empresas creadas</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Change Plan Dialog */}
+      <Dialog open={showDialog} onOpenChange={(open) => { if (!open) { setShowDialog(false); setEditTenant(null) } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-[#005bb5]" />
+              Cambiar Plan — {editTenant?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* Current plan info */}
+            {editTenant && (
+              <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-1">
+                <p>Plan actual: <strong>{PLAN_CONFIG[editTenant.plan]?.label || editTenant.plan}</strong></p>
+                <p>Usuarios: {editTenant.userCount}/{editTenant.maxUsers >= 999 ? '∞' : editTenant.maxUsers} · Registros: {editTenant.registroCount}/{editTenant.maxRegistros >= 999999 ? '∞' : editTenant.maxRegistros.toLocaleString()}</p>
+              </div>
+            )}
+
+            <div>
+              <Label className="text-xs uppercase font-bold text-slate-500">Plan</Label>
+              <Select value={formPlan} onValueChange={setFormPlan}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="gratuito">Gratuito — 1 usuario, 100 registros</SelectItem>
+                  <SelectItem value="mensual">Mensual — 5 usuarios, 5.000 registros</SelectItem>
+                  <SelectItem value="trimestral">Trimestral — 15 usuarios, 20.000 registros</SelectItem>
+                  <SelectItem value="anual">Anual — usuarios ∞, registros ∞</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Estado del Plan</Label>
+                <Select value={formPlanStatus} onValueChange={setFormPlanStatus}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="activo">Activo</SelectItem>
+                    <SelectItem value="trial">Trial</SelectItem>
+                    <SelectItem value="inactivo">Inactivo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Fecha Expiración</Label>
+                <Input
+                  type="date"
+                  value={formPlanExpiresAt}
+                  onChange={e => setFormPlanExpiresAt(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            {/* New plan limits preview */}
+            {formPlan && PLAN_CONFIG[formPlan] && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 space-y-1">
+                <p className="font-bold">Límites del plan {PLAN_CONFIG[formPlan].label}:</p>
+                <p>Usuarios: {PLAN_CONFIG[formPlan].maxUsers >= 999 ? 'Ilimitados' : PLAN_CONFIG[formPlan].maxUsers}</p>
+                <p>Registros: {PLAN_CONFIG[formPlan].maxRegistros >= 999999 ? 'Ilimitados' : PLAN_CONFIG[formPlan].maxRegistros.toLocaleString()}</p>
+                {editTenant && formPlan !== editTenant.plan && (
+                  <p className="font-bold text-amber-600 mt-1">⚠ Se actualizarán los límites automáticamente al guardar.</p>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowDialog(false); setEditTenant(null) }}>Cancelar</Button>
+            <Button onClick={handleSavePlan} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
+              <CheckCircle className="h-4 w-4 mr-1" /> GUARDAR PLAN
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 // ─── Admin View (main export) ────────────────────────────────
 export function AdminView() {
   return (
@@ -634,9 +966,10 @@ export function AdminView() {
       </div>
 
       <Tabs defaultValue="empresas" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
+        <TabsList className="grid w-full grid-cols-3 max-w-lg">
           <TabsTrigger value="empresas"><Building2 className="h-4 w-4 mr-1.5" /> Empresas</TabsTrigger>
           <TabsTrigger value="usuarios"><Users className="h-4 w-4 mr-1.5" /> Usuarios</TabsTrigger>
+          <TabsTrigger value="suscripciones"><CreditCard className="h-4 w-4 mr-1.5" /> Suscripciones</TabsTrigger>
         </TabsList>
 
         <TabsContent value="empresas" className="mt-4">
@@ -645,6 +978,10 @@ export function AdminView() {
 
         <TabsContent value="usuarios" className="mt-4">
           <UsersTab />
+        </TabsContent>
+
+        <TabsContent value="suscripciones" className="mt-4">
+          <SubscriptionsTab />
         </TabsContent>
       </Tabs>
     </div>

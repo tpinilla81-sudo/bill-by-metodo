@@ -11,6 +11,7 @@ export interface SessionUser {
   name: string
   role: string   // "superadmin", "admin", "user"
   tenantId: string
+  permissions: string  // JSON array string e.g. '["entrada","registros"]'
 }
 
 interface SessionData extends SessionUser {
@@ -76,6 +77,7 @@ export async function verifySession(token: string): Promise<SessionUser | null> 
       name: data.name,
       role: data.role,
       tenantId: data.tenantId,
+      permissions: data.permissions || '',
     }
   } catch {
     return null

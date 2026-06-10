@@ -188,3 +188,99 @@ Stage Summary:
 - ALL views now have consistent layout: fixed header + scrollable content
 - Entrada view form stays visible at top while entries scroll below
 - Consistent UX across Entrada, Registros, Clientes, Catálogo, Facturas
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: Add screen-based user permissions and subscription plan management
+
+Work Log:
+- FEATURE 1: Screen-based permissions for users
+  - Added `permissions String @default("")` to User model in prisma/schema.prisma
+  - Updated `SessionUser` interface in auth.ts to include `permissions` field
+  - Updated `AuthUser` interface in auth-context.tsx to include `permissions` field
+  - Updated login API to include `permissions` in session creation and response
+  - Updated /me API to fetch fresh permissions from DB (avoids stale session data)
+  - Updated users API: POST and PUT accept/save `permissions` as JSON array string
+  - Updated users API: permissions cleared when role changes from user to admin/superadmin
+  - Updated sidebar.tsx: filters navigation items based on user permissions
+    - Admin/superadmin: always see everything
+    - Regular users with empty permissions: see all screens (backwards compat)
+    - Regular users with permissions set: only see screens in their permissions array
+    - "config" and "admin" screens are never shown to regular users
+  - Updated admin-view.tsx UsersTab: added "Permisos de Pantallas" checkbox section in user create/edit dialog
+    - Checkboxes: Entrada, Registros, Clientes, Catálogo, Facturas, Seguridad
+    - Only shown when role is "user" (admins see everything, no need for checkboxes)
+    - Permissions column added to users table showing allowed screens
+  - Updated page.tsx: added `hasPermission()` function to check screen access before rendering views
+    - If user lacks permission for current view, shows "Sin acceso" locked screen
+    - Auto-navigates to first accessible view if current view is inaccessible
+    - Added `suscripcion` view type for subscription management
+- FEATURE 2: Subscription plans for tenants
+  - Added subscription fields to Tenant model: `plan`, `planStatus`, `planExpiresAt`, `maxUsers`, `maxRegistros`
+  - Plan configuration: Gratuito(1u/100r), Mensual(5u/5K r), Trimestral(15u/20K r), Anual(999u/999999r)
+  - Updated tenants API: returns plan fields in GET, sets default plan on POST creation, handles plan changes in PUT
+  - Updated admin-view.tsx: added third tab "Suscripciones" with plan management
+    - Shows each tenant's plan, status, expiration, usage vs limits
+    - Change plan dialog with plan selector, status, expiration date
+    - Plan limits preview when changing plans
+  - Created plans-view.tsx: subscription/pricing cards visible to admin users
+    - 4 plan cards: Gratuito, Mensual, Trimestral, Anual
+    - Shows current plan indicator, features, contact button for changes
+    - "Suscripción" entry in sidebar for admin (not superadmin) users
+  - Updated tenants API: plan changes auto-update maxUsers and maxRegistros limits
+  - Enforced plan limits in APIs:
+    - /api/registros POST: checks maxRegistros limit before creating
+    - /api/users POST: checks maxUsers limit before creating
+    - Returns Spanish error messages when limits are hit
+  - Updated existing tenants from "gratuito" to "mensual" plan (they already had 2 users)
+- Prisma db push + generate completed successfully
+- Lint check passes (no new errors introduced)
+- Dev server running on port 3000
+
+Stage Summary:
+- Screen-based permissions: admins/superadmins see all screens; regular users only see screens in their permissions array; empty permissions = all screens (backwards compatible)
+- Subscription plans: 4 tiers (Gratuito/Mensual/Trimestral/Anual) with user and registro limits
+- Admin panel: 3 tabs (Empresas, Usuarios, Suscripciones) for complete management
+- Plan enforcement: API routes check limits before creating new users or registros
+- Plans view: admin users see pricing cards and can contact support for plan changes
+- All text/labels in Spanish
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Prepare BILL app for Vercel deployment with PostgreSQL
+
+Work Log:
+- Created `vercel.json` with framework config, build command (prisma generate + next build), and DATABASE_PROVIDER env var
+- Created `.env.example` with documented env vars for both SQLite (local) and PostgreSQL (production)
+- Updated `package.json`:
+  - Added `"postinstall": "prisma generate"` (required for Vercel to generate Prisma client on deploy)
+  - Added `"vercel-build": "prisma generate && next build"` script
+  - Added `"db:migrate:prod": "prisma migrate deploy"` for production migrations
+  - Changed `"start"` from standalone server to `"next start"` (Vercel doesn't use standalone)
+- Updated `next.config.ts` with production optimizations:
+  - Set `reactStrictMode: true`
+  - Set `poweredByHeader: false` (removes X-Powered-By header for security)
+  - Added security headers: X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, X-XSS-Protection 1; mode=block
+- Created `prisma/schema.prisma.pg` — identical schema with `provider = "postgresql"` for production deployment
+- Created `DEPLOY.md` with comprehensive Vercel deployment documentation:
+  - Step-by-step Vercel deployment instructions
+  - PostgreSQL setup options (Vercel Postgres, Supabase, Neon)
+  - How to switch schema from SQLite to PostgreSQL
+  - How to create and run Prisma migrations
+  - Required environment variables
+  - Security checklist
+  - Troubleshooting guide
+- Updated `.gitignore` with `*.db`, `*.db-journal`, and `backups/` entries
+- Build verified: `npx next build` succeeds (20 routes, all compiled)
+- Dev server running on port 3000, all existing functionality preserved
+- No changes to SQLite setup — local dev continues to work as before
+
+Stage Summary:
+- App is fully prepared for Vercel deployment with PostgreSQL
+- Local SQLite development unchanged and working
+- Production configuration: security headers, Prisma postinstall, vercel-build script
+- PostgreSQL schema ready at `prisma/schema.prisma.pg`
+- Comprehensive deployment documentation at `DEPLOY.md`
+- Build succeeds cleanly

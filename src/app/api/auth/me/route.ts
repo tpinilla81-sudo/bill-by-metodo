@@ -15,6 +15,12 @@ export async function GET() {
       select: { name: true, logo: true, slug: true },
     })
 
+    // Also fetch user permissions from DB (session may be stale)
+    const dbUser = await db.user.findUnique({
+      where: { id: user.id },
+      select: { permissions: true },
+    })
+
     return NextResponse.json({
       user: {
         id: user.id,
@@ -25,6 +31,7 @@ export async function GET() {
         tenantName: tenant?.name || '',
         tenantLogo: tenant?.logo || '',
         tenantSlug: tenant?.slug || '',
+        permissions: dbUser?.permissions || user.permissions || '',
       },
     })
   } catch (error) {

@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { requireTenantId } from '@/lib/tenant-context'
+import { getSessionUser } from '@/lib/auth'
 
 // GET /api/registros?filter=entrada|registros|all
 export async function GET(req: Request) {
@@ -31,6 +32,20 @@ export async function POST(req: Request) {
   try {
     const tid = await requireTenantId(req)
     if (typeof tid !== 'string') return tid
+
+    // Check plan limits for maxRegistros
+    const user = await getSessionUser()
+    if (user) {
+      const tenant = await db.tenant.findUnique({ where: { id: tid } })
+      if (tenant && tenant.maxRegistros > 0) {
+        const currentCount = await db.registro.count({ where: { tenantId: tid } })
+        if (currentCount >= tenant.maxRegistros) {
+          return NextResponse.json({
+            error: `Has alcanzado el límite de registros (${tenant.maxRegistros}) para el plan "${tenant.plan}". Actualiza tu suscripción para añadir más registros.`,
+          }, { status: 400 })
+        }
+      }
+    }
 
     const body = await req.json()
 
