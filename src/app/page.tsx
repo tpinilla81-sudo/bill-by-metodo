@@ -79,7 +79,7 @@ function AppContent() {
       />
       <main className="flex-1 min-w-0 overflow-hidden flex flex-col">
         <div className="p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 flex flex-col">
-          {activeView === 'entrada' && <EntradaView />}
+          {activeView === 'entrada' && <div className="flex-1 min-h-0 flex flex-col"><EntradaView /></div>}
           {activeView === 'registros' && <div className="flex-1 min-h-0 flex flex-col"><RegistrosView /></div>}
           {activeView === 'clientes' && <div className="flex-1 min-h-0 flex flex-col"><ClientesView /></div>}
           {activeView === 'catalogo' && <div className="flex-1 min-h-0 flex flex-col"><CatalogoView /></div>}

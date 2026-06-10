@@ -2,7 +2,7 @@
   "_meta": {
     "version": 2,
     "tenantId": "cmq6uwub10000n9qluafni88m",
-    "createdAt": "2026-06-09T20:31:03.390Z",
+    "createdAt": "2026-06-10T15:18:40.148Z",
     "type": "cambio"
   },
   "clientes": [
@@ -2129,10 +2129,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta0022n9u4gwz6de65",
@@ -2145,10 +2145,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta0023n9u4m6eb2mjv",
@@ -2161,10 +2161,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta0024n9u4arh22kwt",
@@ -2177,10 +2177,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta0025n9u4s7wqzsft",
@@ -2193,10 +2193,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta0026n9u4iznbh9zj",
@@ -2209,10 +2209,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta0027n9u4h923qlq9",
@@ -2225,10 +2225,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta0028n9u4l85qdoor",
@@ -2241,10 +2241,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta0029n9u4s6ninvro",
@@ -2257,10 +2257,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002an9u4j52fjbk8",
@@ -2273,10 +2273,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002bn9u47ej6zvev",
@@ -2289,10 +2289,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002cn9u4ktlks7aj",
@@ -2305,10 +2305,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002dn9u40dvnuv63",
@@ -2321,10 +2321,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002en9u4vfvgawe6",
@@ -2337,10 +2337,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002fn9u4wh9y9grh",
@@ -2353,10 +2353,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002gn9u45xyndqk4",
@@ -2369,10 +2369,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002hn9u42hlzc2pi",
@@ -2385,10 +2385,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002in9u4b67yssua",
@@ -2401,10 +2401,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002jn9u43p29lqgk",
@@ -2417,10 +2417,10 @@
       "cant": 36,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002kn9u4m8lhwzig",
@@ -2433,10 +2433,10 @@
       "cant": 2,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002ln9u4v4hhwvmw",
@@ -2449,10 +2449,10 @@
       "cant": 3,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002mn9u4iebka98m",
@@ -2465,10 +2465,10 @@
       "cant": 55,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002nn9u4477vpi54",
@@ -2481,10 +2481,10 @@
       "cant": 12,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002on9u4609wyakg",
@@ -2497,10 +2497,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002pn9u4qwgkiwk9",
@@ -2513,10 +2513,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002qn9u4acfx1cw3",
@@ -2529,10 +2529,10 @@
       "cant": 27,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002rn9u4abdespat",
@@ -2545,10 +2545,10 @@
       "cant": 1,
       "obs": "URGENTE PABLO",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002sn9u4whfzit4y",
@@ -2561,10 +2561,10 @@
       "cant": 5,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002tn9u45dcaamus",
@@ -2577,10 +2577,10 @@
       "cant": 11,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002un9u4p2a0v2iv",
@@ -2593,10 +2593,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002vn9u4b6876wm6",
@@ -2609,10 +2609,10 @@
       "cant": 1,
       "obs": "",
       "pasadoRegistro": true,
-      "facturado": false,
+      "facturado": true,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:18:20.661Z"
     },
     {
       "id": "cmq73fkta002wn9u4ow34cc4o",
@@ -4069,25 +4069,9 @@
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
       "updatedAt": "2026-06-09T20:29:39.740Z"
-    },
-    {
-      "id": "cmq73hank005gn9u4fz5kaszl",
-      "tenantId": "cmq6uwub10000n9qluafni88m",
-      "fecha": "2026-06-09",
-      "clienteId": "cmq5fct1y003xnhqtli85lqb9",
-      "cliente": "VEGAMAYOR",
-      "c1": "MILCA",
-      "c2": "MiLCA - MILAGRO facturar vega 40€",
-      "cant": 1,
-      "obs": "",
-      "pasadoRegistro": false,
-      "facturado": false,
-      "customData": "{}",
-      "createdAt": "2026-06-09T20:30:59.889Z",
-      "updatedAt": "2026-06-09T20:30:59.889Z"
     }
   ],
-  "facturaSeq": 14,
+  "facturaSeq": 15,
   "config": {
     "id": "cfg_1781030884798",
     "tenantId": "cmq6uwub10000n9qluafni88m",
@@ -4120,7 +4104,7 @@
     "fieldsCatalogo": "[{\"key\":\"cliente\",\"label\":\"CLIENTE\",\"type\":\"select\",\"visible\":true,\"isCustom\":false,\"dbColumn\":\"clienteId\"},{\"key\":\"c1\",\"label\":\"CONCEPTO 1\",\"type\":\"text\",\"visible\":true,\"isCustom\":false,\"required\":true,\"dbColumn\":\"c1\"},{\"key\":\"c2\",\"label\":\"CONCEPTO 2\",\"type\":\"text\",\"visible\":true,\"isCustom\":false,\"required\":true,\"dbColumn\":\"c2\"},{\"key\":\"coste\",\"label\":\"COSTE\",\"type\":\"number\",\"visible\":true,\"isCustom\":false,\"dbColumn\":\"coste\"},{\"key\":\"incremento\",\"label\":\"INCREMENTO\",\"type\":\"number\",\"visible\":true,\"isCustom\":false,\"dbColumn\":\"inc\"},{\"key\":\"precioCliente\",\"label\":\"PRECIO CLIENTE\",\"type\":\"number\",\"visible\":true,\"isCustom\":false,\"dbColumn\":\"final\"}]",
     "fieldsRegistros": "[{\"key\":\"fecha\",\"label\":\"Fecha\",\"type\":\"date\",\"visible\":true,\"isCustom\":false,\"dbColumn\":\"fecha\"},{\"key\":\"mes\",\"label\":\"Mes\",\"type\":\"text\",\"visible\":true,\"isCustom\":false},{\"key\":\"semana\",\"label\":\"Sem\",\"type\":\"text\",\"visible\":true,\"isCustom\":false},{\"key\":\"cliente\",\"label\":\"Cliente\",\"type\":\"text\",\"visible\":true,\"isCustom\":false,\"dbColumn\":\"cliente\"},{\"key\":\"c1\",\"label\":\"Concepto 1\",\"type\":\"text\",\"visible\":true,\"isCustom\":false,\"dbColumn\":\"c1\"},{\"key\":\"c2\",\"label\":\"Concepto 2\",\"type\":\"text\",\"visible\":true,\"isCustom\":false,\"dbColumn\":\"c2\"},{\"key\":\"cantidad\",\"label\":\"Cant\",\"type\":\"number\",\"visible\":true,\"isCustom\":false,\"dbColumn\":\"cant\"},{\"key\":\"precioUnitario\",\"label\":\"P.Unit\",\"type\":\"number\",\"visible\":true,\"isCustom\":false},{\"key\":\"importe\",\"label\":\"Importe\",\"type\":\"number\",\"visible\":true,\"isCustom\":false},{\"key\":\"observaciones\",\"label\":\"Obs\",\"type\":\"text\",\"visible\":true,\"isCustom\":false,\"dbColumn\":\"obs\"},{\"key\":\"facturado\",\"label\":\"Estado\",\"type\":\"text\",\"visible\":true,\"isCustom\":false,\"dbColumn\":\"facturado\"}]",
     "fieldsFacturas": "[{\"key\":\"numero\",\"label\":\"Nº FACTURA\",\"type\":\"text\",\"visible\":true,\"isCustom\":false},{\"key\":\"fecha\",\"label\":\"FECHA\",\"type\":\"date\",\"visible\":true,\"isCustom\":false},{\"key\":\"cliente\",\"label\":\"CLIENTE\",\"type\":\"text\",\"visible\":true,\"isCustom\":false},{\"key\":\"concepto\",\"label\":\"CONCEPTO\",\"type\":\"text\",\"visible\":true,\"isCustom\":false},{\"key\":\"cantidad\",\"label\":\"CANT.\",\"type\":\"number\",\"visible\":true,\"isCustom\":false},{\"key\":\"precioUnitario\",\"label\":\"PRECIO UNIT.\",\"type\":\"number\",\"visible\":true,\"isCustom\":false},{\"key\":\"importe\",\"label\":\"IMPORTE\",\"type\":\"number\",\"visible\":true,\"isCustom\":false},{\"key\":\"baseImponible\",\"label\":\"BASE IMPONIBLE\",\"type\":\"number\",\"visible\":true,\"isCustom\":false},{\"key\":\"totalFactura\",\"label\":\"TOTAL FACTURA\",\"type\":\"number\",\"visible\":true,\"isCustom\":false}]",
-    "updatedAt": "2026-06-09T19:31:19.956Z"
+    "updatedAt": "2026-06-09T20:32:15.572Z"
   },
   "users": [
     {
@@ -4141,7 +4125,7 @@
       "tenantId": "cmq6uwub10000n9qluafni88m",
       "active": true,
       "createdAt": "2026-06-09T17:45:21.554Z",
-      "updatedAt": "2026-06-09T17:45:21.554Z"
+      "updatedAt": "2026-06-09T20:33:02.203Z"
     }
   ]
 }

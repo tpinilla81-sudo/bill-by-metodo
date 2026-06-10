@@ -72,7 +72,7 @@ function ComboInput({
 
   return (
     <div ref={wrapperRef} className="relative">
-      <Input value={value} onChange={e => { onChange(e.target.value); setOpen(true); setHighlight(-1) }} onFocus={() => setOpen(true)} onKeyDown={handleKeyDown} placeholder={placeholder} className="h-12 text-lg border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
+      <Input value={value} onChange={e => { onChange(e.target.value); setOpen(true); setHighlight(-1) }} onFocus={() => setOpen(true)} onKeyDown={handleKeyDown} placeholder={placeholder} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
       {open && filtered.length > 0 && (
         <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-[200px] overflow-auto">
           {filtered.map((s, i) => (
@@ -249,20 +249,20 @@ export function EntradaView() {
   function renderFieldInput(field: FieldDef) {
     if (field.key === 'fecha') {
       return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-4 pt-3 pb-1"><Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
-          <div className="px-4 pb-3"><Input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="h-12 text-lg border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" /></div>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
+          <div className="px-3 pb-2"><Input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" /></div>
         </div>
       )
     }
     if (field.key === 'cliente') {
       return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-4 pt-3 pb-1"><Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
-          <div className="px-4 pb-3">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
+          <div className="px-3 pb-2">
             <Select value={clienteId} onValueChange={v => { setClienteId(v); setC1(''); setC2('') }}>
-              <SelectTrigger className="h-12 text-lg border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder="Selecciona cliente..." /></SelectTrigger>
-              <SelectContent>{clientes.map(c => <SelectItem key={c.id} value={c.id} className="text-base py-3">{c.nombre}</SelectItem>)}</SelectContent>
+              <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder="Selecciona..." /></SelectTrigger>
+              <SelectContent>{clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
             </Select>
           </div>
         </div>
@@ -270,50 +270,50 @@ export function EntradaView() {
     }
     if (field.key === 'c1') {
       return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
-          <div className="px-4 pt-3 pb-1"><Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
-          <div className="px-4 pb-3"><ComboInput value={c1} onChange={v => { setC1(v); setC2('') }} suggestions={c1Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-visible">
+          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
+          <div className="px-3 pb-2"><ComboInput value={c1} onChange={v => { setC1(v); setC2('') }} suggestions={c1Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
         </div>
       )
     }
     if (field.key === 'c2') {
       return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-visible">
-          <div className="px-4 pt-3 pb-1"><Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
-          <div className="px-4 pb-3"><ComboInput value={c2} onChange={setC2} suggestions={c2Options.length > 0 ? c2Options : allC2Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-visible">
+          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
+          <div className="px-3 pb-2"><ComboInput value={c2} onChange={setC2} suggestions={c2Options.length > 0 ? c2Options : allC2Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
         </div>
       )
     }
     if (field.key === 'cantidad') {
       return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-3 pt-3 pb-1"><Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
-          <div className="px-3 pb-3"><Input type="number" value={cant} onChange={e => setCant(e.target.value)} min="1" className="h-12 text-lg text-center border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" /></div>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
+          <div className="px-3 pb-2"><Input type="number" value={cant} onChange={e => setCant(e.target.value)} min="1" className="h-9 text-sm text-center border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" /></div>
         </div>
       )
     }
     if (field.key === 'observaciones') {
       return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-3 pt-3 pb-1"><Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
-          <div className="px-3 pb-3"><Input value={obs} onChange={e => setObs(e.target.value)} placeholder="Opcional..." className="h-12 text-base border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" /></div>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
+          <div className="px-3 pb-2"><Input value={obs} onChange={e => setObs(e.target.value)} placeholder="Opcional..." className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" /></div>
         </div>
       )
     }
     // Custom fields
     if (field.isCustom) {
       return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-4 pt-3 pb-1"><Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">{field.label}{field.required ? ' *' : ''}</Label></div>
-          <div className="px-4 pb-3">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}{field.required ? ' *' : ''}</Label></div>
+          <div className="px-3 pb-2">
             {field.type === 'textarea' ? (
-              <textarea value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="w-full h-20 text-base border-0 bg-transparent p-0 focus:ring-0 focus:outline-none resize-none" />
+              <textarea value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="w-full h-16 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none resize-none" />
             ) : field.type === 'date' ? (
-              <Input type="date" value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} className="h-12 text-lg border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
+              <Input type="date" value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
             ) : field.type === 'number' ? (
-              <Input type="number" step="0.01" value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="h-12 text-lg border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
+              <Input type="number" step="0.01" value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
             ) : (
-              <Input value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="h-12 text-lg border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
+              <Input value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
             )}
           </div>
         </div>
@@ -330,126 +330,127 @@ export function EntradaView() {
   }
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-2rem)] md:min-h-0">
-      {statusMsg && (
-        <div className={`fixed top-0 left-0 right-0 z-50 flex items-center justify-center px-4 py-3 text-sm font-semibold shadow-lg transition-all ${statusMsg.type === 'ok' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
-          {statusMsg.type === 'ok' ? <CheckCircle className="h-5 w-5 mr-2" /> : <AlertCircle className="h-5 w-5 mr-2" />}
-          {statusMsg.text}
-        </div>
-      )}
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* ─── FIXED HEADER (form) ─── */}
+      <div className="flex-shrink-0 space-y-2 pb-2">
+        {statusMsg && (
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+            {statusMsg.type === 'ok' ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+            {statusMsg.text}
+          </div>
+        )}
 
-      <div className="flex-1 pb-24 md:pb-0">
-        <div className="px-3 py-3 space-y-3">
-          {editingId && (
-            <div className="flex items-center justify-between bg-amber-100 border border-amber-300 rounded-xl px-4 py-2.5">
-              <span className="text-sm font-bold text-amber-800">Modo Edición</span>
-              <Button onClick={handleCancelEdit} size="sm" variant="outline" className="h-9 rounded-full"><X className="h-4 w-4 mr-1" /> Cancelar</Button>
+        {editingId && (
+          <div className="flex items-center justify-between bg-amber-100 border border-amber-300 rounded-xl px-4 py-2.5">
+            <span className="text-sm font-bold text-amber-800">Modo Edición</span>
+            <Button onClick={handleCancelEdit} size="sm" variant="outline" className="h-9 rounded-full"><X className="h-4 w-4 mr-1" /> Cancelar</Button>
+          </div>
+        )}
+
+        {/* Transfer Mode Banner */}
+        <div className={`rounded-xl overflow-hidden border ${transferMode === 'auto' ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
+          <button onClick={() => setShowTransferSettings(!showTransferSettings)} className="w-full flex items-center justify-between px-4 py-2.5 text-sm">
+            <div className="flex items-center gap-2">
+              <Settings2 className="h-4 w-4 shrink-0 text-gray-400" />
+              {transferMode === 'auto' ? <span className="text-blue-700"><Clock className="h-4 w-4 inline mr-1" />Auto-transferencia a las <b>{transferTime}</b></span> : <span className="text-amber-700"><Zap className="h-4 w-4 inline mr-1" />Transferencia manual</span>}
+            </div>
+            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${showTransferSettings ? 'rotate-180' : ''}`} />
+          </button>
+          {showTransferSettings && (
+            <div className="px-4 pb-3 pt-1 border-t border-gray-200/50 space-y-3 bg-white/60">
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-slate-600 uppercase">Modo de transferencia</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => setLocalTransferMode('auto')} className={`flex items-center gap-2 p-2.5 rounded-lg border-2 text-sm transition-all ${localTransferMode === 'auto' ? 'border-[#005bb5] bg-blue-50 text-[#005bb5] font-bold' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}><Clock className="h-4 w-4" /> Automático</button>
+                  <button onClick={() => setLocalTransferMode('manual')} className={`flex items-center gap-2 p-2.5 rounded-lg border-2 text-sm transition-all ${localTransferMode === 'manual' ? 'border-[#2bb24c] bg-green-50 text-[#2bb24c] font-bold' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}><Zap className="h-4 w-4" /> Manual</button>
+                </div>
+              </div>
+              {localTransferMode === 'auto' && <div><Label className="text-xs font-bold text-slate-600 uppercase">Hora</Label><Input type="time" value={localTransferTime} onChange={e => setLocalTransferTime(e.target.value)} className="w-36 text-base font-mono mt-1" /></div>}
+              <button onClick={handleSaveTransferSettings} className="w-full h-10 rounded-lg bg-[#005bb5] hover:bg-[#003d7a] text-white text-sm font-bold flex items-center justify-center gap-1.5"><Save className="h-4 w-4" /> GUARDAR AJUSTES</button>
             </div>
           )}
+        </div>
 
-          {/* Transfer Mode Banner */}
-          <div className={`rounded-xl overflow-hidden border ${transferMode === 'auto' ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
-            <button onClick={() => setShowTransferSettings(!showTransferSettings)} className="w-full flex items-center justify-between px-4 py-2.5 text-sm">
-              <div className="flex items-center gap-2">
-                <Settings2 className="h-4 w-4 shrink-0 text-gray-400" />
-                {transferMode === 'auto' ? <span className="text-blue-700"><Clock className="h-4 w-4 inline mr-1" />Auto-transferencia a las <b>{transferTime}</b></span> : <span className="text-amber-700"><Zap className="h-4 w-4 inline mr-1" />Transferencia manual</span>}
-              </div>
-              <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${showTransferSettings ? 'rotate-180' : ''}`} />
-            </button>
-            {showTransferSettings && (
-              <div className="px-4 pb-3 pt-1 border-t border-gray-200/50 space-y-3 bg-white/60">
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold text-slate-600 uppercase">Modo de transferencia</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => setLocalTransferMode('auto')} className={`flex items-center gap-2 p-2.5 rounded-lg border-2 text-sm transition-all ${localTransferMode === 'auto' ? 'border-[#005bb5] bg-blue-50 text-[#005bb5] font-bold' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}><Clock className="h-4 w-4" /> Automático</button>
-                    <button onClick={() => setLocalTransferMode('manual')} className={`flex items-center gap-2 p-2.5 rounded-lg border-2 text-sm transition-all ${localTransferMode === 'manual' ? 'border-[#2bb24c] bg-green-50 text-[#2bb24c] font-bold' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}><Zap className="h-4 w-4" /> Manual</button>
-                  </div>
-                </div>
-                {localTransferMode === 'auto' && <div><Label className="text-xs font-bold text-slate-600 uppercase">Hora</Label><Input type="time" value={localTransferTime} onChange={e => setLocalTransferTime(e.target.value)} className="w-36 text-base font-mono mt-1" /></div>}
-                <button onClick={handleSaveTransferSettings} className="w-full h-10 rounded-lg bg-[#005bb5] hover:bg-[#003d7a] text-white text-sm font-bold flex items-center justify-center gap-1.5"><Save className="h-4 w-4" /> GUARDAR AJUSTES</button>
-              </div>
-            )}
-          </div>
-
-          {/* Dynamic field inputs */}
+        {/* Dynamic field inputs */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
           {visibleFields.map(field => (
             <div key={field.key}>{renderFieldInput(field)}</div>
           ))}
+        </div>
 
-          {/* Auto-price indicator */}
-          {autoPrice !== null && (
-            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl border border-green-200 p-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-green-600 uppercase tracking-wider">Precio del catálogo</p>
-                <p className="text-2xl font-extrabold text-green-700">{autoPrice.toLocaleString('es-ES', { minimumFractionDigits: 2 })} {config?.currency || '€'}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-green-500">Total</p>
-                <p className="text-lg font-bold text-green-700">{(autoPrice * (Number(cant) || 1)).toLocaleString('es-ES', { minimumFractionDigits: 2 })} {config?.currency || '€'}</p>
-              </div>
+        {/* Auto-price indicator */}
+        {autoPrice !== null && (
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200 p-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-green-600 uppercase tracking-wider">Precio del catálogo</p>
+              <p className="text-xl font-extrabold text-green-700">{autoPrice.toLocaleString('es-ES', { minimumFractionDigits: 2 })} {config?.currency || '€'}</p>
             </div>
-          )}
-
-          {/* GUARDAR Button */}
-          <button onClick={handleSave} disabled={loading} className="w-full h-14 rounded-2xl bg-[#2bb24c] hover:bg-[#23963e] active:scale-[0.98] transition-all text-white text-lg font-bold shadow-lg shadow-green-200 disabled:opacity-50 flex items-center justify-center gap-2">
-            <Save className="h-5 w-5" />{editingId ? 'ACTUALIZAR' : 'GUARDAR'}
-          </button>
-
-          {/* PASAR AL REGISTRO Button */}
-          {transferMode === 'manual' && activeEntries.length > 0 && (
-            <button onClick={handleTransfer} disabled={transferring} className="w-full h-14 rounded-2xl bg-[#005bb5] hover:bg-[#003d7a] active:scale-[0.98] transition-all text-white text-lg font-bold shadow-lg shadow-blue-200 disabled:opacity-50 flex items-center justify-center gap-2">
-              <ArrowRightCircle className="h-5 w-5" />{transferring ? 'Transfiriendo...' : 'PASAR AL REGISTRO'}
-            </button>
-          )}
-
-          {/* Active Entries */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Entradas Activas</h3>
-              <span className="text-xs text-gray-300">{activeEntries.length}</span>
-            </div>
-            <div className="space-y-2">
-              {activeEntries.map(r => {
-                const rCustom = parseCustomData((r as Record<string, unknown>).customData as string || '')
-                return (
-                  <div key={r.id} className={`bg-white rounded-xl border p-3.5 shadow-sm transition-all ${editingId === r.id ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-200' : 'border-gray-100 active:bg-gray-50'}`}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="mb-1 flex items-center gap-2">
-                          <span className="text-xs text-gray-400">{r.fecha}</span>
-                          <span className="text-sm text-[#005bb5] font-semibold truncate">{r.cliente}</span>
-                        </div>
-                        <div className="flex items-baseline gap-1.5 text-sm text-gray-600">
-                          <span className="font-medium">{r.c1}</span>
-                          <span className="text-gray-300">·</span>
-                          <span>{r.c2}</span>
-                          <span className="text-gray-300">·</span>
-                          <span className="font-bold text-gray-900">{r.cant}x</span>
-                        </div>
-                        {r.obs && <p className="text-xs text-gray-400 mt-0.5 truncate">{r.obs}</p>}
-                        {/* Custom field values */}
-                        {visibleFields.filter(f => f.isCustom).map(f => {
-                          const val = rCustom[f.key]
-                          return val ? <p key={f.key} className="text-xs text-gray-500 mt-0.5 truncate"><span className="font-medium">{f.label}:</span> {String(val)}</p> : null
-                        })}
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                        <button onClick={() => handleEdit(r)} className="h-10 w-10 rounded-xl flex items-center justify-center text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 transition-colors"><Pencil className="h-4 w-4" /></button>
-                        <button onClick={() => handleDelete(r.id)} className="h-10 w-10 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-50 active:bg-red-100 transition-colors"><Trash2 className="h-4 w-4" /></button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-              {activeEntries.length === 0 && (
-                <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
-                  <div className="text-4xl mb-2">📝</div>
-                  <p className="text-gray-400 text-sm">Sin entradas activas</p>
-                  <p className="text-gray-300 text-xs mt-1">Las entradas se transferirán al registro {transferMode === 'auto' ? `automáticamente a las ${transferTime}` : 'con el botón "Pasar al registro"'}</p>
-                </div>
-              )}
+            <div className="text-right">
+              <p className="text-xs text-green-500">Total</p>
+              <p className="text-lg font-bold text-green-700">{(autoPrice * (Number(cant) || 1)).toLocaleString('es-ES', { minimumFractionDigits: 2 })} {config?.currency || '€'}</p>
             </div>
           </div>
+        )}
+
+        {/* Action buttons */}
+        <div className="flex gap-2">
+          <button onClick={handleSave} disabled={loading} className="flex-1 h-12 rounded-xl bg-[#2bb24c] hover:bg-[#23963e] active:scale-[0.98] transition-all text-white text-sm font-bold shadow-md shadow-green-200/50 disabled:opacity-50 flex items-center justify-center gap-2">
+            <Save className="h-4 w-4" />{editingId ? 'ACTUALIZAR' : 'GUARDAR'}
+          </button>
+          {transferMode === 'manual' && activeEntries.length > 0 && (
+            <button onClick={handleTransfer} disabled={transferring} className="flex-1 h-12 rounded-xl bg-[#005bb5] hover:bg-[#003d7a] active:scale-[0.98] transition-all text-white text-sm font-bold shadow-md shadow-blue-200/50 disabled:opacity-50 flex items-center justify-center gap-2">
+              <ArrowRightCircle className="h-4 w-4" />{transferring ? 'Transfiriendo...' : 'PASAR AL REGISTRO'}
+            </button>
+          )}
+        </div>
+
+        {/* Stats bar */}
+        <div className="flex flex-wrap gap-4 bg-white rounded-lg px-4 py-2.5 shadow-sm text-sm font-bold border">
+          <span>Entradas:<b className="text-[#005bb5] ml-1">{activeEntries.length}</b></span>
+        </div>
+      </div>
+
+      {/* ─── SCROLLABLE ENTRIES ─── */}
+      <div className="flex-1 min-h-0 overflow-auto">
+        <div className="space-y-2">
+          {activeEntries.map(r => {
+            const rCustom = parseCustomData((r as Record<string, unknown>).customData as string || '')
+            return (
+              <div key={r.id} className={`bg-white rounded-lg border p-3 shadow-sm transition-all ${editingId === r.id ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-200' : 'border-gray-100 hover:bg-gray-50'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="text-xs text-gray-400">{r.fecha}</span>
+                      <span className="text-sm text-[#005bb5] font-semibold truncate">{r.cliente}</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 text-sm text-gray-600">
+                      <span className="font-medium">{r.c1}</span>
+                      <span className="text-gray-300">·</span>
+                      <span>{r.c2}</span>
+                      <span className="text-gray-300">·</span>
+                      <span className="font-bold text-gray-900">{r.cant}x</span>
+                    </div>
+                    {r.obs && <p className="text-xs text-gray-400 mt-0.5 truncate">{r.obs}</p>}
+                    {visibleFields.filter(f => f.isCustom).map(f => {
+                      const val = rCustom[f.key]
+                      return val ? <p key={f.key} className="text-xs text-gray-500 mt-0.5 truncate"><span className="font-medium">{f.label}:</span> {String(val)}</p> : null
+                    })}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => handleEdit(r)} className="h-8 w-8 rounded-lg flex items-center justify-center text-indigo-500 hover:bg-indigo-50 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => handleDelete(r.id)} className="h-8 w-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+          {activeEntries.length === 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
+              <div className="text-4xl mb-2">📝</div>
+              <p className="text-gray-400 text-sm">Sin entradas activas</p>
+              <p className="text-gray-300 text-xs mt-1">Las entradas se transferirán al registro {transferMode === 'auto' ? `automáticamente a las ${transferTime}` : 'con el botón "Pasar al registro"'}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

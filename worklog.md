@@ -162,3 +162,29 @@ Stage Summary:
 - Config now correctly reloads when switching between companies (tenant changes)
 - ConfiguracionView form now correctly re-initializes when config data changes
 - Data isolation is now complete: each company sees and saves its own data
+
+---
+Task ID: 5
+Agent: Main Agent
+Task: Apply fixed header + scrollable content layout to entrada-view.tsx (same as other views)
+
+Work Log:
+- Identified that entrada-view.tsx was the only view not using the fixed header + scrollable content layout pattern
+- Other views (registros, catalogo, facturas, clientes) already had: `flex flex-col flex-1 min-h-0` → `flex-shrink-0` FIXED HEADER → `flex-1 min-h-0 overflow-auto` SCROLLABLE CONTENT
+- Updated entrada-view.tsx layout structure:
+  - Changed root from `min-h-[calc(100vh-2rem)]` to `flex flex-col flex-1 min-h-0`
+  - Split content into FIXED FORM header (flex-shrink-0) and SCROLLABLE ENTRIES (flex-1 min-h-0 overflow-auto)
+  - Made form fields compact for grid layout (grid-cols-2 md:grid-cols-3)
+  - Reduced input heights from h-12 to h-9, font sizes from text-lg to text-sm
+  - Changed status message from fixed overlay to inline banner (consistent with other views)
+  - Combined GUARDAR and PASAR AL REGISTRO buttons into a single row
+  - Added stats bar consistent with other views
+  - Made entry cards more compact (rounded-lg instead of rounded-xl, smaller buttons)
+- Updated page.tsx to wrap EntradaView with same `flex-1 min-h-0 flex flex-col` container as other views
+- Updated ComboInput component to use h-9 text-sm for consistency
+- Build succeeds, server running on port 3000
+
+Stage Summary:
+- ALL views now have consistent layout: fixed header + scrollable content
+- Entrada view form stays visible at top while entries scroll below
+- Consistent UX across Entrada, Registros, Clientes, Catálogo, Facturas

@@ -2,7 +2,7 @@
   "_meta": {
     "version": 2,
     "tenantId": "cmq6uwub10000n9qluafni88m",
-    "createdAt": "2026-06-09T20:32:19.011Z",
+    "createdAt": "2026-06-10T15:19:12.780Z",
     "type": "cambio"
   },
   "clientes": [
@@ -2132,7 +2132,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta0022n9u4gwz6de65",
@@ -2148,7 +2148,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta0023n9u4m6eb2mjv",
@@ -2164,7 +2164,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta0024n9u4arh22kwt",
@@ -2180,7 +2180,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta0025n9u4s7wqzsft",
@@ -2196,7 +2196,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta0026n9u4iznbh9zj",
@@ -2212,7 +2212,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta0027n9u4h923qlq9",
@@ -2228,7 +2228,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta0028n9u4l85qdoor",
@@ -2244,7 +2244,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta0029n9u4s6ninvro",
@@ -2260,7 +2260,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002an9u4j52fjbk8",
@@ -2276,7 +2276,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002bn9u47ej6zvev",
@@ -2292,7 +2292,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002cn9u4ktlks7aj",
@@ -2308,7 +2308,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002dn9u40dvnuv63",
@@ -2324,7 +2324,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002en9u4vfvgawe6",
@@ -2340,7 +2340,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002fn9u4wh9y9grh",
@@ -2356,7 +2356,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002gn9u45xyndqk4",
@@ -2372,7 +2372,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002hn9u42hlzc2pi",
@@ -2388,7 +2388,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002in9u4b67yssua",
@@ -2404,7 +2404,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002jn9u43p29lqgk",
@@ -2420,7 +2420,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002kn9u4m8lhwzig",
@@ -2436,7 +2436,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002ln9u4v4hhwvmw",
@@ -2452,7 +2452,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002mn9u4iebka98m",
@@ -2468,7 +2468,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002nn9u4477vpi54",
@@ -2484,7 +2484,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002on9u4609wyakg",
@@ -2500,7 +2500,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002pn9u4qwgkiwk9",
@@ -2516,7 +2516,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002qn9u4acfx1cw3",
@@ -2532,7 +2532,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002rn9u4abdespat",
@@ -2548,7 +2548,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002sn9u4whfzit4y",
@@ -2564,7 +2564,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002tn9u45dcaamus",
@@ -2580,7 +2580,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002un9u4p2a0v2iv",
@@ -2596,7 +2596,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002vn9u4b6876wm6",
@@ -2612,7 +2612,7 @@
       "facturado": false,
       "customData": "",
       "createdAt": "2026-06-09T20:29:39.740Z",
-      "updatedAt": "2026-06-09T20:29:39.740Z"
+      "updatedAt": "2026-06-10T15:19:09.416Z"
     },
     {
       "id": "cmq73fkta002wn9u4ow34cc4o",
@@ -4071,7 +4071,7 @@
       "updatedAt": "2026-06-09T20:29:39.740Z"
     }
   ],
-  "facturaSeq": 14,
+  "facturaSeq": 15,
   "config": {
     "id": "cfg_1781030884798",
     "tenantId": "cmq6uwub10000n9qluafni88m",
@@ -4125,7 +4125,7 @@
       "tenantId": "cmq6uwub10000n9qluafni88m",
       "active": true,
       "createdAt": "2026-06-09T17:45:21.554Z",
-      "updatedAt": "2026-06-09T17:45:21.554Z"
+      "updatedAt": "2026-06-09T20:33:02.203Z"
     }
   ]
 }
