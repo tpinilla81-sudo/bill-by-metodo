@@ -154,10 +154,10 @@ function AppContent() {
           {activeView === 'clientes' && hasPermission(user.role, user.permissions, 'clientes') && <div className="flex-1 min-h-0 flex flex-col"><ClientesView /></div>}
           {activeView === 'catalogo' && hasPermission(user.role, user.permissions, 'catalogo') && <div className="flex-1 min-h-0 flex flex-col"><CatalogoView /></div>}
           {activeView === 'facturas' && hasPermission(user.role, user.permissions, 'facturas') && <div className="flex-1 min-h-0 flex flex-col"><FacturasView /></div>}
-          {activeView === 'backup' && hasPermission(user.role, user.permissions, 'backup') && <BackupView />}
-          {activeView === 'suscripcion' && (user.role === 'admin' || user.role === 'superadmin') && <PlansView tenantId={user.tenantId} />}
-          {activeView === 'config' && (user.role === 'admin' || user.role === 'superadmin') && <ConfiguracionView tenant={tenant} />}
-          {activeView === 'admin' && user.role === 'superadmin' && <AdminView />}
+          {activeView === 'backup' && hasPermission(user.role, user.permissions, 'backup') && <div className="flex-1 min-h-0 flex flex-col"><BackupView /></div>}
+          {activeView === 'suscripcion' && (user.role === 'admin' || user.role === 'superadmin') && <div className="flex-1 min-h-0 flex flex-col"><PlansView tenantId={user.tenantId} /></div>}
+          {activeView === 'config' && (user.role === 'admin' || user.role === 'superadmin') && <div className="flex-1 min-h-0 flex flex-col"><ConfiguracionView tenant={tenant} /></div>}
+          {activeView === 'admin' && user.role === 'superadmin' && <div className="flex-1 min-h-0 flex flex-col"><AdminView /></div>}
 
           {/* No permission view */}
           {['entrada', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'].includes(activeView) && !hasPermission(user.role, user.permissions, activeView) && (

@@ -958,7 +958,7 @@ function SubscriptionsTab() {
 // ─── Admin View (main export) ────────────────────────────────
 export function AdminView() {
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-5xl flex flex-col flex-1 min-h-0 overflow-auto">
       <div className="flex items-center gap-2 mb-4">
         <Shield className="h-5 w-5 text-[#005bb5]" />
         <h2 className="text-lg font-bold text-gray-700">Administración</h2>

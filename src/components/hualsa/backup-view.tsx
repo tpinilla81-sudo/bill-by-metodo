@@ -143,7 +143,7 @@ export function BackupView() {
   }
 
   return (
-    <div className="max-w-3xl flex flex-col gap-4">
+    <div className="max-w-3xl flex flex-col flex-1 min-h-0 gap-4 overflow-auto">
       {/* Acciones */}
       <Card>
         <CardHeader>
