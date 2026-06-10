@@ -717,7 +717,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
   }
 
   return (
-    <div className="max-w-4xl flex flex-col flex-1 min-h-0 gap-4 overflow-auto">
+    <div className="max-w-4xl flex flex-col gap-4 pb-8">
       {statusMsg && (
         <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
           {statusMsg.type === 'ok' ? <CheckCircle className="h-4 w-4" /> : null}

@@ -119,7 +119,7 @@ export function PlansView({ tenantId }: PlansViewProps) {
   if (loading) return <div className="p-6 text-center text-gray-400">Cargando plan...</div>
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 flex flex-col flex-1 min-h-0 overflow-auto pb-8">
+    <div className="max-w-4xl mx-auto space-y-6 pb-8">
       {/* Current Plan Summary */}
       <div className="flex items-center gap-2">
         <CreditCard className="h-5 w-5 text-[#005bb5]" />
