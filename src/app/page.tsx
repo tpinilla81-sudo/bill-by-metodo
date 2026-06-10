@@ -67,7 +67,7 @@ function AppContent() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#f4f7f6]">
+    <div className="flex h-screen overflow-hidden bg-[#f4f7f6]">
       <Sidebar
         active={activeView}
         onNavigate={setActiveView}
@@ -77,8 +77,8 @@ function AppContent() {
         tenant={tenant}
         onLogout={logout}
       />
-      <main className="flex-1 min-w-0 overflow-hidden flex flex-col">
-        <div className="p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 flex flex-col">
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        <div className="p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 flex flex-col overflow-hidden">
           {activeView === 'entrada' && <div className="flex-1 min-h-0 flex flex-col"><EntradaView /></div>}
           {activeView === 'registros' && <div className="flex-1 min-h-0 flex flex-col"><RegistrosView /></div>}
           {activeView === 'clientes' && <div className="flex-1 min-h-0 flex flex-col"><ClientesView /></div>}

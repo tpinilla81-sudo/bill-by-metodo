@@ -274,7 +274,7 @@ export function RegistrosView() {
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Registros')
     const totalsWs = XLSX.utils.json_to_sheet([{ 'TOTAL CANTIDAD': tCant, 'TOTAL IMPORTE': tImp, 'Nº LÍNEAS': filtered.length }])
     XLSX.utils.book_append_sheet(wb, totalsWs, 'Resumen')
-    const appName = config?.appName || 'HUALSA'; XLSX.writeFile(wb, `Registros_${appName}_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    const appName = config?.appName || 'HUALSA'; const _d = new Date(); const _p = (n: number) => String(n).padStart(2, '0'); XLSX.writeFile(wb, `Registros_${appName}_${_d.getFullYear()}-${_p(_d.getMonth() + 1)}-${_p(_d.getDate())}.xlsx`)
   }
 
   function handleEdit(r: Registro) {

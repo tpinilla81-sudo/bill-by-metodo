@@ -45,7 +45,10 @@ export function BackupView() {
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
-      a.download = `${(config?.appName || 'BILL').toLowerCase()}_backup_${new Date().toISOString().slice(0, 10)}.json`
+      const d = new Date()
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const localDate = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+      a.download = `${(config?.appName || 'BILL').toLowerCase()}_backup_${localDate}.json`
       a.click()
       setStatus('Exportado correctamente')
     } catch (err) {
@@ -82,7 +85,8 @@ export function BackupView() {
   // Create backup now (save to server)
   async function handleCreateBackup() {
     try {
-      const res = await fetch('/api/auto-backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'manual' }) })
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      const res = await fetch('/api/auto-backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'manual', tz }) })
       const data = await res.json()
       if (data.ok) {
         setStatus(`Backup guardado: ${data.filename}`)

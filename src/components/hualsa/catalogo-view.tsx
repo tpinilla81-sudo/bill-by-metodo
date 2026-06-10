@@ -198,7 +198,7 @@ export function CatalogoView() {
     const ws = XLSX.utils.json_to_sheet(rows)
     ws['!cols'] = [{ wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 25 }]
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Catálogo')
-    const appName = config?.appName || 'HUALSA'; XLSX.writeFile(wb, `Catalogo_${appName}_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    const appName = config?.appName || 'HUALSA'; const _d = new Date(); const _p = (n: number) => String(n).padStart(2, '0'); XLSX.writeFile(wb, `Catalogo_${appName}_${_d.getFullYear()}-${_p(_d.getMonth() + 1)}-${_p(_d.getDate())}.xlsx`)
   }
 
   // Get display value for a catalogo item

@@ -56,10 +56,18 @@ export async function POST(req: Request) {
     if (typeof tid !== 'string') return tid
 
     let reason = 'cambio'
+    let tz: string | undefined
     try {
       const body = await req.json()
       if (body?.reason) reason = body.reason
+      if (body?.tz) tz = body.tz
     } catch { /* no body, default to cambio */ }
+
+    // Get timezone-aware date parts
+    const nowForTs = new Date()
+    const tzOpts: Intl.DateTimeFormatOptions = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: tz || 'UTC' }
+    const tzParts = new Intl.DateTimeFormat('en-CA', tzOpts).formatToParts(nowForTs)
+    const get = (t: string) => tzParts.find(p => p.type === t)?.value || '00'
 
     // Debounce for non-manual backups
     const now = Date.now()
@@ -82,11 +90,14 @@ export async function POST(req: Request) {
       db.user.findMany({ where: { tenantId: tid } }),
     ])
 
+    const createdAtLocal = `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}`
     const data = {
       _meta: {
         version: 2,
         tenantId: tid,
         createdAt: new Date().toISOString(),
+        createdAtLocal,
+        timezone: tz || 'UTC',
         type: reason,
       },
       clientes,
@@ -97,9 +108,7 @@ export async function POST(req: Request) {
       users: users ? users.map(u => ({ ...u, password: undefined })) : [],
     }
 
-    const date = new Date()
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const ts = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}_${reason}`
+    const ts = `${get('year')}-${get('month')}-${get('day')}_${get('hour')}-${get('minute')}-${get('second')}_${reason}`
     const filename = `bill_backup_${tid}_${ts}.json`
     const filepath = path.join(BACKUP_DIR, filename)
 
@@ -113,7 +122,7 @@ export async function POST(req: Request) {
       await Promise.all(toDelete.map(f => fs.unlink(path.join(BACKUP_DIR, f))))
     }
 
-    return NextResponse.json({ ok: true, filename, date: data._meta.createdAt })
+    return NextResponse.json({ ok: true, filename, date: createdAtLocal })
   } catch (err) {
     console.error('Auto-backup error:', err)
     return NextResponse.json({ error: 'Error creando backup' }, { status: 500 })

@@ -4,6 +4,14 @@
 
 let pendingBackup: ReturnType<typeof setTimeout> | null = null
 
+function getClientTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone
+  } catch {
+    return 'UTC'
+  }
+}
+
 export function triggerBackup(reason: string = 'cambio') {
   // Debounce client-side: wait 3 seconds after the last change before backing up
   // This way rapid multiple saves only create one backup
@@ -12,7 +20,7 @@ export function triggerBackup(reason: string = 'cambio') {
     fetch('/api/auto-backup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason, tz: getClientTimezone() }),
     }).catch(() => {})
     pendingBackup = null
   }, 3000)
