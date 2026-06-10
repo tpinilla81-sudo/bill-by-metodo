@@ -1,8 +1,5 @@
 {
   "framework": "nextjs",
-  "buildCommand": "npx prisma generate && next build",
-  "installCommand": "npm install",
-  "env": {
-    "DATABASE_PROVIDER": "postgresql"
-  }
+  "buildCommand": "cp prisma/schema.prisma.pg prisma/schema.prisma && prisma generate && prisma migrate deploy && next build",
+  "installCommand": "npm install"
 }
