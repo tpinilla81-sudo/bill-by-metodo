@@ -149,7 +149,7 @@ function AppContent() {
       />
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Table views: manage their own internal scroll */}
-        <div className={`p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 flex flex-col overflow-hidden ${['backup','suscripcion','config','admin'].includes(activeView) ? 'overflow-y-auto' : ''}`}>
+        <div className={`p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 flex flex-col ${['backup','suscripcion','config','admin'].includes(activeView) ? 'overflow-y-auto' : 'overflow-hidden'}`}>
           {activeView === 'entrada' && hasPermission(user.role, user.permissions, 'entrada') && <div className="flex-1 min-h-0 flex flex-col"><EntradaView /></div>}
           {activeView === 'registros' && hasPermission(user.role, user.permissions, 'registros') && <div className="flex-1 min-h-0 flex flex-col"><RegistrosView /></div>}
           {activeView === 'clientes' && hasPermission(user.role, user.permissions, 'clientes') && <div className="flex-1 min-h-0 flex flex-col"><ClientesView /></div>}
