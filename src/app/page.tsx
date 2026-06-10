@@ -149,29 +149,33 @@ function AppContent() {
       />
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Table views: manage their own internal scroll */}
-        <div className={`p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 flex flex-col ${['backup','suscripcion','config','admin'].includes(activeView) ? 'overflow-y-auto' : 'overflow-hidden'}`}>
-          {activeView === 'entrada' && hasPermission(user.role, user.permissions, 'entrada') && <div className="flex-1 min-h-0 flex flex-col"><EntradaView /></div>}
-          {activeView === 'registros' && hasPermission(user.role, user.permissions, 'registros') && <div className="flex-1 min-h-0 flex flex-col"><RegistrosView /></div>}
-          {activeView === 'clientes' && hasPermission(user.role, user.permissions, 'clientes') && <div className="flex-1 min-h-0 flex flex-col"><ClientesView /></div>}
-          {activeView === 'catalogo' && hasPermission(user.role, user.permissions, 'catalogo') && <div className="flex-1 min-h-0 flex flex-col"><CatalogoView /></div>}
-          {activeView === 'facturas' && hasPermission(user.role, user.permissions, 'facturas') && <div className="flex-1 min-h-0 flex flex-col"><FacturasView /></div>}
-          {activeView === 'backup' && hasPermission(user.role, user.permissions, 'backup') && <BackupView />}
-          {activeView === 'suscripcion' && (user.role === 'admin' || user.role === 'superadmin') && <PlansView tenantId={user.tenantId} />}
-          {activeView === 'config' && (user.role === 'admin' || user.role === 'superadmin') && <ConfiguracionView tenant={tenant} />}
-          {activeView === 'admin' && user.role === 'superadmin' && <AdminView />}
-
-          {/* No permission view */}
-          {['entrada', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'].includes(activeView) && !hasPermission(user.role, user.permissions, activeView) && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center space-y-3">
-                <div className="text-4xl">🔒</div>
-                <h3 className="text-lg font-bold text-gray-600">Sin acceso</h3>
-                <p className="text-sm text-gray-400">No tienes permiso para ver esta pantalla.</p>
-                <p className="text-xs text-gray-400">Contacta con tu administrador para solicitar acceso.</p>
-              </div>
-            </div>
-          )}
+        <div className="p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 overflow-hidden">
+          {activeView === 'entrada' && hasPermission(user.role, user.permissions, 'entrada') && <div className="h-full flex flex-col"><EntradaView /></div>}
+          {activeView === 'registros' && hasPermission(user.role, user.permissions, 'registros') && <div className="h-full flex flex-col"><RegistrosView /></div>}
+          {activeView === 'clientes' && hasPermission(user.role, user.permissions, 'clientes') && <div className="h-full flex flex-col"><ClientesView /></div>}
+          {activeView === 'catalogo' && hasPermission(user.role, user.permissions, 'catalogo') && <div className="h-full flex flex-col"><CatalogoView /></div>}
+          {activeView === 'facturas' && hasPermission(user.role, user.permissions, 'facturas') && <div className="h-full flex flex-col"><FacturasView /></div>}
         </div>
+        {/* Scrollable views: config, admin, backup, suscripcion */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="p-3 md:p-6 pt-16 md:pt-6 pb-8">
+            {activeView === 'backup' && hasPermission(user.role, user.permissions, 'backup') && <BackupView />}
+            {activeView === 'suscripcion' && (user.role === 'admin' || user.role === 'superadmin') && <PlansView tenantId={user.tenantId} />}
+            {activeView === 'config' && (user.role === 'admin' || user.role === 'superadmin') && <ConfiguracionView tenant={tenant} />}
+            {activeView === 'admin' && user.role === 'superadmin' && <AdminView />}
+          </div>
+        </div>
+        {/* No permission view */}
+        {['entrada', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'].includes(activeView) && !hasPermission(user.role, user.permissions, activeView) && (
+          <div className="flex-1 min-h-0 flex items-center justify-center">
+            <div className="text-center space-y-3">
+              <div className="text-4xl">🔒</div>
+              <h3 className="text-lg font-bold text-gray-600">Sin acceso</h3>
+              <p className="text-sm text-gray-400">No tienes permiso para ver esta pantalla.</p>
+              <p className="text-xs text-gray-400">Contacta con tu administrador para solicitar acceso.</p>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   )
