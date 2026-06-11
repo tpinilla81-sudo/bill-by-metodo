@@ -93,6 +93,7 @@ model Tenant {
   registros     Registro[]
   configs       Config[]
   facturaSeqs   FacturaSeq[]
+  backups       Backup[]
 }
 
 model User {
@@ -118,6 +119,17 @@ model FacturaSeq {
   tenant    Tenant   @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId])
+}
+
+model Backup {
+  id          String   @id @default(cuid())
+  tenantId    String
+  filename    String   @unique   // e.g. bill_backup_xxx_2026-06-10_14-30-05_cambio.json
+  type        String   @default("auto")  // "manual", "cambio", "auto"
+  data        String   // JSON string with all the backup data (stored as TEXT in PostgreSQL)
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
 }
 
 model Config {
