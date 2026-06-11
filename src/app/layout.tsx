@@ -19,6 +19,19 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.ico",
   },
+  openGraph: {
+    title: "BILL by Metodo - Gestión Empresarial",
+    description: "Sistema de gestión empresarial multi-empresa. Registros, Clientes, Catálogo y Facturación.",
+    images: ["/bill-by-metodo-logo.png"],
+    type: "website",
+    siteName: "BILL by Metodo",
+  },
+  twitter: {
+    card: "summary",
+    title: "BILL by Metodo - Gestión Empresarial",
+    description: "Sistema de gestión empresarial multi-empresa. Registros, Clientes, Catálogo y Facturación.",
+    images: ["/bill-by-metodo-logo.png"],
+  },
 };
 
 export default function RootLayout({
