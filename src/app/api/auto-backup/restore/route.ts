@@ -1,12 +1,8 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { requireTenantId } from '@/lib/tenant-context'
-import { promises as fs } from 'fs'
-import path from 'path'
 
-const BACKUP_DIR = path.join(process.cwd(), 'backups')
-
-// POST: restore a saved backup by filename (tenant-scoped)
+// POST: restore a saved backup by filename (tenant-scoped, from database)
 export async function POST(req: Request) {
   try {
     const tid = await requireTenantId(req)
@@ -17,15 +13,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Archivo no válido' }, { status: 400 })
     }
 
-    // Verify this backup belongs to this tenant
-    const prefix = `bill_backup_${tid}_`
-    if (!filename.startsWith(prefix)) {
+    // Find backup in database
+    const backup = await db.backup.findUnique({
+      where: { filename },
+      select: { tenantId: true, data: true }
+    })
+
+    if (!backup || backup.tenantId !== tid) {
       return NextResponse.json({ error: 'Backup no pertenece a esta empresa' }, { status: 403 })
     }
 
-    const filepath = path.join(BACKUP_DIR, filename)
-    const content = await fs.readFile(filepath, 'utf-8')
-    const data = JSON.parse(content)
+    const data = JSON.parse(backup.data)
     const { clientes, catalogo, registros, facturaSeq } = data
 
     // Delete only this tenant's data
@@ -49,6 +47,7 @@ export async function POST(req: Request) {
         prov: (c.prov as string) || '',
         mail: (c.mail as string) || '',
         tel: (c.tel as string) || '',
+        customData: (c.customData as string) || '',
       })) })
     }
     if (catalogo?.length) {
@@ -61,6 +60,7 @@ export async function POST(req: Request) {
         coste: Number(x.coste) || 0,
         inc: Number(x.inc) || 0,
         final: Number(x.final) || 0,
+        customData: (x.customData as string) || '',
       })) })
     }
     if (registros?.length) {
@@ -76,6 +76,7 @@ export async function POST(req: Request) {
         obs: (r.obs as string) || '',
         facturado: Boolean(r.facturado),
         pasadoRegistro: Boolean(r.pasadoRegistro),
+        customData: (r.customData as string) || '',
       })) })
     }
     await db.facturaSeq.create({ data: { tenantId: tid, seq: Number(facturaSeq) || 1 } })
