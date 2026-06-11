@@ -15,13 +15,16 @@ export async function GET(req: Request) {
     const backups = await db.backup.findMany({
       where: { tenantId: tid },
       orderBy: { createdAt: 'desc' },
-      select: { filename: true, type: true, createdAt: true }
+      select: { filename: true, type: true, createdAtLocal: true, createdAt: true }
     })
 
     const formatted = backups.map(b => {
-      const d = b.createdAt
-      const pad = (n: number) => String(n).padStart(2, '0')
-      const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+      // Use createdAtLocal (client timezone) if available, fallback to UTC createdAt
+      const dateStr = b.createdAtLocal || (() => {
+        const d = b.createdAt
+        const pad = (n: number) => String(n).padStart(2, '0')
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+      })()
       return {
         filename: b.filename,
         date: dateStr,
@@ -76,7 +79,7 @@ export async function POST(req: Request) {
       db.user.findMany({ where: { tenantId: tid } }),
     ])
 
-    const createdAtLocal = `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}`
+    const createdAtLocal = `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`
     const data = {
       _meta: {
         version: 2,
@@ -97,12 +100,13 @@ export async function POST(req: Request) {
     const ts = `${get('year')}-${get('month')}-${get('day')}_${get('hour')}-${get('minute')}-${get('second')}_${reason}`
     const filename = `bill_backup_${tid}_${ts}.json`
 
-    // Save backup to database
+    // Save backup to database with local time
     await db.backup.create({
       data: {
         tenantId: tid,
         filename,
         type: reason,
+        createdAtLocal,
         data: JSON.stringify(data),
       }
     })
