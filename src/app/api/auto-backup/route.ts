@@ -6,6 +6,15 @@ import { requireTenantId } from '@/lib/tenant-context'
 const MIN_INTERVAL_SEC = 30 // 30 seconds between auto-backups
 let lastBackupTime = 0
 
+// Extract local date from filename: bill_backup_{tid}_2026-06-10_14-30-05_cambio.json
+function extractDateFromFilename(filename: string): string {
+  const match = filename.match(/(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})(?:-(\d{2}))?_\w+\.json/)
+  if (match) {
+    return `${match[1]} ${match[2]}:${match[3]}${match[4] ? ':' + match[4] : ''}`
+  }
+  return ''
+}
+
 // GET: list saved backups for this tenant (from database)
 export async function GET(req: Request) {
   try {
@@ -15,12 +24,14 @@ export async function GET(req: Request) {
     const backups = await db.backup.findMany({
       where: { tenantId: tid },
       orderBy: { createdAt: 'desc' },
-      select: { filename: true, type: true, createdAtLocal: true, createdAt: true }
+      select: { filename: true, type: true, createdAt: true }
     })
 
     const formatted = backups.map(b => {
-      // Use createdAtLocal (client timezone) if available, fallback to UTC createdAt
-      const dateStr = b.createdAtLocal || (() => {
+      // Extract date from filename (already in client timezone)
+      const dateFromFilename = extractDateFromFilename(b.filename)
+      // Fallback to UTC createdAt if filename parse fails
+      const dateStr = dateFromFilename || (() => {
         const d = b.createdAt
         const pad = (n: number) => String(n).padStart(2, '0')
         return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
@@ -100,13 +111,12 @@ export async function POST(req: Request) {
     const ts = `${get('year')}-${get('month')}-${get('day')}_${get('hour')}-${get('minute')}-${get('second')}_${reason}`
     const filename = `bill_backup_${tid}_${ts}.json`
 
-    // Save backup to database with local time
+    // Save backup to database (without createdAtLocal column - we extract date from filename)
     await db.backup.create({
       data: {
         tenantId: tid,
         filename,
         type: reason,
-        createdAtLocal,
         data: JSON.stringify(data),
       }
     })
