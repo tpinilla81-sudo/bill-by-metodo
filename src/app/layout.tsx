@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "BILL by Metodo - Gestión Empresarial",
     description: "Sistema de gestión empresarial multi-empresa. Registros, Clientes, Catálogo y Facturación.",
-    images: ["/bill-by-metodo-logo.png"],
+    images: [{ url: "https://bill-by-metodo.vercel.app/bill-by-metodo-logo.png", width: 512, height: 512 }],
     type: "website",
     siteName: "BILL by Metodo",
   },
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     card: "summary",
     title: "BILL by Metodo - Gestión Empresarial",
     description: "Sistema de gestión empresarial multi-empresa. Registros, Clientes, Catálogo y Facturación.",
-    images: ["/bill-by-metodo-logo.png"],
+    images: ["https://bill-by-metodo.vercel.app/bill-by-metodo-logo.png"],
   },
 };
 
