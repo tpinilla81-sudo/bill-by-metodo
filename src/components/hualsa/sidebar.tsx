@@ -114,19 +114,22 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
 
       {/* Sidebar */}
       <aside
-        className={`fixed md:sticky top-0 left-0 z-40 h-screen w-[220px] bg-[#1a1a1a] flex flex-col transition-transform duration-200 ${
+        className={`fixed md:sticky top-0 left-0 z-40 h-[100dvh] md:h-screen w-[220px] bg-[#1a1a1a] flex flex-col transition-transform duration-200 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
-        <div className="p-3 bg-white border-b-[3px] border-[#2bb24c] flex items-center justify-center min-h-[80px]">
+        {/* Logo header - fixed */}
+        <div className="flex-shrink-0 p-3 bg-white border-b-[3px] border-[#2bb24c] flex items-center justify-center min-h-[70px] md:min-h-[80px]">
           <img
             key={logoSrc}
             src={logoSrc}
             alt={displayName}
-            style={{ maxWidth: '180px', maxHeight: '65px', height: 'auto', objectFit: 'contain' }}
+            style={{ maxWidth: '180px', maxHeight: '55px', height: 'auto', objectFit: 'contain' }}
           />
         </div>
-        <nav className="flex-1 flex flex-col overflow-y-auto">
+
+        {/* Navigation - scrollable */}
+        <nav className="flex-1 flex flex-col overflow-y-auto min-h-0">
           {navItems
             .filter(item => {
               // Superadmin-only items
@@ -155,7 +158,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
                   onNavigate(item.key)
                   onMobileToggle()
                 }}
-                className={`w-full px-4 py-3.5 flex items-center gap-3 text-sm text-left transition-colors ${
+                className={`w-full px-4 py-3 md:py-3.5 flex items-center gap-3 text-sm text-left transition-colors ${
                   active === item.key
                     ? `${item.color} bg-white/10 border-l-4 border-[#2bb24c] font-bold`
                     : 'text-gray-400 hover:text-gray-200 hover:bg-white/5 border-l-4 border-transparent'
@@ -168,9 +171,9 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
             ))}
         </nav>
 
-        {/* User info + Logout */}
-        <div className="border-t border-gray-700/50">
-          <div className="px-4 py-2.5 text-xs text-gray-500 truncate flex items-center gap-1.5">
+        {/* User info + Logout - always visible at bottom */}
+        <div className="flex-shrink-0 border-t border-gray-700/50">
+          <div className="px-4 py-2 text-xs text-gray-500 truncate flex items-center gap-1.5">
             <span className="truncate">{user?.name || user?.email}</span>
             {user?.role && user.role !== 'user' && (
               <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${
@@ -189,7 +192,8 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
           </button>
         </div>
 
-        <div className="p-3 text-center text-xs text-gray-500">
+        {/* Safe area padding for iPhone bottom bar */}
+        <div className="flex-shrink-0 p-2 text-center text-[10px] text-gray-600 pb-[env(safe-area-inset-bottom,8px)]">
           {displayName}
         </div>
       </aside>
