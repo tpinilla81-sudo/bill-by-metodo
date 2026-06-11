@@ -1,13 +1,9 @@
-// PostgreSQL schema for production deployment on Vercel
-// To use: copy this file over schema.prisma before deploying,
-// or set DATABASE_PROVIDER=postgresql and swap this file in.
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -122,15 +118,14 @@ model FacturaSeq {
 }
 
 model Backup {
-  id              String   @id @default(cuid())
-  tenantId        String
-  filename        String   @unique   // e.g. bill_backup_xxx_2026-06-10_14-30-05_cambio.json
-  type            String   @default("auto")  // "manual", "cambio", "auto"
-  createdAtLocal  String   @default("")      // Local date string from client timezone
-  data            String   // JSON string with all the backup data (stored as TEXT in PostgreSQL)
-  createdAt       DateTime @default(now())
+  id          String   @id @default(cuid())
+  tenantId    String
+  filename    String   @unique   // e.g. bill_backup_xxx_2026-06-10_14-30-05_cambio.json
+  type        String   @default("auto")  // "manual", "cambio", "auto"
+  data        String             // JSON string with all the backup data
+  createdAt   DateTime @default(now())
 
-  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
 }
 
 model Config {
