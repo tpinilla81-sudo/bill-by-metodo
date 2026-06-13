@@ -16,8 +16,8 @@ import { AuthProvider, useAuth } from '@/lib/auth-context'
 
 export type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'facturas' | 'backup' | 'config' | 'admin' | 'suscripcion'
 
-// Screen permission keys
-const SCREEN_PERMISSIONS = ['entrada', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
+// Screen permission keys (including sub-permissions)
+const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
 
 // Parse permissions from JSON string to array
 function parsePermissions(permissionsStr: string): string[] {
@@ -43,6 +43,15 @@ function hasPermission(userRole: string, userPermissions: string, screenKey: str
   if (perms.length === 0) return true
 
   return perms.includes(screenKey)
+}
+
+// Check if user has a specific sub-permission (e.g. "entrada.pasarRegistros")
+// If permissions array is empty (all access), sub-permission is granted
+export function hasSubPermission(userRole: string, userPermissions: string, subKey: string): boolean {
+  if (userRole === 'admin' || userRole === 'superadmin') return true
+  const perms = parsePermissions(userPermissions)
+  if (perms.length === 0) return true
+  return perms.includes(subKey)
 }
 
 function AppContent() {

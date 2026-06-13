@@ -35,8 +35,8 @@ interface SidebarProps {
   onLogout: () => void
 }
 
-// All available screen permission keys
-const SCREEN_PERMISSIONS = ['entrada', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
+// All available screen permission keys (including sub-permissions)
+const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
 
 // Parse permissions from JSON string to array
 function parsePermissions(permissionsStr: string): string[] {

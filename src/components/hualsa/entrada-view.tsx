@@ -9,6 +9,7 @@ import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Cl
 import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
+import { useAuth } from '@/lib/auth-context'
 
 interface EntradaViewData {
   registros: Registro[]
@@ -89,6 +90,7 @@ function ComboInput({
 export function EntradaView() {
   const { data, loadData, loading } = useEntradaData()
   const { config, update } = useConfig()
+  const { user } = useAuth()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [transferring, setTransferring] = useState(false)
   const [showTransferSettings, setShowTransferSettings] = useState(false)
@@ -108,6 +110,15 @@ export function EntradaView() {
 
   useEffect(() => { setLocalTransferMode(transferMode); setLocalTransferTime(transferTime) }, [transferMode, transferTime])
 
+  // Check sub-permission: can this user transfer entries to registros?
+  function canPasarRegistros(): boolean {
+    if (!user) return true
+    if (user.role === 'admin' || user.role === 'superadmin') return true
+    const perms = user.permissions ? (() => { try { return JSON.parse(user.permissions) } catch { return [] } })() : []
+    if (!Array.isArray(perms) || perms.length === 0) return true // empty = all access
+    return perms.includes('entrada.pasarRegistros')
+  }
+
   // Core fields form state
   const [fecha, setFecha] = useState(todayISO())
   const [clienteId, setClienteId] = useState('')
@@ -123,9 +134,9 @@ export function EntradaView() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // Auto-transfer timer
+  // Auto-transfer timer (only if user has permission)
   useEffect(() => {
-    if (transferMode !== 'auto') return
+    if (transferMode !== 'auto' || !canPasarRegistros()) return
     function checkAutoTransfer() {
       const now = new Date()
       const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
@@ -398,7 +409,7 @@ export function EntradaView() {
           <button onClick={handleSave} disabled={loading} className="flex-1 h-12 rounded-xl bg-[#2bb24c] hover:bg-[#23963e] active:scale-[0.98] transition-all text-white text-sm font-bold shadow-md shadow-green-200/50 disabled:opacity-50 flex items-center justify-center gap-2">
             <Save className="h-4 w-4" />{editingId ? 'ACTUALIZAR' : 'GUARDAR'}
           </button>
-          {transferMode === 'manual' && activeEntries.length > 0 && (
+          {transferMode === 'manual' && activeEntries.length > 0 && canPasarRegistros() && (
             <button onClick={handleTransfer} disabled={transferring} className="flex-1 h-12 rounded-xl bg-[#005bb5] hover:bg-[#003d7a] active:scale-[0.98] transition-all text-white text-sm font-bold shadow-md shadow-blue-200/50 disabled:opacity-50 flex items-center justify-center gap-2">
               <ArrowRightCircle className="h-4 w-4" />{transferring ? 'Transfiriendo...' : 'PASAR AL REGISTRO'}
             </button>

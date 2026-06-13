@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, ArrowRightLeft, Clock, Zap, Eye, EyeOff, LayoutList, Pencil, Trash2, Plus, X, GripVertical, ChevronUp, ChevronDown, Users, UserPlus, Shield, Lock } from 'lucide-react'
 import {
   useConfig,
@@ -38,6 +39,7 @@ interface UserItem {
   tenantId: string
   tenantName: string
   active: boolean
+  permissions: string
   createdAt: string
 }
 
@@ -55,9 +57,41 @@ function UsersManager() {
   const [formPassword, setFormPassword] = useState('')
   const [formRole, setFormRole] = useState('user')
   const [formActive, setFormActive] = useState(true)
+  const [formPermissions, setFormPermissions] = useState<string[]>([])
   const [showForm, setShowForm] = useState(false)
 
   const isSuperadmin = currentUser?.role === 'superadmin'
+
+  // Screen permissions available for regular users
+  const SCREEN_OPTIONS = [
+    { key: 'entrada', label: 'Entrada' },
+    { key: 'entrada.pasarRegistros', label: '  ↳ Pasar a Registros', parent: 'entrada' },
+    { key: 'registros', label: 'Registros' },
+    { key: 'clientes', label: 'Clientes' },
+    { key: 'catalogo', label: 'Catálogo' },
+    { key: 'facturas', label: 'Facturas' },
+    { key: 'backup', label: 'Seguridad (Backup)' },
+  ] as const
+
+  function parsePermissions(permsStr: string): string[] {
+    if (!permsStr || permsStr.trim() === '') return []
+    try {
+      const parsed = JSON.parse(permsStr)
+      if (Array.isArray(parsed)) return parsed
+      return []
+    } catch { return [] }
+  }
+
+  function togglePermission(key: string) {
+    setFormPermissions(prev => {
+      const next = prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]
+      if (!next.includes(key)) {
+        const childKeys = SCREEN_OPTIONS.filter(o => (o as any).parent === key).map(o => o.key)
+        return next.filter(p => !childKeys.includes(p))
+      }
+      return next
+    })
+  }
 
   const loadData = useCallback(async () => {
     try {
@@ -80,13 +114,13 @@ function UsersManager() {
 
   function resetForm() {
     setEditingId(null)
-    setFormEmail(''); setFormName(''); setFormPassword(''); setFormRole('user'); setFormActive(true)
+    setFormEmail(''); setFormName(''); setFormPassword(''); setFormRole('user'); setFormActive(true); setFormPermissions([])
     setShowForm(false)
   }
 
   function handleEditUser(u: UserItem) {
     setEditingId(u.id)
-    setFormEmail(u.email); setFormName(u.name); setFormPassword(''); setFormRole(u.role); setFormActive(u.active)
+    setFormEmail(u.email); setFormName(u.name); setFormPassword(''); setFormRole(u.role); setFormActive(u.active); setFormPermissions(parsePermissions(u.permissions || ''))
     setShowForm(true)
   }
 
@@ -96,13 +130,13 @@ function UsersManager() {
 
     try {
       if (editingId) {
-        const body: Record<string, unknown> = { id: editingId, email: formEmail, name: formName, role: formRole, active: formActive }
+        const body: Record<string, unknown> = { id: editingId, email: formEmail, name: formName, role: formRole, active: formActive, permissions: formRole === 'user' ? formPermissions : [] }
         if (formPassword) body.password = formPassword
         const res = await tenantFetch('/api/users', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         if (!res.ok) { const d = await res.json().catch(() => ({})); showMsg('err', d.error || 'Error al actualizar'); return }
         showMsg('ok', 'Usuario actualizado ✓')
       } else {
-        const body = { email: formEmail, name: formName, password: formPassword, role: formRole, tenantId: currentUser?.tenantId }
+        const body = { email: formEmail, name: formName, password: formPassword, role: formRole, tenantId: currentUser?.tenantId, permissions: formRole === 'user' ? formPermissions : [] }
         const res = await tenantFetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         if (!res.ok) { const d = await res.json().catch(() => ({})); showMsg('err', d.error || 'Error al crear usuario'); return }
         showMsg('ok', 'Usuario creado ✓')
@@ -233,6 +267,36 @@ function UsersManager() {
                 </div>
               </div>
             </div>
+
+            {/* Permissions Section - only for "user" role */}
+            {formRole === 'user' && (
+              <div className="border rounded-lg p-3 bg-gray-50/50">
+                <Label className="text-xs uppercase font-bold text-slate-500 mb-2 block">Permisos de Pantallas</Label>
+                <p className="text-[11px] text-gray-500 mb-3">Selecciona las pantallas a las que este usuario tendrá acceso. Si no seleccionas ninguna, tendrá acceso a todo.</p>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {SCREEN_OPTIONS.map(opt => {
+                    const parentKey = (opt as any).parent as string | undefined
+                    const isChild = !!parentKey
+                    const parentChecked = parentKey ? formPermissions.includes(parentKey) : true
+                    return (
+                      <label key={opt.key} className={`flex items-center gap-2 px-3 py-2 rounded-md border bg-white hover:bg-blue-50/50 cursor-pointer transition-colors ${isChild ? 'ml-6 border-dashed' : ''} ${isChild && !parentChecked ? 'opacity-40 pointer-events-none' : ''}`}>
+                        <Checkbox
+                          checked={formPermissions.includes(opt.key)}
+                          onCheckedChange={() => togglePermission(opt.key)}
+                          disabled={isChild && !parentChecked}
+                        />
+                        <span className={`text-sm ${isChild ? 'text-gray-500 italic' : 'text-gray-700'}`}>{opt.label.replace(/^\s*↳\s*/, '↳ ')}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {formRole !== 'user' && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+                Los administradores tienen acceso a todas las pantallas. No es necesario configurar permisos.
+              </div>
+            )}
 
             <div className="flex gap-2">
               <Button onClick={handleSaveUser} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
