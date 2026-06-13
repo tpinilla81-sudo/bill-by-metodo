@@ -3,6 +3,14 @@ import { NextResponse } from 'next/server'
 import { requireTenantId } from '@/lib/tenant-context'
 import { getSessionUser } from '@/lib/auth'
 
+// Lookup price from catalog for a given c1/c2/clienteId
+function lookupPrecio(catalogo: { c1: string; c2: string; clienteId: string; final: number }[], c1: string, c2: string, clienteId: string): number {
+  let it = catalogo.find(x => x.c1 === c1 && x.c2 === c2 && x.clienteId === clienteId)
+  if (!it) it = catalogo.find(x => x.c1 === c1 && x.c2 === c2 && !x.clienteId)
+  if (!it) it = catalogo.find(x => x.c1 === c1 && x.c2 === c2)
+  return it ? Number(it.final) || 0 : 0
+}
+
 // GET /api/registros?filter=entrada|registros|all
 export async function GET(req: Request) {
   try {
@@ -53,13 +61,16 @@ export async function POST(req: Request) {
     if (body.batch && Array.isArray(body.batch)) {
       const rows = body.batch as Array<{
         fecha: string; clienteId: string; cliente: string;
-        c1: string; c2: string; cant: number; obs: string; customData?: string;
+        c1: string; c2: string; cant: number; obs: string; customData?: string; precioUnitario?: number;
       }>
 
       const validRows = rows.filter(r => r.fecha && r.clienteId && r.c1 && r.c2)
       if (validRows.length === 0) {
         return NextResponse.json({ error: 'No hay filas válidas' }, { status: 400 })
       }
+
+      // Lookup catalog prices for batch rows
+      const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, select: { c1: true, c2: true, clienteId: true, final: true } })
 
       const created = await db.registro.createMany({
         data: validRows.map(r => ({
@@ -70,6 +81,7 @@ export async function POST(req: Request) {
           c1: r.c1,
           c2: r.c2,
           cant: Number(r.cant) || 1,
+          precioUnitario: r.precioUnitario && r.precioUnitario > 0 ? Number(r.precioUnitario) : lookupPrecio(catalogo, r.c1, r.c2, r.clienteId),
           obs: r.obs || '',
           customData: r.customData || '',
           pasadoRegistro: true,
@@ -80,12 +92,18 @@ export async function POST(req: Request) {
     }
 
     // Single entry
-    const { fecha, clienteId, cliente, c1, c2, cant, obs, customData } = body
+    const { fecha, clienteId, cliente, c1, c2, cant, obs, customData, precioUnitario } = body
     if (!fecha || !clienteId || !c1 || !c2 || !cant) {
       return NextResponse.json({ error: 'Completa fecha, cliente, conceptos y cantidad' }, { status: 400 })
     }
+    // Lookup catalog price if not provided
+    let pu = Number(precioUnitario) || 0
+    if (!pu) {
+      const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, select: { c1: true, c2: true, clienteId: true, final: true } })
+      pu = lookupPrecio(catalogo, c1, c2, clienteId)
+    }
     const registro = await db.registro.create({
-      data: { tenantId: tid, fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '', customData: customData || '', pasadoRegistro: false }
+      data: { tenantId: tid, fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, precioUnitario: pu, obs: obs || '', customData: customData || '', pasadoRegistro: false }
     })
     return NextResponse.json(registro, { status: 201 })
   } catch (err) {
@@ -123,7 +141,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ count: result.count })
     }
 
-    const { id, fecha, clienteId, cliente, c1, c2, cant, obs, customData, facturado } = body
+    const { id, fecha, clienteId, cliente, c1, c2, cant, obs, customData, facturado, precioUnitario } = body
     if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
     // Verify ownership
@@ -134,6 +152,7 @@ export async function PUT(req: Request) {
     const data: any = { fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '' }
     if (customData !== undefined) data.customData = customData
     if (facturado !== undefined) data.facturado = Boolean(facturado)
+    if (precioUnitario !== undefined) data.precioUnitario = Number(precioUnitario)
     const registro = await db.registro.update({ where: { id }, data })
     return NextResponse.json(registro)
   } catch (err) {

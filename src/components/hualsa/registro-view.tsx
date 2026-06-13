@@ -70,13 +70,19 @@ export function RegistroView() {
     return it ? Number(it.final) || 0 : 0
   }
 
+  // Use stored precioUnitario if available, otherwise fall back to catalog lookup
+  function getPrecio(r: Registro): number {
+    return r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+  }
+
   async function handleSave() {
     if (!fecha || !clienteId || !c1 || !c2 || !cant) {
       alert('Completa fecha, cliente, conceptos y cantidad')
       return
     }
     const cli = clientes.find(c => c.id === clienteId)
-    const body = { fecha, clienteId, cliente: cli?.nombre || '', c1, c2, cant: Number(cant), obs }
+    const currentPrice = precioUnit(c1, c2, clienteId)
+    const body = { fecha, clienteId, cliente: cli?.nombre || '', c1, c2, cant: Number(cant), obs, precioUnitario: currentPrice }
 
     if (editingId) {
       await fetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
@@ -130,7 +136,7 @@ export function RegistroView() {
   let tCant = 0, tImp = 0
   filtered.forEach(r => {
     tCant += r.cant
-    tImp += precioUnit(r.c1, r.c2, r.clienteId) * r.cant
+    tImp += getPrecio(r) * r.cant
   })
 
   return (
@@ -260,7 +266,7 @@ export function RegistroView() {
           </thead>
           <tbody>
             {filtered.map(r => {
-              const pu = precioUnit(r.c1, r.c2, r.clienteId)
+              const pu = getPrecio(r)
               const imp = pu * r.cant
               const d = new Date(r.fecha)
               return (

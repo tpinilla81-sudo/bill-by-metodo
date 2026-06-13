@@ -187,7 +187,8 @@ export function EntradaView() {
     }
     const cli = clientes.find(c => c.id === clienteId)
     const customDataStr = serializeCustomData(customValues)
-    const body = { fecha, clienteId, cliente: cli?.nombre || '', c1, c2, cant: Number(cant), obs, customData: customDataStr }
+    const currentPrice = precioUnit(c1, c2, clienteId)
+    const body = { fecha, clienteId, cliente: cli?.nombre || '', c1, c2, cant: Number(cant), obs, customData: customDataStr, precioUnitario: currentPrice }
 
     if (editingId) {
       await fetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })

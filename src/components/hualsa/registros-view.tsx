@@ -70,6 +70,7 @@ export function RegistrosView() {
   const [editC2, setEditC2] = useState('')
   const [editCant, setEditCant] = useState('')
   const [editObs, setEditObs] = useState('')
+  const [editPrecioUnitario, setEditPrecioUnitario] = useState('')
   const [editModalOpen, setEditModalOpen] = useState(false)
 
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
@@ -90,6 +91,11 @@ export function RegistrosView() {
     return it ? Number(it.final) || 0 : 0
   }
 
+  // Use stored precioUnitario if available, otherwise fall back to catalog lookup
+  function getPrecio(r: Registro): number {
+    return r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+  }
+
   const c1FilterOptions = [...new Set(catalogo.map(x => x.c1))].sort()
 
   const filtered = registros.filter(r => {
@@ -102,7 +108,7 @@ export function RegistrosView() {
   }).sort((a, b) => a.fecha.localeCompare(b.fecha))
 
   let tCant = 0, tImp = 0
-  filtered.forEach(r => { tCant += r.cant; tImp += precioUnit(r.c1, r.c2, r.clienteId) * r.cant })
+  filtered.forEach(r => { tCant += r.cant; tImp += getPrecio(r) * r.cant })
 
   function showStatus(type: 'ok' | 'err', text: string) {
     setStatusMsg({ type, text }); setTimeout(() => setStatusMsg(null), 4000)
@@ -257,7 +263,7 @@ export function RegistrosView() {
   async function handleExportData() {
     const XLSX = await import('xlsx')
     const rows = filtered.map(r => {
-      const pu = precioUnit(r.c1, r.c2, r.clienteId)
+      const pu = getPrecio(r)
       const imp = pu * r.cant
       const customData = parseCustomData((r as Record<string, unknown>).customData as string || '')
       const row: Record<string, unknown> = {
@@ -285,11 +291,12 @@ export function RegistrosView() {
     setEditC2(r.c2)
     setEditCant(String(r.cant))
     setEditObs(r.obs || '')
+    setEditPrecioUnitario(r.precioUnitario > 0 ? String(r.precioUnitario) : '')
     setEditModalOpen(true)
   }
 
   function resetEditForm() {
-    setEditingId(null); setEditFecha(''); setEditClienteId(''); setEditC1(''); setEditC2(''); setEditCant(''); setEditObs(''); setEditModalOpen(false)
+    setEditingId(null); setEditFecha(''); setEditClienteId(''); setEditC1(''); setEditC2(''); setEditCant(''); setEditObs(''); setEditPrecioUnitario(''); setEditModalOpen(false)
   }
 
   async function handleUpdate() {
@@ -312,6 +319,7 @@ export function RegistrosView() {
           c2: editC2,
           cant: Number(editCant) || 1,
           obs: editObs,
+          precioUnitario: editPrecioUnitario ? Number(editPrecioUnitario) : undefined,
         })
       })
       if (res.ok) {
@@ -397,7 +405,7 @@ export function RegistrosView() {
 
   // Get cell value for a field
   function getCellValue(r: Registro, field: FieldDef): React.ReactNode {
-    const pu = precioUnit(r.c1, r.c2, r.clienteId)
+    const pu = getPrecio(r)
     const imp = pu * r.cant
     const d = new Date(r.fecha)
     const customData = parseCustomData((r as Record<string, unknown>).customData as string || '')
@@ -602,11 +610,15 @@ export function RegistrosView() {
               <Label className="text-xs uppercase font-bold text-slate-500">Observaciones</Label>
               <Input value={editObs} onChange={e => setEditObs(e.target.value)} />
             </div>
+            <div>
+              <Label className="text-xs uppercase font-bold text-slate-500">P. Unitario</Label>
+              <Input type="number" step="0.01" value={editPrecioUnitario} onChange={e => setEditPrecioUnitario(e.target.value)} placeholder={editC1 && editC2 ? String(precioUnit(editC1, editC2, editClienteId)) : ''} />
+            </div>
           </div>
           {editC1 && editC2 && (
             <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm">
-              <span className="text-gray-500">P.Unitario: </span><span className="font-bold">{fmtCurrency(precioUnit(editC1, editC2, editClienteId))}</span>
-              <span className="text-gray-500 ml-4">Importe: </span><span className="font-bold text-[#005bb5]">{fmtCurrency(precioUnit(editC1, editC2, editClienteId) * (Number(editCant) || 1))}</span>
+              <span className="text-gray-500">Catálogo: </span><span className="font-bold">{fmtCurrency(precioUnit(editC1, editC2, editClienteId))}</span>
+              <span className="text-gray-500 ml-4">Importe: </span><span className="font-bold text-[#005bb5]">{fmtCurrency((editPrecioUnitario ? Number(editPrecioUnitario) : precioUnit(editC1, editC2, editClienteId)) * (Number(editCant) || 1))}</span>
             </div>
           )}
           <div className="flex gap-3 mt-4">

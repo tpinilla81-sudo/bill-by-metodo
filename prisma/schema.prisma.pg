@@ -57,6 +57,7 @@ model Registro {
   c1              String
   c2              String
   cant            Int      @default(1)
+  precioUnitario  Float    @default(0)     // precio en el momento de la creación
   obs             String   @default("")
   pasadoRegistro  Boolean  @default(false)  // true = ya transferido a Registros
   facturado       Boolean  @default(false)  // true = ya facturado

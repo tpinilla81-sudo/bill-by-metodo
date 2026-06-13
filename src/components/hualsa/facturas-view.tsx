@@ -21,7 +21,7 @@ interface FacturasData {
   seq: number
 }
 
-type LineaFactura = { fecha: string; c1: string; c2: string; cant: number; clienteId: string; obs: string }
+type LineaFactura = { fecha: string; c1: string; c2: string; cant: number; clienteId: string; obs: string; precioUnitario: number }
 interface InvoiceData {
   cli: Cliente; lineas: LineaFactura[]
   iva: number; numero: string; fechaFact: string; modo: string; base: number; ivaImp: number; total: number
@@ -86,6 +86,11 @@ export function FacturasView() {
     return it ? Number(it.final) || 0 : 0
   }
 
+  // Use stored precioUnitario if available, otherwise fall back to catalog lookup
+  function getPrecio(r: Registro): number {
+    return r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+  }
+
   // Filtered registros
   const filtered = useMemo(() =>
     registros.filter(r => {
@@ -100,7 +105,7 @@ export function FacturasView() {
 
   const selectedItems = filtered.filter(r => selection[r.id] !== false)
   const totalCant = selectedItems.reduce((s, r) => s + r.cant, 0)
-  const totalBase = selectedItems.reduce((s, r) => s + precioUnit(r.c1, r.c2, r.clienteId) * r.cant, 0)
+  const totalBase = selectedItems.reduce((s, r) => s + getPrecio(r) * r.cant, 0)
 
   function toggleItem(id: string) {
     setSelection(prev => ({ ...prev, [id]: prev[id] === false ? true : false }))
@@ -173,7 +178,7 @@ export function FacturasView() {
     const effectiveFCliente = (fCliente && fCliente !== '__all__') ? fCliente : ''
     const targetCliId = effectiveFCliente || cliIds[0]
     const cli = clientes.find(c => c.id === targetCliId) || { id: '', nombre: '(varios)', cif: '', dir: '', cp: '', ciudad: '', prov: '', mail: '', tel: '' }
-    const lineasBase = effectiveFCliente ? sel.filter(r => r.clienteId === effectiveFCliente) : sel
+    const lineasBase: LineaFactura[] = (effectiveFCliente ? sel.filter(r => r.clienteId === effectiveFCliente) : sel).map(r => ({ fecha: r.fecha, c1: r.c1, c2: r.c2, cant: r.cant, clienteId: r.clienteId, obs: r.obs || '', precioUnitario: getPrecio(r) }))
     const iva = Number(fIva) || 0
 
     let lineas: LineaFactura[]
@@ -182,7 +187,7 @@ export function FacturasView() {
       lineasBase.forEach(r => {
         const mes = r.fecha.slice(0, 7)
         const k = mes + '|' + r.c1 + '|' + r.c2
-        if (!map[k]) map[k] = { fecha: mes + '-01', c1: r.c1, c2: r.c2, cant: 0, clienteId: r.clienteId, obs: '' }
+        if (!map[k]) map[k] = { fecha: mes + '-01', c1: r.c1, c2: r.c2, cant: 0, clienteId: r.clienteId, obs: '', precioUnitario: getPrecio(r) }
         map[k].cant += r.cant
       })
       lineas = Object.values(map).sort((a, b) => a.fecha.localeCompare(b.fecha))
@@ -190,7 +195,7 @@ export function FacturasView() {
       lineas = lineasBase
     }
 
-    const base = lineas.reduce((s, r) => s + precioUnit(r.c1, r.c2, r.clienteId) * r.cant, 0)
+    const base = lineas.reduce((s, r) => s + (r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)) * r.cant, 0)
     const ivaImp = base * iva / 100
     const total = base + ivaImp
 
@@ -432,7 +437,7 @@ export function FacturasView() {
 
     // Line items
     lineas.forEach(r => {
-      const pu = precioUnit(r.c1, r.c2, r.clienteId)
+      const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
       wsData.push([fechaLbl(r.fecha), r.c1 + (r.c2 ? ' - ' + r.c2 : ''), r.cant, pu, pu * r.cant])
     })
 
@@ -633,7 +638,7 @@ export function FacturasView() {
             </thead>
             <tbody>
               {filtered.map(r => {
-                const pu = precioUnit(r.c1, r.c2, r.clienteId)
+                const pu = getPrecio(r)
                 const imp = pu * r.cant
                 const sel = selection[r.id] !== false
                 const isFacturado = r.facturado === true
@@ -754,7 +759,7 @@ function InvoicePreview({ data, catalogo, config }: {
         </thead>
         <tbody>
           {lineas.map((r, i) => {
-            const pu = precioUnit(r.c1, r.c2, r.clienteId)
+            const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
             return (
               <tr key={i}>
                 <td className="p-2 border border-gray-400">{fechaLbl(r.fecha)}</td>

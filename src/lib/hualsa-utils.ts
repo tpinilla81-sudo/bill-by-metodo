@@ -70,6 +70,7 @@ export interface Registro {
   c1: string
   c2: string
   cant: number
+  precioUnitario: number
   obs: string
   pasadoRegistro: boolean
   facturado: boolean

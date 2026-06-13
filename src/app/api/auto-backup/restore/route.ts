@@ -73,6 +73,7 @@ export async function POST(req: Request) {
         c1: (r.c1 as string) || '',
         c2: (r.c2 as string) || '',
         cant: Number(r.cant) || 1,
+        precioUnitario: Number(r.precioUnitario) || 0,
         obs: (r.obs as string) || '',
         facturado: Boolean(r.facturado),
         pasadoRegistro: Boolean(r.pasadoRegistro),
