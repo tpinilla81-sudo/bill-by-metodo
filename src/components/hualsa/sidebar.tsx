@@ -1,8 +1,9 @@
 'use client'
 
-import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown, CreditCard } from 'lucide-react'
+import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown, CreditCard, Building2, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useConfig } from '@/lib/config'
+import { useAuth, type TenantOption } from '@/lib/auth-context'
 import type { View } from '@/app/page'
 
 interface TenantInfo {
@@ -33,6 +34,10 @@ interface SidebarProps {
   user: SessionUser
   tenant: TenantInfo | null
   onLogout: () => void
+  effectiveTenantId?: string | null
+  effectiveTenantName?: string | null
+  availableTenants?: TenantOption[]
+  onTenantChange?: (tenantId: string) => void
 }
 
 // All available screen permission keys (including sub-permissions)
@@ -50,7 +55,7 @@ function parsePermissions(permissionsStr: string): string[] {
   }
 }
 
-export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, tenant, onLogout }: SidebarProps) {
+export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, tenant, onLogout, effectiveTenantId, effectiveTenantName, availableTenants, onTenantChange }: SidebarProps) {
   const { config } = useConfig()
 
   const isSuperadmin = user?.role === 'superadmin'
@@ -127,6 +132,24 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
             style={{ maxWidth: '180px', maxHeight: '55px', height: 'auto', objectFit: 'contain' }}
           />
         </div>
+
+        {/* Tenant selector for superadmin */}
+        {isSuperadmin && availableTenants && availableTenants.length > 0 && (
+          <div className="flex-shrink-0 px-3 py-2 border-b border-gray-700/50">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+              <Building2 className="h-3 w-3" /> Empresa activa
+            </div>
+            <select
+              value={effectiveTenantId || user.tenantId}
+              onChange={(e) => onTenantChange?.(e.target.value)}
+              className="w-full bg-[#2a2a2a] text-white text-xs rounded-lg px-2.5 py-2 border border-gray-600 focus:border-[#005bb5] focus:outline-none cursor-pointer hover:bg-[#333] transition-colors"
+            >
+              {availableTenants.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Navigation - scrollable */}
         <nav className="flex-1 flex flex-col overflow-y-auto min-h-0">

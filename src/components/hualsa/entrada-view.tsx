@@ -198,7 +198,7 @@ export function EntradaView() {
     }
     const cli = clientes.find(c => c.id === clienteId)
     const customDataStr = serializeCustomData(customValues)
-    const currentPrice = precioUnit(c1, c2, clienteId)
+    const currentPrice = autoPrice || 0
     const body = { fecha, clienteId, cliente: cli?.nombre || '', c1, c2, cant: Number(cant), obs, customData: customDataStr, precioUnitario: currentPrice }
 
     if (editingId) {

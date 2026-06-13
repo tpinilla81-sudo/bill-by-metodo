@@ -55,7 +55,7 @@ export function hasSubPermission(userRole: string, userPermissions: string, subK
 }
 
 function AppContent() {
-  const { user, loading, login, logout } = useAuth()
+  const { user, loading, login, logout, effectiveTenantId, effectiveTenantName, availableTenants, setEffectiveTenantId } = useAuth()
   const [activeView, setActiveView] = useState<View>('entrada')
   const [mobileOpen, setMobileOpen] = useState(false)
   const { config } = useConfig()
@@ -155,11 +155,16 @@ function AppContent() {
         user={sessionUser}
         tenant={tenant}
         onLogout={logout}
+        effectiveTenantId={effectiveTenantId}
+        effectiveTenantName={effectiveTenantName}
+        availableTenants={availableTenants}
+        onTenantChange={setEffectiveTenantId}
       />
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Table views: manage their own internal scroll */}
+        {/* key={effectiveTenantId} forces remount when superadmin switches tenant, ensuring fresh data */}
         {['entrada','registros','clientes','catalogo','facturas'].includes(activeView) && (
-          <div className="p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 overflow-hidden">
+          <div key={effectiveTenantId} className="p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 overflow-hidden">
             {activeView === 'entrada' && hasPermission(user.role, user.permissions, 'entrada') && <div className="h-full flex flex-col"><EntradaView /></div>}
             {activeView === 'registros' && hasPermission(user.role, user.permissions, 'registros') && <div className="h-full flex flex-col"><RegistrosView /></div>}
             {activeView === 'clientes' && hasPermission(user.role, user.permissions, 'clientes') && <div className="h-full flex flex-col"><ClientesView /></div>}
@@ -169,10 +174,10 @@ function AppContent() {
         )}
         {/* Scrollable views: config, admin, backup, suscripcion */}
         {['backup','suscripcion','config','admin'].includes(activeView) && (
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div key={`${activeView}-${effectiveTenantId}`} className="flex-1 min-h-0 overflow-y-auto">
             <div className="p-3 md:p-6 pt-16 md:pt-6 pb-8">
               {activeView === 'backup' && hasPermission(user.role, user.permissions, 'backup') && <BackupView />}
-              {activeView === 'suscripcion' && (user.role === 'admin' || user.role === 'superadmin') && <PlansView tenantId={user.tenantId} />}
+              {activeView === 'suscripcion' && (user.role === 'admin' || user.role === 'superadmin') && <PlansView tenantId={effectiveTenantId || user.tenantId} />}
               {activeView === 'config' && (user.role === 'admin' || user.role === 'superadmin') && <ConfiguracionView tenant={tenant} />}
               {activeView === 'admin' && user.role === 'superadmin' && <AdminView />}
             </div>

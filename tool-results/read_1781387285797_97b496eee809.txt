@@ -1,0 +1,1003 @@
+     1→'use client'
+     2→
+     3→import { useState, useCallback, useEffect } from 'react'
+     4→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     5→import { Input } from '@/components/ui/input'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Label } from '@/components/ui/label'
+     8→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+     9→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    10→import { Switch } from '@/components/ui/switch'
+    11→import { Checkbox } from '@/components/ui/checkbox'
+    12→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+    13→import { Building2, Users, Plus, Pencil, Trash2, CheckCircle, Shield, Copy, Eye, EyeOff, KeyRound, CreditCard, Zap, Clock, TrendingUp } from 'lucide-react'
+    14→
+    15→// ─── Types ───────────────────────────────────────────────────
+    16→interface Tenant {
+    17→  id: string
+    18→  name: string
+    19→  slug: string
+    20→  fullName: string
+    21→  address: string
+    22→  city: string
+    23→  province: string
+    24→  cif: string
+    25→  logo: string
+    26→  active: boolean
+    27→  plan: string
+    28→  planStatus: string
+    29→  planExpiresAt: string | null
+    30→  maxUsers: number
+    31→  maxRegistros: number
+    32→  userCount: number
+    33→  registroCount: number
+    34→  createdAt: string
+    35→}
+    36→
+    37→interface AutoUser {
+    38→  id: string
+    39→  email: string
+    40→  password: string
+    41→  name: string
+    42→  role: string
+    43→}
+    44→
+    45→interface UserItem {
+    46→  id: string
+    47→  email: string
+    48→  name: string
+    49→  role: string
+    50→  tenantId: string
+    51→  tenantName: string
+    52→  active: boolean
+    53→  permissions: string
+    54→  createdAt: string
+    55→}
+    56→
+    57→// Screen permissions available for regular users
+    58→const SCREEN_OPTIONS = [
+    59→  { key: 'entrada', label: 'Entrada' },
+    60→  { key: 'entrada.pasarRegistros', label: '  ↳ Pasar a Registros', parent: 'entrada' },
+    61→  { key: 'registros', label: 'Registros' },
+    62→  { key: 'clientes', label: 'Clientes' },
+    63→  { key: 'catalogo', label: 'Catálogo' },
+    64→  { key: 'facturas', label: 'Facturas' },
+    65→  { key: 'backup', label: 'Seguridad (Backup)' },
+    66→] as const
+    67→
+    68→// Plan configuration
+    69→const PLAN_CONFIG: Record<string, { label: string; maxUsers: number; maxRegistros: number; desc: string; color: string }> = {
+    70→  gratuito: { label: 'Gratuito', maxUsers: 1, maxRegistros: 100, desc: 'Sin soporte', color: 'bg-gray-100 text-gray-700' },
+    71→  mensual: { label: 'Mensual', maxUsers: 5, maxRegistros: 5000, desc: 'Soporte email', color: 'bg-blue-100 text-blue-700' },
+    72→  trimestral: { label: 'Trimestral', maxUsers: 15, maxRegistros: 20000, desc: 'Soporte prioritario', color: 'bg-purple-100 text-purple-700' },
+    73→  anual: { label: 'Anual', maxUsers: 999, maxRegistros: 999999, desc: 'Soporte dedicado', color: 'bg-amber-100 text-amber-700' },
+    74→}
+    75→
+    76→// Parse permissions from JSON string
+    77→function parsePermissions(permsStr: string): string[] {
+    78→  if (!permsStr || permsStr.trim() === '') return []
+    79→  try {
+    80→    const parsed = JSON.parse(permsStr)
+    81→    if (Array.isArray(parsed)) return parsed
+    82→    return []
+    83→  } catch {
+    84→    return []
+    85→  }
+    86→}
+    87→
+    88→// ─── Tenants Tab ─────────────────────────────────────────────
+    89→function TenantsTab() {
+    90→  const [tenants, setTenants] = useState<Tenant[]>([])
+    91→  const [loading, setLoading] = useState(true)
+    92→  const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+    93→  const [showDialog, setShowDialog] = useState(false)
+    94→  const [editId, setEditId] = useState<string | null>(null)
+    95→  const [createdCredentials, setCreatedCredentials] = useState<AutoUser | null>(null)
+    96→
+    97→  // Form state — only name needed for creation
+    98→  const [formName, setFormName] = useState('')
+    99→  const [formSlug, setFormSlug] = useState('')
+   100→  const [formActive, setFormActive] = useState(true)
+   101→
+   102→  const loadData = useCallback(async () => {
+   103→    try {
+   104→      const res = await fetch('/api/tenants')
+   105→      if (res.ok) setTenants(await res.json())
+   106→    } catch (err) {
+   107→      console.error('Error loading tenants:', err)
+   108→    }
+   109→    setLoading(false)
+   110→  }, [])
+   111→
+   112→  // eslint-disable-next-line react-hooks/set-state-in-effect
+   113→  useEffect(() => { loadData() }, [loadData])
+   114→
+   115→  function showMsg(type: 'ok' | 'err', text: string) {
+   116→    setStatusMsg({ type, text })
+   117→    setTimeout(() => setStatusMsg(null), 5000)
+   118→  }
+   119→
+   120→  function resetForm() {
+   121→    setEditId(null); setFormName(''); setFormSlug('')
+   122→    setFormActive(true); setShowDialog(false)
+   123→  }
+   124→
+   125→  function openCreate() {
+   126→    resetForm()
+   127→    setShowDialog(true)
+   128→  }
+   129→
+   130→  function openEdit(t: Tenant) {
+   131→    setEditId(t.id); setFormName(t.name); setFormSlug(t.slug); setFormActive(t.active)
+   132→    setShowDialog(true)
+   133→  }
+   134→
+   135→  // Auto-generate slug from name
+   136→  function handleNameChange(name: string) {
+   137→    setFormName(name)
+   138→    if (!editId) {
+   139→      const slug = name.trim().toLowerCase()
+   140→        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+   141→        .replace(/[^a-z0-9\s-]/g, '')
+   142→        .replace(/[\s_]+/g, '-')
+   143→        .replace(/-+/g, '-')
+   144→        .replace(/^-|-$/g, '')
+   145→      setFormSlug(slug)
+   146→    }
+   147→  }
+   148→
+   149→  async function handleSave() {
+   150→    if (!editId && !formName.trim()) {
+   151→      showMsg('err', 'El nombre es obligatorio')
+   152→      return
+   153→    }
+   154→
+   155→    try {
+   156→      if (editId) {
+   157→        // Update — only active status can be changed by superadmin
+   158→        const res = await fetch('/api/tenants', {
+   159→          method: 'PUT',
+   160→          headers: { 'Content-Type': 'application/json' },
+   161→          body: JSON.stringify({
+   162→            id: editId,
+   163→            active: formActive,
+   164→          }),
+   165→        })
+   166→        if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+   167→        showMsg('ok', 'Empresa actualizada ✓')
+   168→      } else {
+   169→        // Create — name only, this also auto-creates an admin user
+   170→        const res = await fetch('/api/tenants', {
+   171→          method: 'POST',
+   172→          headers: { 'Content-Type': 'application/json' },
+   173→          body: JSON.stringify({
+   174→            name: formName,
+   175→            slug: formSlug,
+   176→          }),
+   177→        })
+   178→        if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+   179→        const data = await res.json()
+   180→        showMsg('ok', 'Empresa creada con usuario admin automático ✓')
+   181→        // Show the auto-generated credentials
+   182→        if (data.autoUser) {
+   183→          setCreatedCredentials(data.autoUser)
+   184→        }
+   185→      }
+   186→      resetForm()
+   187→      loadData()
+   188→    } catch {
+   189→      showMsg('err', 'Error de conexión')
+   190→    }
+   191→  }
+   192→
+   193→  async function handleToggleActive(t: Tenant) {
+   194→    const newActive = !t.active
+   195→    if (!confirm(`¿${newActive ? 'Activar' : 'Desactivar'} la empresa "${t.name}"?`)) return
+   196→
+   197→    try {
+   198→      const res = await fetch('/api/tenants', {
+   199→        method: 'PUT',
+   200→        headers: { 'Content-Type': 'application/json' },
+   201→        body: JSON.stringify({ id: t.id, active: newActive }),
+   202→      })
+   203→      if (!res.ok) { showMsg('err', 'Error al actualizar'); return }
+   204→      showMsg('ok', `Empresa ${newActive ? 'activada' : 'desactivada'} ✓`)
+   205→      loadData()
+   206→    } catch {
+   207→      showMsg('err', 'Error de conexión')
+   208→    }
+   209→  }
+   210→
+   211→  function copyToClipboard(text: string) {
+   212→    navigator.clipboard.writeText(text)
+   213→    showMsg('ok', 'Copiado al portapapeles ✓')
+   214→  }
+   215→
+   216→  if (loading) return <div className="p-6 text-center text-gray-400">Cargando empresas...</div>
+   217→
+   218→  return (
+   219→    <div className="space-y-4">
+   220→      {statusMsg && (
+   221→        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+   222→          {statusMsg.type === 'ok' && <CheckCircle className="h-4 w-4" />}
+   223→          {statusMsg.text}
+   224→        </div>
+   225→      )}
+   226→
+   227→      {/* Credentials display dialog */}
+   228→      {createdCredentials && (
+   229→        <Card className="border-2 border-[#2bb24c] bg-green-50/50">
+   230→          <CardHeader>
+   231→            <CardTitle className="text-base flex items-center gap-2">
+   232→              <KeyRound className="h-5 w-5 text-[#2bb24c]" />
+   233→              Credenciales generadas automáticamente
+   234→            </CardTitle>
+   235→          </CardHeader>
+   236→          <CardContent className="space-y-3">
+   237→            <p className="text-sm text-gray-600">
+   238→              Se ha creado un usuario administrador para esta empresa. <strong>Guarda estas credenciales</strong>, la contraseña no se volverá a mostrar.
+   239→            </p>
+   240→            <div className="bg-white rounded-lg p-4 space-y-2 border">
+   241→              <div className="flex items-center gap-2">
+   242→                <Label className="text-xs uppercase font-bold text-slate-500 w-24">Email:</Label>
+   243→                <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded flex-1">{createdCredentials.email}</code>
+   244→                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => copyToClipboard(createdCredentials.email)}>
+   245→                  <Copy className="h-3.5 w-3.5" />
+   246→                </Button>
+   247→              </div>
+   248→              <div className="flex items-center gap-2">
+   249→                <Label className="text-xs uppercase font-bold text-slate-500 w-24">Contraseña:</Label>
+   250→                <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded flex-1">{createdCredentials.password}</code>
+   251→                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => copyToClipboard(createdCredentials.password)}>
+   252→                  <Copy className="h-3.5 w-3.5" />
+   253→                </Button>
+   254→              </div>
+   255→              <div className="flex items-center gap-2">
+   256→                <Label className="text-xs uppercase font-bold text-slate-500 w-24">Rol:</Label>
+   257→                <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">
+   258→                  <Shield className="h-3 w-3" /> Admin
+   259→                </span>
+   260→              </div>
+   261→            </div>
+   262→            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs text-amber-700">
+   263→              El administrador de la empresa deberá completar los datos (razón social, CIF, dirección, logo...) desde Configuración.
+   264→            </div>
+   265→            <div className="flex justify-end">
+   266→              <Button variant="outline" size="sm" onClick={() => setCreatedCredentials(null)}>
+   267→                Cerrar
+   268→              </Button>
+   269→            </div>
+   270→          </CardContent>
+   271→        </Card>
+   272→      )}
+   273→
+   274→      <div className="flex items-center justify-between">
+   275→        <p className="text-sm text-gray-500">Crea empresas con el nombre. Los datos, logo, etc. los completa el admin de cada empresa desde Configuración.</p>
+   276→        <Button onClick={openCreate} className="bg-[#005bb5] hover:bg-[#004a94] text-white">
+   277→          <Plus className="h-4 w-4 mr-1" /> Nueva Empresa
+   278→        </Button>
+   279→      </div>
+   280→
+   281→      <div className="bg-white rounded-lg border overflow-auto shadow-sm">
+   282→        <table className="w-full text-sm">
+   283→          <thead>
+   284→            <tr className="bg-blue-50">
+   285→              <th className="p-3 text-left font-semibold border-b">Nombre</th>
+   286→              <th className="p-3 text-left font-semibold border-b">Slug</th>
+   287→              <th className="p-3 text-center font-semibold border-b">Plan</th>
+   288→              <th className="p-3 text-center font-semibold border-b">Usuarios</th>
+   289→              <th className="p-3 text-center font-semibold border-b">Registros</th>
+   290→              <th className="p-3 text-center font-semibold border-b">Estado</th>
+   291→              <th className="p-3 text-center font-semibold border-b">Acciones</th>
+   292→            </tr>
+   293→          </thead>
+   294→          <tbody>
+   295→            {tenants.map(t => {
+   296→              const planCfg = PLAN_CONFIG[t.plan] || PLAN_CONFIG.gratuito
+   297→              return (
+   298→                <tr key={t.id} className={`border-b hover:bg-gray-50 ${!t.active ? 'opacity-50' : ''}`}>
+   299→                  <td className="p-3 font-bold text-gray-800">{t.name}</td>
+   300→                  <td className="p-3 text-gray-500 font-mono text-xs">{t.slug}</td>
+   301→                  <td className="p-3 text-center">
+   302→                    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${planCfg.color}`}>
+   303→                      {planCfg.label}
+   304→                    </span>
+   305→                  </td>
+   306→                  <td className="p-3 text-center">
+   307→                    <span className={`inline-flex items-center justify-center text-xs font-bold px-2.5 py-1 rounded-full ${t.userCount >= t.maxUsers && t.maxUsers > 0 ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+   308→                      {t.userCount}/{t.maxUsers >= 999 ? '∞' : t.maxUsers}
+   309→                    </span>
+   310→                  </td>
+   311→                  <td className="p-3 text-center">
+   312→                    <span className={`inline-flex items-center justify-center text-xs font-bold px-2.5 py-1 rounded-full ${t.registroCount >= t.maxRegistros && t.maxRegistros < 999999 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+   313→                      {t.registroCount}/{t.maxRegistros >= 999999 ? '∞' : t.maxRegistros.toLocaleString()}
+   314→                    </span>
+   315→                  </td>
+   316→                  <td className="p-3 text-center">
+   317→                    <button onClick={() => handleToggleActive(t)} className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full cursor-pointer transition-colors ${t.active ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}>
+   318→                      {t.active ? 'Activo' : 'Inactivo'}
+   319→                    </button>
+   320→                  </td>
+   321→                  <td className="p-3 text-center">
+   322→                    <Button size="icon" variant="ghost" className="h-8 w-8 text-[#005bb5] hover:bg-blue-50" onClick={() => openEdit(t)}>
+   323→                      <Pencil className="h-4 w-4" />
+   324→                    </Button>
+   325→                  </td>
+   326→                </tr>
+   327→              )
+   328→            })}
+   329→            {tenants.length === 0 && (
+   330→              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay empresas creadas</td></tr>
+   331→            )}
+   332→          </tbody>
+   333→        </table>
+   334→      </div>
+   335→
+   336→      {/* Create/Edit Dialog */}
+   337→      <Dialog open={showDialog} onOpenChange={(open) => { if (!open) resetForm() }}>
+   338→        <DialogContent className="max-w-md">
+   339→          <DialogHeader>
+   340→            <DialogTitle className="flex items-center gap-2">
+   341→              <Building2 className="h-5 w-5 text-[#005bb5]" />
+   342→              {editId ? 'Editar Empresa' : 'Nueva Empresa'}
+   343→            </DialogTitle>
+   344→          </DialogHeader>
+   345→          <div className="space-y-4 py-2">
+   346→            <div>
+   347→              <Label className="text-xs uppercase font-bold text-slate-500">Nombre de la empresa</Label>
+   348→              {editId ? (
+   349→                <div className="flex items-center gap-2 mt-1">
+   350→                  <Input value={formName} disabled className="bg-gray-50 text-gray-500" />
+   351→                  <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-bold whitespace-nowrap">FIJO</span>
+   352→                </div>
+   353→              ) : (
+   354→                <Input value={formName} onChange={e => handleNameChange(e.target.value)} placeholder="Ej: Transportes Hualsa" className="mt-1" />
+   355→              )}
+   356→            </div>
+   357→            {!editId && formSlug && (
+   358→              <div>
+   359→                <Label className="text-xs uppercase font-bold text-slate-500">Slug (auto-generado)</Label>
+   360→                <Input value={formSlug} disabled className="bg-gray-50 text-gray-500 font-mono mt-1" />
+   361→                <p className="text-[10px] text-gray-400 mt-1">Se creará el admin: <strong>{formSlug}@bill.es</strong></p>
+   362→              </div>
+   363→            )}
+   364→
+   365→            {/* Active toggle (only for edit) */}
+   366→            {editId && (
+   367→              <div className="flex items-center gap-3">
+   368→                <Label className="text-xs uppercase font-bold text-slate-500">Activo</Label>
+   369→                <Switch checked={formActive} onCheckedChange={setFormActive} />
+   370→                <span className={`text-xs font-bold ${formActive ? 'text-green-600' : 'text-red-500'}`}>
+   371→                  {formActive ? 'Activo' : 'Inactivo'}
+   372→                </span>
+   373→              </div>
+   374→            )}
+   375→
+   376→            {/* Info banner for creation */}
+   377→            {!editId && (
+   378→              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+   379→                <KeyRound className="h-4 w-4 text-[#005bb5] mt-0.5 shrink-0" />
+   380→                <div className="text-xs text-blue-700 space-y-1">
+   381→                  <p>Al crear la empresa se generará automáticamente un usuario administrador con email <strong>{formSlug || '...'}@bill.es</strong> y una contraseña aleatoria.</p>
+   382→                  <p>El administrador de la empresa completará los datos (razón social, CIF, dirección, logo...) desde su sección de Configuración.</p>
+   383→                  <p>La empresa se crea con el plan <strong>Gratuito</strong> (1 usuario, 100 registros). Puedes cambiar el plan desde la pestaña Suscripciones.</p>
+   384→                </div>
+   385→              </div>
+   386→            )}
+   387→          </div>
+   388→          <DialogFooter>
+   389→            <Button variant="outline" onClick={resetForm}>Cancelar</Button>
+   390→            <Button onClick={handleSave} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
+   391→              <CheckCircle className="h-4 w-4 mr-1" /> {editId ? 'ACTUALIZAR' : 'CREAR'}
+   392→            </Button>
+   393→          </DialogFooter>
+   394→        </DialogContent>
+   395→      </Dialog>
+   396→    </div>
+   397→  )
+   398→}
+   399→
+   400→// ─── Users Tab ───────────────────────────────────────────────
+   401→function UsersTab() {
+   402→  const [users, setUsers] = useState<UserItem[]>([])
+   403→  const [tenants, setTenants] = useState<Tenant[]>([])
+   404→  const [loading, setLoading] = useState(true)
+   405→  const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+   406→  const [showDialog, setShowDialog] = useState(false)
+   407→  const [editId, setEditId] = useState<string | null>(null)
+   408→  const [showPassword, setShowPassword] = useState(false)
+   409→
+   410→  // Form state
+   411→  const [formEmail, setFormEmail] = useState('')
+   412→  const [formPassword, setFormPassword] = useState('')
+   413→  const [formName, setFormName] = useState('')
+   414→  const [formRole, setFormRole] = useState('user')
+   415→  const [formTenantId, setFormTenantId] = useState('')
+   416→  const [formActive, setFormActive] = useState(true)
+   417→  const [formPermissions, setFormPermissions] = useState<string[]>([])
+   418→
+   419→  const loadData = useCallback(async () => {
+   420→    try {
+   421→      const [uRes, tRes] = await Promise.all([fetch('/api/users'), fetch('/api/tenants')])
+   422→      if (uRes.ok) setUsers(await uRes.json())
+   423→      if (tRes.ok) setTenants(await tRes.json())
+   424→    } catch (err) {
+   425→      console.error('Error loading users:', err)
+   426→    }
+   427→    setLoading(false)
+   428→  }, [])
+   429→
+   430→  // eslint-disable-next-line react-hooks/set-state-in-effect
+   431→  useEffect(() => { loadData() }, [loadData])
+   432→
+   433→  function showMsg(type: 'ok' | 'err', text: string) {
+   434→    setStatusMsg({ type, text })
+   435→    setTimeout(() => setStatusMsg(null), 3000)
+   436→  }
+   437→
+   438→  function resetForm() {
+   439→    setEditId(null); setFormEmail(''); setFormPassword(''); setFormName('')
+   440→    setFormRole('user'); setFormTenantId(''); setFormActive(true); setShowDialog(false)
+   441→    setShowPassword(false); setFormPermissions([])
+   442→  }
+   443→
+   444→  function openCreate() {
+   445→    resetForm()
+   446→    if (tenants.length > 0) setFormTenantId(tenants[0].id)
+   447→    setShowDialog(true)
+   448→  }
+   449→
+   450→  function openEdit(u: UserItem) {
+   451→    setEditId(u.id); setFormEmail(u.email); setFormPassword(''); setFormName(u.name)
+   452→    setFormRole(u.role); setFormTenantId(u.tenantId); setFormActive(u.active)
+   453→    setFormPermissions(parsePermissions(u.permissions || ''))
+   454→    setShowDialog(true)
+   455→  }
+   456→
+   457→  function togglePermission(key: string) {
+   458→    setFormPermissions(prev => {
+   459→      const next = prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]
+   460→      // If unchecking a parent, also remove all child permissions
+   461→      if (!next.includes(key)) {
+   462→        const childKeys = SCREEN_OPTIONS.filter(o => (o as any).parent === key).map(o => o.key)
+   463→        return next.filter(p => !childKeys.includes(p))
+   464→      }
+   465→      return next
+   466→    })
+   467→  }
+   468→
+   469→  async function handleSave() {
+   470→    if (!editId && (!formEmail.trim() || !formPassword.trim())) {
+   471→      showMsg('err', 'Email y contraseña son obligatorios')
+   472→      return
+   473→    }
+   474→    if (!formTenantId) {
+   475→      showMsg('err', 'Selecciona una empresa')
+   476→      return
+   477→    }
+   478→
+   479→    try {
+   480→      if (editId) {
+   481→        const body: Record<string, unknown> = {
+   482→          id: editId,
+   483→          name: formName,
+   484→          role: formRole,
+   485→          tenantId: formTenantId,
+   486→          active: formActive,
+   487→          permissions: formRole === 'user' ? formPermissions : [],
+   488→        }
+   489→        if (formEmail.trim()) body.email = formEmail.trim()
+   490→        if (formPassword.trim()) body.password = formPassword.trim()
+   491→
+   492→        const res = await fetch('/api/users', {
+   493→          method: 'PUT',
+   494→          headers: { 'Content-Type': 'application/json' },
+   495→          body: JSON.stringify(body),
+   496→        })
+   497→        if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+   498→        showMsg('ok', 'Usuario actualizado ✓')
+   499→      } else {
+   500→        const res = await fetch('/api/users', {
+   501→          method: 'POST',
+   502→          headers: { 'Content-Type': 'application/json' },
+   503→          body: JSON.stringify({
+   504→            email: formEmail.trim(),
+   505→            password: formPassword,
+   506→            name: formName,
+   507→            role: formRole,
+   508→            tenantId: formTenantId,
+   509→            permissions: formRole === 'user' ? formPermissions : [],
+   510→          }),
+   511→        })
+   512→        if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+   513→        showMsg('ok', 'Usuario creado ✓')
+   514→      }
+   515→      resetForm()
+   516→      loadData()
+   517→    } catch {
+   518→      showMsg('err', 'Error de conexión')
+   519→    }
+   520→  }
+   521→
+   522→  async function handleDeactivate(id: string) {
+   523→    if (!confirm('¿Desactivar este usuario?')) return
+   524→    try {
+   525→      const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' })
+   526→      if (!res.ok) { const d = await res.json(); showMsg('err', d.error || 'Error al desactivar'); return }
+   527→      showMsg('ok', 'Usuario desactivado ✓')
+   528→      loadData()
+   529→    } catch {
+   530→      showMsg('err', 'Error de conexión')
+   531→    }
+   532→  }
+   533→
+   534→  function getRoleBadge(role: string) {
+   535→    switch (role) {
+   536→      case 'superadmin':
+   537→        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700"><Shield className="h-3 w-3" /> SuperAdmin</span>
+   538→      case 'admin':
+   539→        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700"><Shield className="h-3 w-3" /> Admin</span>
+   540→      default:
+   541→        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600"><Users className="h-3 w-3" /> Usuario</span>
+   542→    }
+   543→  }
+   544→
+   545→  function getPermsSummary(permsStr: string) {
+   546→    const perms = parsePermissions(permsStr)
+   547→    if (perms.length === 0) return <span className="text-xs text-gray-400">Todo</span>
+   548→    return (
+   549→      <div className="flex flex-wrap gap-1">
+   550→        {perms.map(p => {
+   551→          const opt = SCREEN_OPTIONS.find(o => o.key === p)
+   552→          return <span key={p} className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">{opt?.label || p}</span>
+   553→        })}
+   554→      </div>
+   555→    )
+   556→  }
+   557→
+   558→  if (loading) return <div className="p-6 text-center text-gray-400">Cargando usuarios...</div>
+   559→
+   560→  return (
+   561→    <div className="space-y-4">
+   562→      {statusMsg && (
+   563→        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+   564→          {statusMsg.type === 'ok' && <CheckCircle className="h-4 w-4" />}
+   565→          {statusMsg.text}
+   566→        </div>
+   567→      )}
+   568→
+   569→      <div className="flex items-center justify-between">
+   570→        <p className="text-sm text-gray-500">Gestiona los usuarios del sistema.</p>
+   571→        <Button onClick={openCreate} className="bg-[#005bb5] hover:bg-[#004a94] text-white">
+   572→          <Plus className="h-4 w-4 mr-1" /> Nuevo Usuario
+   573→        </Button>
+   574→      </div>
+   575→
+   576→      <div className="bg-white rounded-lg border overflow-auto shadow-sm">
+   577→        <table className="w-full text-sm">
+   578→          <thead>
+   579→            <tr className="bg-blue-50">
+   580→              <th className="p-3 text-left font-semibold border-b">Email</th>
+   581→              <th className="p-3 text-left font-semibold border-b">Nombre</th>
+   582→              <th className="p-3 text-center font-semibold border-b">Rol</th>
+   583→              <th className="p-3 text-left font-semibold border-b">Empresa</th>
+   584→              <th className="p-3 text-left font-semibold border-b">Permisos</th>
+   585→              <th className="p-3 text-center font-semibold border-b">Estado</th>
+   586→              <th className="p-3 text-center font-semibold border-b">Acciones</th>
+   587→            </tr>
+   588→          </thead>
+   589→          <tbody>
+   590→            {users.map(u => (
+   591→              <tr key={u.id} className={`border-b hover:bg-gray-50 ${!u.active ? 'opacity-50' : ''}`}>
+   592→                <td className="p-3 font-medium text-gray-800">{u.email}</td>
+   593→                <td className="p-3 text-gray-600">{u.name || '—'}</td>
+   594→                <td className="p-3 text-center">{getRoleBadge(u.role)}</td>
+   595→                <td className="p-3 text-gray-600">{u.tenantName}</td>
+   596→                <td className="p-3">{u.role === 'user' ? getPermsSummary(u.permissions) : <span className="text-xs text-gray-400">Todo</span>}</td>
+   597→                <td className="p-3 text-center">
+   598→                  <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${u.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+   599→                    {u.active ? 'Activo' : 'Inactivo'}
+   600→                  </span>
+   601→                </td>
+   602→                <td className="p-3 text-center">
+   603→                  <div className="flex items-center justify-center gap-1">
+   604→                    <Button size="icon" variant="ghost" className="h-8 w-8 text-[#005bb5] hover:bg-blue-50" onClick={() => openEdit(u)}>
+   605→                      <Pencil className="h-4 w-4" />
+   606→                    </Button>
+   607→                    <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500 hover:bg-red-50" onClick={() => handleDeactivate(u.id)}>
+   608→                      <Trash2 className="h-4 w-4" />
+   609→                    </Button>
+   610→                  </div>
+   611→                </td>
+   612→              </tr>
+   613→            ))}
+   614→            {users.length === 0 && (
+   615→              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay usuarios creados</td></tr>
+   616→            )}
+   617→          </tbody>
+   618→        </table>
+   619→      </div>
+   620→
+   621→      {/* Create/Edit Dialog */}
+   622→      <Dialog open={showDialog} onOpenChange={(open) => { if (!open) resetForm() }}>
+   623→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   624→          <DialogHeader>
+   625→            <DialogTitle className="flex items-center gap-2">
+   626→              <Users className="h-5 w-5 text-[#005bb5]" />
+   627→              {editId ? 'Editar Usuario' : 'Nuevo Usuario'}
+   628→            </DialogTitle>
+   629→          </DialogHeader>
+   630→          <div className="space-y-4 py-2">
+   631→            <div>
+   632→              <Label className="text-xs uppercase font-bold text-slate-500">Email</Label>
+   633→              <Input
+   634→                value={formEmail}
+   635→                onChange={e => setFormEmail(e.target.value)}
+   636→                placeholder="usuario@ejemplo.com"
+   637→                className="mt-1"
+   638→                disabled={!!editId}
+   639→              />
+   640→            </div>
+   641→            <div>
+   642→              <Label className="text-xs uppercase font-bold text-slate-500">
+   643→                {editId ? 'Nueva Contraseña (dejar vacío para mantener)' : 'Contraseña'}
+   644→              </Label>
+   645→              <div className="relative mt-1">
+   646→                <Input
+   647→                  type={showPassword ? 'text' : 'password'}
+   648→                  value={formPassword}
+   649→                  onChange={e => setFormPassword(e.target.value)}
+   650→                  placeholder={editId ? '••••••••' : 'Contraseña'}
+   651→                  required={!editId}
+   652→                />
+   653→                <button
+   654→                  type="button"
+   655→                  onClick={() => setShowPassword(!showPassword)}
+   656→                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+   657→                >
+   658→                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+   659→                </button>
+   660→              </div>
+   661→            </div>
+   662→            <div>
+   663→              <Label className="text-xs uppercase font-bold text-slate-500">Nombre</Label>
+   664→              <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Nombre completo" className="mt-1" />
+   665→            </div>
+   666→            <div className="grid grid-cols-2 gap-3">
+   667→              <div>
+   668→                <Label className="text-xs uppercase font-bold text-slate-500">Rol</Label>
+   669→                <Select value={formRole} onValueChange={(val) => {
+   670→                  setFormRole(val)
+   671→                  if (val !== 'user') setFormPermissions([])
+   672→                }}>
+   673→                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+   674→                  <SelectContent>
+   675→                    <SelectItem value="user">Usuario</SelectItem>
+   676→                    <SelectItem value="admin">Administrador</SelectItem>
+   677→                    <SelectItem value="superadmin">SuperAdmin</SelectItem>
+   678→                  </SelectContent>
+   679→                </Select>
+   680→              </div>
+   681→              <div>
+   682→                <Label className="text-xs uppercase font-bold text-slate-500">Empresa</Label>
+   683→                <Select value={formTenantId} onValueChange={setFormTenantId}>
+   684→                  <SelectTrigger className="mt-1"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+   685→                  <SelectContent>
+   686→                    {tenants.map(t => (
+   687→                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+   688→                    ))}
+   689→                  </SelectContent>
+   690→                </Select>
+   691→              </div>
+   692→            </div>
+   693→
+   694→            {/* Permissions Section - only for "user" role */}
+   695→            {formRole === 'user' && (
+   696→              <div className="border rounded-lg p-3 bg-gray-50/50">
+   697→                <Label className="text-xs uppercase font-bold text-slate-500 mb-2 block">Permisos de Pantallas</Label>
+   698→                <p className="text-[11px] text-gray-500 mb-3">Selecciona las pantallas a las que este usuario tendrá acceso. Si no seleccionas ninguna, tendrá acceso a todo.</p>
+   699→                <div className="grid grid-cols-1 gap-1.5">
+   700→                  {SCREEN_OPTIONS.map(opt => {
+   701→                    const parentKey = (opt as any).parent as string | undefined
+   702→                    const isChild = !!parentKey
+   703→                    const parentChecked = parentKey ? formPermissions.includes(parentKey) : true
+   704→                    return (
+   705→                      <label key={opt.key} className={`flex items-center gap-2 px-3 py-2 rounded-md border bg-white hover:bg-blue-50/50 cursor-pointer transition-colors ${isChild ? 'ml-6 border-dashed' : ''} ${isChild && !parentChecked ? 'opacity-40 pointer-events-none' : ''}`}>
+   706→                        <Checkbox
+   707→                          checked={formPermissions.includes(opt.key)}
+   708→                          onCheckedChange={() => togglePermission(opt.key)}
+   709→                          disabled={isChild && !parentChecked}
+   710→                        />
+   711→                        <span className={`text-sm ${isChild ? 'text-gray-500 italic' : 'text-gray-700'}`}>{opt.label.replace(/^\s*↳\s*/, '↳ ')}</span>
+   712→                      </label>
+   713→                    )
+   714→                  })}
+   715→                </div>
+   716→              </div>
+   717→            )}
+   718→
+   719→            {/* Info for admin/superadmin role */}
+   720→            {formRole !== 'user' && (
+   721→              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+   722→                Los administradores tienen acceso a todas las pantallas. No es necesario configurar permisos.
+   723→              </div>
+   724→            )}
+   725→
+   726→            {editId && (
+   727→              <div className="flex items-center gap-3">
+   728→                <Label className="text-xs uppercase font-bold text-slate-500">Activo</Label>
+   729→                <Switch checked={formActive} onCheckedChange={setFormActive} />
+   730→                <span className={`text-xs font-bold ${formActive ? 'text-green-600' : 'text-red-500'}`}>
+   731→                  {formActive ? 'Activo' : 'Inactivo'}
+   732→                </span>
+   733→              </div>
+   734→            )}
+   735→          </div>
+   736→          <DialogFooter>
+   737→            <Button variant="outline" onClick={resetForm}>Cancelar</Button>
+   738→            <Button onClick={handleSave} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
+   739→              <CheckCircle className="h-4 w-4 mr-1" /> {editId ? 'ACTUALIZAR' : 'CREAR'}
+   740→            </Button>
+   741→          </DialogFooter>
+   742→        </DialogContent>
+   743→      </Dialog>
+   744→    </div>
+   745→  )
+   746→}
+   747→
+   748→// ─── Subscriptions Tab ───────────────────────────────────────
+   749→function SubscriptionsTab() {
+   750→  const [tenants, setTenants] = useState<Tenant[]>([])
+   751→  const [loading, setLoading] = useState(true)
+   752→  const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+   753→  const [showDialog, setShowDialog] = useState(false)
+   754→  const [editTenant, setEditTenant] = useState<Tenant | null>(null)
+   755→
+   756→  // Form state
+   757→  const [formPlan, setFormPlan] = useState('gratuito')
+   758→  const [formPlanStatus, setFormPlanStatus] = useState('activo')
+   759→  const [formPlanExpiresAt, setFormPlanExpiresAt] = useState('')
+   760→
+   761→  const loadData = useCallback(async () => {
+   762→    try {
+   763→      const res = await fetch('/api/tenants')
+   764→      if (res.ok) setTenants(await res.json())
+   765→    } catch (err) {
+   766→      console.error('Error loading tenants:', err)
+   767→    }
+   768→    setLoading(false)
+   769→  }, [])
+   770→
+   771→  // eslint-disable-next-line react-hooks/set-state-in-effect
+   772→  useEffect(() => { loadData() }, [loadData])
+   773→
+   774→  function showMsg(type: 'ok' | 'err', text: string) {
+   775→    setStatusMsg({ type, text })
+   776→    setTimeout(() => setStatusMsg(null), 5000)
+   777→  }
+   778→
+   779→  function openChangePlan(t: Tenant) {
+   780→    setEditTenant(t)
+   781→    setFormPlan(t.plan)
+   782→    setFormPlanStatus(t.planStatus)
+   783→    setFormPlanExpiresAt(t.planExpiresAt ? new Date(t.planExpiresAt).toISOString().split('T')[0] : '')
+   784→    setShowDialog(true)
+   785→  }
+   786→
+   787→  async function handleSavePlan() {
+   788→    if (!editTenant) return
+   789→
+   790→    try {
+   791→      const body: Record<string, unknown> = {
+   792→        id: editTenant.id,
+   793→        plan: formPlan,
+   794→        planStatus: formPlanStatus,
+   795→      }
+   796→      if (formPlanExpiresAt) {
+   797→        body.planExpiresAt = new Date(formPlanExpiresAt).toISOString()
+   798→      } else {
+   799→        body.planExpiresAt = null
+   800→      }
+   801→
+   802→      const res = await fetch('/api/tenants', {
+   803→        method: 'PUT',
+   804→        headers: { 'Content-Type': 'application/json' },
+   805→        body: JSON.stringify(body),
+   806→      })
+   807→      if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+   808→      showMsg('ok', `Plan de "${editTenant.name}" actualizado a ${PLAN_CONFIG[formPlan]?.label || formPlan} ✓`)
+   809→      setShowDialog(false)
+   810→      setEditTenant(null)
+   811→      loadData()
+   812→    } catch {
+   813→      showMsg('err', 'Error de conexión')
+   814→    }
+   815→  }
+   816→
+   817→  if (loading) return <div className="p-6 text-center text-gray-400">Cargando suscripciones...</div>
+   818→
+   819→  return (
+   820→    <div className="space-y-4">
+   821→      {statusMsg && (
+   822→        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+   823→          {statusMsg.type === 'ok' && <CheckCircle className="h-4 w-4" />}
+   824→          {statusMsg.text}
+   825→        </div>
+   826→      )}
+   827→
+   828→      <p className="text-sm text-gray-500">Gestiona los planes de suscripción de cada empresa. Al cambiar el plan se actualizan los límites automáticamente.</p>
+   829→
+   830→      <div className="bg-white rounded-lg border overflow-auto shadow-sm">
+   831→        <table className="w-full text-sm">
+   832→          <thead>
+   833→            <tr className="bg-blue-50">
+   834→              <th className="p-3 text-left font-semibold border-b">Empresa</th>
+   835→              <th className="p-3 text-center font-semibold border-b">Plan</th>
+   836→              <th className="p-3 text-center font-semibold border-b">Estado</th>
+   837→              <th className="p-3 text-center font-semibold border-b">Expiración</th>
+   838→              <th className="p-3 text-center font-semibold border-b">Usuarios</th>
+   839→              <th className="p-3 text-center font-semibold border-b">Registros</th>
+   840→              <th className="p-3 text-center font-semibold border-b">Acciones</th>
+   841→            </tr>
+   842→          </thead>
+   843→          <tbody>
+   844→            {tenants.map(t => {
+   845→              const planCfg = PLAN_CONFIG[t.plan] || PLAN_CONFIG.gratuito
+   846→              const isExpired = t.planExpiresAt && new Date(t.planExpiresAt) < new Date()
+   847→              return (
+   848→                <tr key={t.id} className={`border-b hover:bg-gray-50 ${!t.active ? 'opacity-50' : ''}`}>
+   849→                  <td className="p-3 font-bold text-gray-800">{t.name}</td>
+   850→                  <td className="p-3 text-center">
+   851→                    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${planCfg.color}`}>
+   852→                      {planCfg.label}
+   853→                    </span>
+   854→                  </td>
+   855→                  <td className="p-3 text-center">
+   856→                    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${
+   857→                      isExpired ? 'bg-red-100 text-red-700' :
+   858→                      t.planStatus === 'activo' ? 'bg-green-100 text-green-700' :
+   859→                      t.planStatus === 'trial' ? 'bg-amber-100 text-amber-700' :
+   860→                      'bg-gray-100 text-gray-600'
+   861→                    }`}>
+   862→                      {isExpired ? 'Expirado' : t.planStatus === 'activo' ? 'Activo' : t.planStatus === 'trial' ? 'Trial' : 'Inactivo'}
+   863→                    </span>
+   864→                  </td>
+   865→                  <td className="p-3 text-center text-gray-500 text-xs">
+   866→                    {t.planExpiresAt ? new Date(t.planExpiresAt).toLocaleDateString('es-ES') : '—'}
+   867→                  </td>
+   868→                  <td className="p-3 text-center">
+   869→                    <span className={`text-xs font-bold ${t.userCount >= t.maxUsers && t.maxUsers > 0 ? 'text-red-600' : 'text-gray-600'}`}>
+   870→                      {t.userCount}/{t.maxUsers >= 999 ? '∞' : t.maxUsers}
+   871→                    </span>
+   872→                  </td>
+   873→                  <td className="p-3 text-center">
+   874→                    <span className={`text-xs font-bold ${t.registroCount >= t.maxRegistros && t.maxRegistros < 999999 ? 'text-red-600' : 'text-gray-600'}`}>
+   875→                      {t.registroCount}/{t.maxRegistros >= 999999 ? '∞' : t.maxRegistros.toLocaleString()}
+   876→                    </span>
+   877→                  </td>
+   878→                  <td className="p-3 text-center">
+   879→                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => openChangePlan(t)}>
+   880→                      <CreditCard className="h-3.5 w-3.5 mr-1" /> Cambiar Plan
+   881→                    </Button>
+   882→                  </td>
+   883→                </tr>
+   884→              )
+   885→            })}
+   886→            {tenants.length === 0 && (
+   887→              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay empresas creadas</td></tr>
+   888→            )}
+   889→          </tbody>
+   890→        </table>
+   891→      </div>
+   892→
+   893→      {/* Change Plan Dialog */}
+   894→      <Dialog open={showDialog} onOpenChange={(open) => { if (!open) { setShowDialog(false); setEditTenant(null) } }}>
+   895→        <DialogContent className="max-w-md">
+   896→          <DialogHeader>
+   897→            <DialogTitle className="flex items-center gap-2">
+   898→              <CreditCard className="h-5 w-5 text-[#005bb5]" />
+   899→              Cambiar Plan — {editTenant?.name}
+   900→            </DialogTitle>
+   901→          </DialogHeader>
+   902→          <div className="space-y-4 py-2">
+   903→            {/* Current plan info */}
+   904→            {editTenant && (
+   905→              <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-1">
+   906→                <p>Plan actual: <strong>{PLAN_CONFIG[editTenant.plan]?.label || editTenant.plan}</strong></p>
+   907→                <p>Usuarios: {editTenant.userCount}/{editTenant.maxUsers >= 999 ? '∞' : editTenant.maxUsers} · Registros: {editTenant.registroCount}/{editTenant.maxRegistros >= 999999 ? '∞' : editTenant.maxRegistros.toLocaleString()}</p>
+   908→              </div>
+   909→            )}
+   910→
+   911→            <div>
+   912→              <Label className="text-xs uppercase font-bold text-slate-500">Plan</Label>
+   913→              <Select value={formPlan} onValueChange={setFormPlan}>
+   914→                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+   915→                <SelectContent>
+   916→                  <SelectItem value="gratuito">Gratuito — 1 usuario, 100 registros</SelectItem>
+   917→                  <SelectItem value="mensual">Mensual — 5 usuarios, 5.000 registros</SelectItem>
+   918→                  <SelectItem value="trimestral">Trimestral — 15 usuarios, 20.000 registros</SelectItem>
+   919→                  <SelectItem value="anual">Anual — usuarios ∞, registros ∞</SelectItem>
+   920→                </SelectContent>
+   921→              </Select>
+   922→            </div>
+   923→
+   924→            <div className="grid grid-cols-2 gap-3">
+   925→              <div>
+   926→                <Label className="text-xs uppercase font-bold text-slate-500">Estado del Plan</Label>
+   927→                <Select value={formPlanStatus} onValueChange={setFormPlanStatus}>
+   928→                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+   929→                  <SelectContent>
+   930→                    <SelectItem value="activo">Activo</SelectItem>
+   931→                    <SelectItem value="trial">Trial</SelectItem>
+   932→                    <SelectItem value="inactivo">Inactivo</SelectItem>
+   933→                  </SelectContent>
+   934→                </Select>
+   935→              </div>
+   936→              <div>
+   937→                <Label className="text-xs uppercase font-bold text-slate-500">Fecha Expiración</Label>
+   938→                <Input
+   939→                  type="date"
+   940→                  value={formPlanExpiresAt}
+   941→                  onChange={e => setFormPlanExpiresAt(e.target.value)}
+   942→                  className="mt-1"
+   943→                />
+   944→              </div>
+   945→            </div>
+   946→
+   947→            {/* New plan limits preview */}
+   948→            {formPlan && PLAN_CONFIG[formPlan] && (
+   949→              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 space-y-1">
+   950→                <p className="font-bold">Límites del plan {PLAN_CONFIG[formPlan].label}:</p>
+   951→                <p>Usuarios: {PLAN_CONFIG[formPlan].maxUsers >= 999 ? 'Ilimitados' : PLAN_CONFIG[formPlan].maxUsers}</p>
+   952→                <p>Registros: {PLAN_CONFIG[formPlan].maxRegistros >= 999999 ? 'Ilimitados' : PLAN_CONFIG[formPlan].maxRegistros.toLocaleString()}</p>
+   953→                {editTenant && formPlan !== editTenant.plan && (
+   954→                  <p className="font-bold text-amber-600 mt-1">⚠ Se actualizarán los límites automáticamente al guardar.</p>
+   955→                )}
+   956→              </div>
+   957→            )}
+   958→          </div>
+   959→          <DialogFooter>
+   960→            <Button variant="outline" onClick={() => { setShowDialog(false); setEditTenant(null) }}>Cancelar</Button>
+   961→            <Button onClick={handleSavePlan} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
+   962→              <CheckCircle className="h-4 w-4 mr-1" /> GUARDAR PLAN
+   963→            </Button>
+   964→          </DialogFooter>
+   965→        </DialogContent>
+   966→      </Dialog>
+   967→    </div>
+   968→  )
+   969→}
+   970→
+   971→// ─── Admin View (main export) ────────────────────────────────
+   972→export function AdminView() {
+   973→  return (
+   974→    <div className="max-w-5xl pb-8">
+   975→      <div className="flex items-center gap-2 mb-4">
+   976→        <Shield className="h-5 w-5 text-[#005bb5]" />
+   977→        <h2 className="text-lg font-bold text-gray-700">Administración</h2>
+   978→        <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">SUPERADMIN</span>
+   979→      </div>
+   980→
+   981→      <Tabs defaultValue="empresas" className="w-full">
+   982→        <TabsList className="grid w-full grid-cols-3 max-w-lg">
+   983→          <TabsTrigger value="empresas"><Building2 className="h-4 w-4 mr-1.5" /> Empresas</TabsTrigger>
+   984→          <TabsTrigger value="usuarios"><Users className="h-4 w-4 mr-1.5" /> Usuarios</TabsTrigger>
+   985→          <TabsTrigger value="suscripciones"><CreditCard className="h-4 w-4 mr-1.5" /> Suscripciones</TabsTrigger>
+   986→        </TabsList>
+   987→
+   988→        <TabsContent value="empresas" className="mt-4">
+   989→          <TenantsTab />
+   990→        </TabsContent>
+   991→
+   992→        <TabsContent value="usuarios" className="mt-4">
+   993→          <UsersTab />
+   994→        </TabsContent>
+   995→
+   996→        <TabsContent value="suscripciones" className="mt-4">
+   997→          <SubscriptionsTab />
+   998→        </TabsContent>
+   999→      </Tabs>
+  1000→    </div>
+  1001→  )
+  1002→}
+  1003→
