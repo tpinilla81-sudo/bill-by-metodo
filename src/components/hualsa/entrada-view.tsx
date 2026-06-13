@@ -359,7 +359,8 @@ export function EntradaView() {
           </div>
         )}
 
-        {/* Transfer Mode Banner */}
+        {/* Transfer Mode Banner - solo admin/superadmin pueden modificar ajustes */}
+        {user?.role !== 'user' ? (
         <div className={`rounded-xl overflow-hidden border ${transferMode === 'auto' ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
           <button onClick={() => setShowTransferSettings(!showTransferSettings)} className="w-full flex items-center justify-between px-4 py-2.5 text-sm">
             <div className="flex items-center gap-2">
@@ -382,6 +383,11 @@ export function EntradaView() {
             </div>
           )}
         </div>
+        ) : (
+        <div className={`rounded-xl px-4 py-2.5 border ${transferMode === 'auto' ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'} text-sm`}>
+          {transferMode === 'auto' ? <span className="text-blue-700"><Clock className="h-4 w-4 inline mr-1" />Auto-transferencia a las <b>{transferTime}</b></span> : <span className="text-amber-700"><Zap className="h-4 w-4 inline mr-1" />Transferencia manual</span>}
+        </div>
+        )}
 
         {/* Dynamic field inputs */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
