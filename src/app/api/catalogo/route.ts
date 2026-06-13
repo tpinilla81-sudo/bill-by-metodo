@@ -53,8 +53,10 @@ export async function POST(req: Request) {
     // Single entry
     const { clienteId, c1, c2, coste, inc, final, customData } = body
     if (!c1 || !c2) return NextResponse.json({ error: 'Grupo y servicio obligatorios' }, { status: 400 })
+    // Use empty string for generic items (no client), but null for DB if FK constraint
+    const resolvedClienteId = clienteId && clienteId.trim() !== '' ? clienteId : ''
     const item = await db.catalogo.create({
-      data: { tenantId: tid, clienteId: clienteId || '', c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(final) || 0, customData: customData || '' }
+      data: { tenantId: tid, clienteId: resolvedClienteId, c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(final) || 0, customData: customData || '' }
     })
     return NextResponse.json(item, { status: 201 })
   } catch (err) {
