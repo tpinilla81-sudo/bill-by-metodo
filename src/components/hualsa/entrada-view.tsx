@@ -141,43 +141,44 @@ export function EntradaView() {
 
   const { clientes } = data
 
+  const clienteVisible = isVisible('cliente')
+
   // Cascading filters based on catalog + selections
-  // C1 options: if a client is selected, filter by client; otherwise show ALL
+  // C1 options: if client field is visible and a client is selected, filter by client
+  // If client field is hidden, show ALL (auto-detect will resolve later)
   const c1Options = [...new Set(
     data.catalogo
-      .filter(x => !clienteId || !x.clienteId || x.clienteId === clienteId)
+      .filter(x => !clienteVisible || !clienteId || !x.clienteId || x.clienteId === clienteId)
       .map(x => x.c1)
   )].sort()
 
   // C2 options filtered by selected client + C1
   const c2Options = [...new Set(
     data.catalogo
-      .filter(x => (!clienteId || !x.clienteId || x.clienteId === clienteId) && (!c1 || x.c1 === c1))
+      .filter(x => (!clienteVisible || !clienteId || !x.clienteId || x.clienteId === clienteId) && (!c1 || x.c1 === c1))
       .map(x => x.c2)
   )].sort()
 
   const allC2Options = [...new Set(data.catalogo.map(x => x.c2))].sort()
 
-  // Auto-detect client from catalog when c1+c2 are selected (but no client selected)
+  // Auto-detect client from catalog when field is hidden and c1+c2 are selected
   const detectedCliente = useMemo(() => {
-    if (clienteId || !c1 || !c2) return null
+    if (clienteVisible || clienteId || !c1 || !c2) return null
     const item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2 && x.clienteId)
     if (!item) return null
     const cli = data.clientes.find(c => c.id === item.clienteId)
     return cli ? { id: cli.id, nombre: cli.nombre } : null
-  }, [data.catalogo, data.clientes, clienteId, c1, c2])
+  }, [data.catalogo, data.clientes, clienteVisible, clienteId, c1, c2])
 
   // Auto-price: works with or without client selected
   const autoPrice = useMemo(() => {
     if (!c1 || !c2) return null
     if (clienteId) {
-      // Client selected: exact match first, then fallback
       let item = data.catalogo.find(x => x.clienteId === clienteId && x.c1 === c1 && x.c2 === c2)
       if (!item) item = data.catalogo.find(x => !x.clienteId && x.c1 === c1 && x.c2 === c2)
       if (!item) item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
       return item ? Number(item.final) || 0 : null
     } else {
-      // No client selected: find any match by c1+c2
       let item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
       if (!item) item = data.catalogo.find(x => x.c1.toLowerCase() === c1.toLowerCase() && x.c2.toLowerCase() === c2.toLowerCase())
       return item ? Number(item.final) || 0 : null
@@ -194,12 +195,16 @@ export function EntradaView() {
   }
 
   async function handleSave() {
-    // Validate required core fields (clienteId is now optional)
+    // If cliente field is visible, it's required
+    if (clienteVisible && !clienteId) {
+      showStatus('err', 'Selecciona un cliente')
+      return
+    }
     if (!fecha || !c1 || !c2 || !cant) {
       showStatus('err', 'Completa fecha, conceptos y cantidad')
       return
     }
-    // Resolve effective client: use selected client, or auto-detect from catalog
+    // Resolve client: if field is hidden, auto-detect from catalog
     let effectiveClienteId = clienteId
     let effectiveClienteName = ''
     if (effectiveClienteId) {
@@ -283,13 +288,10 @@ export function EntradaView() {
       return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
-          <div className="px-3 pb-2 flex items-center gap-1">
-            <Select value={clienteId || '__auto__'} onValueChange={v => { setClienteId(v === '__auto__' ? '' : v); setC1(''); setC2('') }}>
-              <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none flex-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__auto__">Auto (catálogo)</SelectItem>
-                {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
-              </SelectContent>
+          <div className="px-3 pb-2">
+            <Select value={clienteId} onValueChange={v => { setClienteId(v); setC1(''); setC2('') }}>
+              <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder="Selecciona..." /></SelectTrigger>
+              <SelectContent>{clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
             </Select>
           </div>
         </div>
@@ -404,17 +406,6 @@ export function EntradaView() {
             <div key={field.key}>{renderFieldInput(field)}</div>
           ))}
         </div>
-
-        {/* Auto-detected client indicator */}
-        {detectedCliente && !clienteId && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-3 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">Cliente detectado del catálogo</p>
-              <p className="text-lg font-extrabold text-blue-700">{detectedCliente.nombre}</p>
-            </div>
-            <button onClick={() => setClienteId(detectedCliente.id)} className="text-xs font-bold text-blue-500 hover:text-blue-700 underline">Seleccionar este cliente</button>
-          </div>
-        )}
 
         {/* Auto-price indicator */}
         {autoPrice !== null && (
