@@ -36,6 +36,8 @@ export function FacturasView() {
   const [fHasta, setFHasta] = useState('')
   const [fMes, setFMes] = useState('')
   const [fCliente, setFCliente] = useState('')
+  const [fC1, setFC1] = useState('')
+  const [fC2, setFC2] = useState('')
 
   // Invoice settings
   const [fNumero, setFNumero] = useState('')
@@ -98,10 +100,12 @@ export function FacturasView() {
       if (fHasta && r.fecha > fHasta) return false
       if (fMes && r.fecha.slice(0, 7) !== fMes) return false
       if (fCliente && fCliente !== '__all__' && r.clienteId !== fCliente) return false
+      if (fC1 && fC1 !== '__all__' && r.c1 !== fC1) return false
+      if (fC2 && fC2 !== '__all__' && r.c2 !== fC2) return false
       if (!showFacturados && r.facturado) return false
       return true
     }).sort((a, b) => a.fecha.localeCompare(b.fecha))
-  , [registros, fDesde, fHasta, fMes, fCliente, showFacturados])
+  , [registros, fDesde, fHasta, fMes, fCliente, fC1, fC2, showFacturados])
 
   const selectedItems = filtered.filter(r => selection[r.id] !== false)
   const totalCant = selectedItems.reduce((s, r) => s + r.cant, 0)
@@ -520,7 +524,7 @@ export function FacturasView() {
         {showFilters && (
           <Card>
             <CardContent className="p-4">
-              <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_auto_auto] gap-3 items-end">
+              <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_auto_auto] gap-3 items-end">
                 <div>
                   <Label className="text-xs uppercase font-bold text-slate-500">Desde</Label>
                   <Input type="date" value={fDesde} onChange={e => setFDesde(e.target.value)} />
@@ -543,10 +547,30 @@ export function FacturasView() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div>
+                  <Label className="text-xs uppercase font-bold text-slate-500">Concepto 1</Label>
+                  <Select value={fC1} onValueChange={v => { setFC1(v); setFC2('') }}>
+                    <SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">— Todos —</SelectItem>
+                      {[...new Set(registros.map(r => r.c1).filter(Boolean))].sort().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs uppercase font-bold text-slate-500">Concepto 2</Label>
+                  <Select value={fC2} onValueChange={setFC2}>
+                    <SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">— Todos —</SelectItem>
+                      {[...new Set(registros.filter(r => !fC1 || fC1 === '__all__' || r.c1 === fC1).map(r => r.c2).filter(Boolean))].sort().map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button className="bg-[#005bb5] hover:bg-[#003d7a] text-white">
                   <Filter className="h-4 w-4 mr-1" /> FILTRAR
                 </Button>
-                <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFCliente('') }}>
+                <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFCliente(''); setFC1(''); setFC2('') }}>
                   <RotateCcw className="h-4 w-4" />
                 </Button>
               </div>
@@ -583,7 +607,7 @@ export function FacturasView() {
               <Button variant="outline" onClick={handleAlternos} title="Desmarca días alternos">
                 <ArrowLeftRight className="h-4 w-4 mr-1" /> Alternos
               </Button>
-              <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFCliente(''); setFNumero('') }}>
+              <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFCliente(''); setFC1(''); setFC2(''); setFNumero('') }}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Limpiar
               </Button>
               <Button onClick={handleGenerar} className="bg-green-600 hover:bg-green-700 text-white">
