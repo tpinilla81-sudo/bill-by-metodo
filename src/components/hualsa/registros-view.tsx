@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -44,6 +44,7 @@ export function RegistrosView() {
   const [fHasta, setFHasta] = useState('')
   const [fCliente, setFCliente] = useState('')
   const [fC1, setFC1] = useState('')
+  const [fC2, setFC2] = useState('')
   const [fQ, setFQ] = useState('')
 
   // Excel import
@@ -97,12 +98,14 @@ export function RegistrosView() {
   }
 
   const c1FilterOptions = [...new Set(catalogo.map(x => x.c1))].sort()
+  const c2FilterOptions = useMemo(() => [...new Set(catalogo.filter(x => !fC1 || fC1 === '__all__' || x.c1 === fC1).map(x => x.c2))].sort(), [catalogo, fC1])
 
   const filtered = registros.filter(r => {
     if (fDesde && r.fecha < fDesde) return false
     if (fHasta && r.fecha > fHasta) return false
     if (fCliente && fCliente !== '__all__' && r.clienteId !== fCliente) return false
     if (fC1 && fC1 !== '__all__' && r.c1 !== fC1) return false
+    if (fC2 && fC2 !== '__all__' && r.c2 !== fC2) return false
     if (fQ) { const blob = (r.c1 + ' ' + r.c2 + ' ' + (r.obs || '') + ' ' + (r.cliente || '')).toLowerCase(); if (!blob.includes(fQ.toLowerCase())) return false }
     return true
   }).sort((a, b) => a.fecha.localeCompare(b.fecha))
@@ -456,14 +459,15 @@ export function RegistrosView() {
         {showFilters && (
           <Card>
             <CardContent className="p-4">
-              <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto_auto] gap-3 items-end">
+              <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_auto_auto] gap-3 items-end">
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Desde</Label><Input type="date" value={fDesde} onChange={e => setFDesde(e.target.value)} /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Hasta</Label><Input type="date" value={fHasta} onChange={e => setFHasta(e.target.value)} /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Cliente</Label><Select value={fCliente} onValueChange={setFCliente}><SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger><SelectContent><SelectItem value="__all__">— Todos —</SelectItem>{clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent></Select></div>
-                <div><Label className="text-xs uppercase font-bold text-slate-500">C1</Label><Select value={fC1} onValueChange={setFC1}><SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger><SelectContent><SelectItem value="__all__">— Todos —</SelectItem>{c1FilterOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Concepto 1</Label><Select value={fC1} onValueChange={v => { setFC1(v); setFC2('') }}><SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger><SelectContent><SelectItem value="__all__">— Todos —</SelectItem>{c1FilterOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Concepto 2</Label><Select value={fC2} onValueChange={setFC2}><SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger><SelectContent><SelectItem value="__all__">— Todos —</SelectItem>{c2FilterOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Buscar</Label><Input value={fQ} onChange={e => setFQ(e.target.value)} placeholder="Texto..." /></div>
                 <Button variant="default" className="bg-[#005bb5] hover:bg-[#003d7a] text-white"><Filter className="h-4 w-4 mr-1" /> FILTRAR</Button>
-                <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFCliente(''); setFC1(''); setFQ('') }}><RotateCcw className="h-4 w-4" /></Button>
+                <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFCliente(''); setFC1(''); setFC2(''); setFQ('') }}><RotateCcw className="h-4 w-4" /></Button>
               </div>
             </CardContent>
           </Card>
