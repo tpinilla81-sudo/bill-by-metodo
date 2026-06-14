@@ -2,6 +2,12 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
 
+export interface TenantOption {
+  id: string
+  name: string
+  slug: string
+}
+
 export interface AuthUser {
   id: string
   email: string
@@ -17,6 +23,9 @@ export interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null
   effectiveTenantId: string | null
+  effectiveTenantName: string | null
+  availableTenants: TenantOption[]
+  setEffectiveTenantId: (tenantId: string) => void
   loading: boolean
   login: (email: string, password: string) => Promise<string | null>
   logout: () => Promise<void>
@@ -26,6 +35,9 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   effectiveTenantId: null,
+  effectiveTenantName: null,
+  availableTenants: [],
+  setEffectiveTenantId: () => {},
   loading: true,
   login: async () => 'Not initialized',
   logout: async () => {},
@@ -62,18 +74,61 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// localStorage key for superadmin tenant selection
+const SUPERADMIN_TENANT_KEY = 'bill-superadmin-tenant'
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null)
+  const [availableTenants, setAvailableTenants] = useState<TenantOption[]>([])
 
-  // For superadmin: the tenant they're currently managing
+  // For superadmin: the tenant they selected (or their own if not set)
   // For admin/user: always their own tenantId
-  const effectiveTenantId = user?.tenantId ?? null
+  const isSuperadmin = user?.role === 'superadmin'
+  const effectiveTenantId = isSuperadmin
+    ? (selectedTenantId || user?.tenantId || null)
+    : (user?.tenantId ?? null)
+
+  // Compute effective tenant name from availableTenants
+  const effectiveTenantName = isSuperadmin && effectiveTenantId && availableTenants.length > 0
+    ? (availableTenants.find(t => t.id === effectiveTenantId)?.name || 'Sistema')
+    : (user?.tenantName || null)
 
   // Keep the global tenant ID in sync
   useEffect(() => {
     _currentTenantId = effectiveTenantId
   }, [effectiveTenantId])
+
+  // For superadmin: load available tenants and restore saved selection
+  useEffect(() => {
+    if (isSuperadmin) {
+      // Restore saved tenant selection from localStorage
+      const saved = typeof window !== 'undefined' ? localStorage.getItem(SUPERADMIN_TENANT_KEY) : null
+      if (saved) {
+        setSelectedTenantId(saved)
+      }
+      // Load tenant list
+      fetch('/api/tenants')
+        .then(res => res.ok ? res.json() : [])
+        .then((tenants: TenantOption[]) => {
+          // Include Sistema tenant in the list for superadmin
+          setAvailableTenants([
+            { id: user!.tenantId, name: 'Sistema', slug: 'sistema' },
+            ...tenants.filter((t: TenantOption) => t.slug !== 'sistema')
+          ])
+        })
+        .catch(() => {})
+    }
+  }, [isSuperadmin, user?.tenantId])
+
+  // Function to change the effective tenant (for superadmin)
+  const setEffectiveTenantId = useCallback((tenantId: string) => {
+    setSelectedTenantId(tenantId)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(SUPERADMIN_TENANT_KEY, tenantId)
+    }
+  }, [])
 
   const fetchUser = useCallback(async () => {
     try {
@@ -127,7 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchUser])
 
   return (
-    <AuthContext.Provider value={{ user, effectiveTenantId, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, effectiveTenantId, effectiveTenantName, availableTenants, setEffectiveTenantId, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

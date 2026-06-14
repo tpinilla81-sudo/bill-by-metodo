@@ -57,6 +57,7 @@ interface UserItem {
 // Screen permissions available for regular users
 const SCREEN_OPTIONS = [
   { key: 'entrada', label: 'Entrada' },
+  { key: 'entrada.pasarRegistros', label: '  ↳ Pasar a Registros', parent: 'entrada' },
   { key: 'registros', label: 'Registros' },
   { key: 'clientes', label: 'Clientes' },
   { key: 'catalogo', label: 'Catálogo' },
@@ -454,9 +455,15 @@ function UsersTab() {
   }
 
   function togglePermission(key: string) {
-    setFormPermissions(prev =>
-      prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]
-    )
+    setFormPermissions(prev => {
+      const next = prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]
+      // If unchecking a parent, also remove all child permissions
+      if (!next.includes(key)) {
+        const childKeys = SCREEN_OPTIONS.filter(o => (o as any).parent === key).map(o => o.key)
+        return next.filter(p => !childKeys.includes(p))
+      }
+      return next
+    })
   }
 
   async function handleSave() {
@@ -689,16 +696,22 @@ function UsersTab() {
               <div className="border rounded-lg p-3 bg-gray-50/50">
                 <Label className="text-xs uppercase font-bold text-slate-500 mb-2 block">Permisos de Pantallas</Label>
                 <p className="text-[11px] text-gray-500 mb-3">Selecciona las pantallas a las que este usuario tendrá acceso. Si no seleccionas ninguna, tendrá acceso a todo.</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {SCREEN_OPTIONS.map(opt => (
-                    <label key={opt.key} className="flex items-center gap-2 px-3 py-2 rounded-md border bg-white hover:bg-blue-50/50 cursor-pointer transition-colors">
-                      <Checkbox
-                        checked={formPermissions.includes(opt.key)}
-                        onCheckedChange={() => togglePermission(opt.key)}
-                      />
-                      <span className="text-sm text-gray-700">{opt.label}</span>
-                    </label>
-                  ))}
+                <div className="grid grid-cols-1 gap-1.5">
+                  {SCREEN_OPTIONS.map(opt => {
+                    const parentKey = (opt as any).parent as string | undefined
+                    const isChild = !!parentKey
+                    const parentChecked = parentKey ? formPermissions.includes(parentKey) : true
+                    return (
+                      <label key={opt.key} className={`flex items-center gap-2 px-3 py-2 rounded-md border bg-white hover:bg-blue-50/50 cursor-pointer transition-colors ${isChild ? 'ml-6 border-dashed' : ''} ${isChild && !parentChecked ? 'opacity-40 pointer-events-none' : ''}`}>
+                        <Checkbox
+                          checked={formPermissions.includes(opt.key)}
+                          onCheckedChange={() => togglePermission(opt.key)}
+                          disabled={isChild && !parentChecked}
+                        />
+                        <span className={`text-sm ${isChild ? 'text-gray-500 italic' : 'text-gray-700'}`}>{opt.label.replace(/^\s*↳\s*/, '↳ ')}</span>
+                      </label>
+                    )
+                  })}
                 </div>
               </div>
             )}
