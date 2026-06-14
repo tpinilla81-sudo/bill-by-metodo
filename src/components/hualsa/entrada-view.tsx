@@ -283,11 +283,11 @@ export function EntradaView() {
       return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
-          <div className="px-3 pb-2">
-            <Select value={clienteId || '__none__'} onValueChange={v => { setClienteId(v === '__none__' ? '' : v); setC1(''); setC2('') }}>
-              <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder="Todos (sin filtro)" /></SelectTrigger>
+          <div className="px-3 pb-2 flex items-center gap-1">
+            <Select value={clienteId || '__auto__'} onValueChange={v => { setClienteId(v === '__auto__' ? '' : v); setC1(''); setC2('') }}>
+              <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none flex-1"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">— Sin cliente —</SelectItem>
+                <SelectItem value="__auto__">Auto (catálogo)</SelectItem>
                 {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
               </SelectContent>
             </Select>
