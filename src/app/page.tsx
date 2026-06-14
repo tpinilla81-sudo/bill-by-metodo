@@ -165,7 +165,7 @@ function AppContent() {
         {/* key={effectiveTenantId} forces remount when superadmin switches tenant, ensuring fresh data */}
         {['entrada','registros','clientes','catalogo','facturas'].includes(activeView) && (
           <div key={effectiveTenantId} className="p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 overflow-hidden">
-            {activeView === 'entrada' && hasPermission(user.role, user.permissions, 'entrada') && <div className="h-full flex flex-col"><EntradaView /></div>}
+            {activeView === 'entrada' && hasPermission(user.role, user.permissions, 'entrada') && <div className="h-full flex flex-col"><EntradaView userRole={user.role} userPermissions={user.permissions} /></div>}
             {activeView === 'registros' && hasPermission(user.role, user.permissions, 'registros') && <div className="h-full flex flex-col"><RegistrosView /></div>}
             {activeView === 'clientes' && hasPermission(user.role, user.permissions, 'clientes') && <div className="h-full flex flex-col"><ClientesView /></div>}
             {activeView === 'catalogo' && hasPermission(user.role, user.permissions, 'catalogo') && <div className="h-full flex flex-col"><CatalogoView /></div>}

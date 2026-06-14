@@ -86,7 +86,26 @@ function ComboInput({
   )
 }
 
-export function EntradaView() {
+// Permission check helpers
+const SCREEN_PERMS = ['entrada', 'entrada.pasarRegistros', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
+
+function parsePerms(permissions: string): string[] {
+  if (!permissions || permissions.trim() === '') return []
+  try { const p = JSON.parse(permissions); return Array.isArray(p) ? p.filter((x: string) => (SCREEN_PERMS as readonly string[]).includes(x)) : [] } catch { return [] }
+}
+
+function canTransfer(role: string, permissions: string): boolean {
+  if (role === 'admin' || role === 'superadmin') return true
+  const perms = parsePerms(permissions)
+  if (perms.length === 0) return true
+  return perms.includes('entrada.pasarRegistros')
+}
+
+function canSeePrices(role: string): boolean {
+  return role === 'admin' || role === 'superadmin'
+}
+
+export function EntradaView({ userRole = 'user', userPermissions = '' }: { userRole?: string; userPermissions?: string }) {
   const { data, loadData, loading } = useEntradaData()
   const { config, update } = useConfig()
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -142,6 +161,8 @@ export function EntradaView() {
   const { clientes } = data
 
   const clienteVisible = isVisible('cliente')
+  const userCanTransfer = canTransfer(userRole, userPermissions)
+  const userCanSeePrices = canSeePrices(userRole)
 
   // Cascading filters based on catalog + selections
   // C1 options: if client field is visible and a client is selected, filter by client
@@ -376,7 +397,8 @@ export function EntradaView() {
           </div>
         )}
 
-        {/* Transfer Mode Banner */}
+        {/* Transfer Mode Banner — only for users with transfer permission */}
+        {userCanTransfer && (
         <div className={`rounded-xl overflow-hidden border ${transferMode === 'auto' ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
           <button onClick={() => setShowTransferSettings(!showTransferSettings)} className="w-full flex items-center justify-between px-4 py-2.5 text-sm">
             <div className="flex items-center gap-2">
@@ -399,6 +421,7 @@ export function EntradaView() {
             </div>
           )}
         </div>
+        )}
 
         {/* Dynamic field inputs */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
@@ -407,8 +430,8 @@ export function EntradaView() {
           ))}
         </div>
 
-        {/* Auto-price indicator */}
-        {autoPrice !== null && (
+        {/* Auto-price indicator — only for admin/superadmin */}
+        {userCanSeePrices && autoPrice !== null && (
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200 p-3 flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-green-600 uppercase tracking-wider">Precio del catálogo</p>
@@ -426,7 +449,7 @@ export function EntradaView() {
           <button onClick={handleSave} disabled={loading} className="flex-1 h-12 rounded-xl bg-[#2bb24c] hover:bg-[#23963e] active:scale-[0.98] transition-all text-white text-sm font-bold shadow-md shadow-green-200/50 disabled:opacity-50 flex items-center justify-center gap-2">
             <Save className="h-4 w-4" />{editingId ? 'ACTUALIZAR' : 'GUARDAR'}
           </button>
-          {transferMode === 'manual' && activeEntries.length > 0 && (
+          {userCanTransfer && transferMode === 'manual' && activeEntries.length > 0 && (
             <button onClick={handleTransfer} disabled={transferring} className="flex-1 h-12 rounded-xl bg-[#005bb5] hover:bg-[#003d7a] active:scale-[0.98] transition-all text-white text-sm font-bold shadow-md shadow-blue-200/50 disabled:opacity-50 flex items-center justify-center gap-2">
               <ArrowRightCircle className="h-4 w-4" />{transferring ? 'Transfiriendo...' : 'PASAR AL REGISTRO'}
             </button>
@@ -477,7 +500,7 @@ export function EntradaView() {
             <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
               <div className="text-4xl mb-2">📝</div>
               <p className="text-gray-400 text-sm">Sin entradas activas</p>
-              <p className="text-gray-300 text-xs mt-1">Las entradas se transferirán al registro {transferMode === 'auto' ? `automáticamente a las ${transferTime}` : 'con el botón "Pasar al registro"'}</p>
+              <p className="text-gray-300 text-xs mt-1">Las entradas se transferirán al registro {transferMode === 'auto' ? 'automáticamente' : 'con el botón "Pasar al registro"'}</p>
             </div>
           )}
         </div>
