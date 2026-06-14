@@ -97,7 +97,7 @@ function parsePerms(permissions: string): string[] {
 function canTransfer(role: string, permissions: string): boolean {
   if (role === 'admin' || role === 'superadmin') return true
   const perms = parsePerms(permissions)
-  if (perms.length === 0) return true
+  if (perms.length === 0) return false
   return perms.includes('entrada.pasarRegistros')
 }
 
@@ -142,9 +142,16 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   useEffect(() => { loadData() }, [loadData])
 
-  // Auto-transfer timer
+  const { clientes } = data
+
+  const clienteVisible = isVisible('cliente')
+  const userCanTransfer = canTransfer(userRole, userPermissions)
+  const userCanSeePrices = canSeePrices(userRole)
+
+  // Auto-transfer timer — only runs if user has transfer permission
   useEffect(() => {
     if (transferMode !== 'auto') return
+    if (!userCanTransfer) return
     function checkAutoTransfer() {
       const now = new Date()
       const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
@@ -156,13 +163,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     autoTimerRef.current = setInterval(checkAutoTransfer, 30000)
     return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transferMode, transferTime])
-
-  const { clientes } = data
-
-  const clienteVisible = isVisible('cliente')
-  const userCanTransfer = canTransfer(userRole, userPermissions)
-  const userCanSeePrices = canSeePrices(userRole)
+  }, [transferMode, transferTime, userCanTransfer])
 
   // Cascading filters based on catalog + selections
   // C1 options: if client field is visible and a client is selected, filter by client

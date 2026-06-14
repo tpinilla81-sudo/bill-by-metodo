@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     }
     if (user.role === 'user') {
       const perms = user.permissions ? (() => { try { return JSON.parse(user.permissions) } catch { return [] } })() : []
-      if (Array.isArray(perms) && perms.length > 0 && !perms.includes('entrada.pasarRegistros')) {
+      if (!Array.isArray(perms) || !perms.includes('entrada.pasarRegistros')) {
         return NextResponse.json({ error: 'No tienes permiso para pasar entradas a registros' }, { status: 403 })
       }
     }
