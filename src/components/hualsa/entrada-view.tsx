@@ -142,7 +142,7 @@ export function EntradaView() {
   const { clientes } = data
 
   // Cascading filters based on catalog + selections
-  // C1 options filtered by selected client
+  // C1 options: if a client is selected, filter by client; otherwise show ALL
   const c1Options = [...new Set(
     data.catalogo
       .filter(x => !clienteId || !x.clienteId || x.clienteId === clienteId)
@@ -158,16 +158,30 @@ export function EntradaView() {
 
   const allC2Options = [...new Set(data.catalogo.map(x => x.c2))].sort()
 
-  // Auto-price: when client, c1 and c2 are all selected, find the price
+  // Auto-detect client from catalog when c1+c2 are selected (but no client selected)
+  const detectedCliente = useMemo(() => {
+    if (clienteId || !c1 || !c2) return null
+    const item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2 && x.clienteId)
+    if (!item) return null
+    const cli = data.clientes.find(c => c.id === item.clienteId)
+    return cli ? { id: cli.id, nombre: cli.nombre } : null
+  }, [data.catalogo, data.clientes, clienteId, c1, c2])
+
+  // Auto-price: works with or without client selected
   const autoPrice = useMemo(() => {
-    if (!clienteId || !c1 || !c2) return null
-    // First: exact match (client + c1 + c2)
-    let item = data.catalogo.find(x => x.clienteId === clienteId && x.c1 === c1 && x.c2 === c2)
-    // Fallback: generic (no client + c1 + c2)
-    if (!item) item = data.catalogo.find(x => !x.clienteId && x.c1 === c1 && x.c2 === c2)
-    // Fallback: any match c1 + c2
-    if (!item) item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
-    return item ? Number(item.final) || 0 : null
+    if (!c1 || !c2) return null
+    if (clienteId) {
+      // Client selected: exact match first, then fallback
+      let item = data.catalogo.find(x => x.clienteId === clienteId && x.c1 === c1 && x.c2 === c2)
+      if (!item) item = data.catalogo.find(x => !x.clienteId && x.c1 === c1 && x.c2 === c2)
+      if (!item) item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
+      return item ? Number(item.final) || 0 : null
+    } else {
+      // No client selected: find any match by c1+c2
+      let item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
+      if (!item) item = data.catalogo.find(x => x.c1.toLowerCase() === c1.toLowerCase() && x.c2.toLowerCase() === c2.toLowerCase())
+      return item ? Number(item.final) || 0 : null
+    }
   }, [data.catalogo, clienteId, c1, c2])
 
   function showStatus(type: 'ok' | 'err', text: string) {
@@ -180,15 +194,24 @@ export function EntradaView() {
   }
 
   async function handleSave() {
-    // Validate required core fields
-    if (!fecha || !clienteId || !c1 || !c2 || !cant) {
-      showStatus('err', 'Completa todos los campos obligatorios')
+    // Validate required core fields (clienteId is now optional)
+    if (!fecha || !c1 || !c2 || !cant) {
+      showStatus('err', 'Completa fecha, conceptos y cantidad')
       return
     }
-    const cli = clientes.find(c => c.id === clienteId)
+    // Resolve effective client: use selected client, or auto-detect from catalog
+    let effectiveClienteId = clienteId
+    let effectiveClienteName = ''
+    if (effectiveClienteId) {
+      const cli = clientes.find(c => c.id === effectiveClienteId)
+      effectiveClienteName = cli?.nombre || ''
+    } else if (detectedCliente) {
+      effectiveClienteId = detectedCliente.id
+      effectiveClienteName = detectedCliente.nombre
+    }
     const customDataStr = serializeCustomData(customValues)
-    const currentPrice = precioUnit(c1, c2, clienteId)
-    const body = { fecha, clienteId, cliente: cli?.nombre || '', c1, c2, cant: Number(cant), obs, customData: customDataStr, precioUnitario: currentPrice }
+    const currentPrice = autoPrice || 0
+    const body = { fecha, clienteId: effectiveClienteId, cliente: effectiveClienteName, c1, c2, cant: Number(cant), obs, customData: customDataStr, precioUnitario: currentPrice }
 
     if (editingId) {
       await fetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
@@ -261,9 +284,12 @@ export function EntradaView() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
           <div className="px-3 pb-2">
-            <Select value={clienteId} onValueChange={v => { setClienteId(v); setC1(''); setC2('') }}>
-              <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder="Selecciona..." /></SelectTrigger>
-              <SelectContent>{clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
+            <Select value={clienteId || '__none__'} onValueChange={v => { setClienteId(v === '__none__' ? '' : v); setC1(''); setC2('') }}>
+              <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder="Todos (sin filtro)" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— Sin cliente —</SelectItem>
+                {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
+              </SelectContent>
             </Select>
           </div>
         </div>
@@ -379,6 +405,17 @@ export function EntradaView() {
           ))}
         </div>
 
+        {/* Auto-detected client indicator */}
+        {detectedCliente && !clienteId && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">Cliente detectado del catálogo</p>
+              <p className="text-lg font-extrabold text-blue-700">{detectedCliente.nombre}</p>
+            </div>
+            <button onClick={() => setClienteId(detectedCliente.id)} className="text-xs font-bold text-blue-500 hover:text-blue-700 underline">Seleccionar este cliente</button>
+          </div>
+        )}
+
         {/* Auto-price indicator */}
         {autoPrice !== null && (
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200 p-3 flex items-center justify-between">
@@ -422,7 +459,7 @@ export function EntradaView() {
                   <div className="flex-1 min-w-0">
                     <div className="mb-1 flex items-center gap-2">
                       <span className="text-xs text-gray-400">{r.fecha}</span>
-                      <span className="text-sm text-[#005bb5] font-semibold truncate">{r.cliente}</span>
+                      <span className="text-sm text-[#005bb5] font-semibold truncate">{r.cliente || '—'}</span>
                     </div>
                     <div className="flex items-baseline gap-1.5 text-sm text-gray-600">
                       <span className="font-medium">{r.c1}</span>

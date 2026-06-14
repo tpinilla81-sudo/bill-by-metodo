@@ -5,10 +5,22 @@ import { getSessionUser } from '@/lib/auth'
 
 // Lookup price from catalog for a given c1/c2/clienteId
 function lookupPrecio(catalogo: { c1: string; c2: string; clienteId: string; final: number }[], c1: string, c2: string, clienteId: string): number {
-  let it = catalogo.find(x => x.c1 === c1 && x.c2 === c2 && x.clienteId === clienteId)
-  if (!it) it = catalogo.find(x => x.c1 === c1 && x.c2 === c2 && !x.clienteId)
-  if (!it) it = catalogo.find(x => x.c1 === c1 && x.c2 === c2)
+  // If client selected, try exact match first
+  if (clienteId) {
+    let it = catalogo.find(x => x.c1 === c1 && x.c2 === c2 && x.clienteId === clienteId)
+    if (!it) it = catalogo.find(x => x.c1 === c1 && x.c2 === c2 && !x.clienteId)
+    if (!it) it = catalogo.find(x => x.c1 === c1 && x.c2 === c2)
+    return it ? Number(it.final) || 0 : 0
+  }
+  // No client: find any match by c1+c2
+  let it = catalogo.find(x => x.c1 === c1 && x.c2 === c2)
   return it ? Number(it.final) || 0 : 0
+}
+
+// Lookup client from catalog by c1+c2 (reverse lookup)
+function lookupCliente(catalogo: { c1: string; c2: string; clienteId: string }[], c1: string, c2: string): string {
+  const item = catalogo.find(x => x.c1 === c1 && x.c2 === c2 && x.clienteId)
+  return item?.clienteId || ''
 }
 
 // GET /api/registros?filter=entrada|registros|all
@@ -64,7 +76,7 @@ export async function POST(req: Request) {
         c1: string; c2: string; cant: number; obs: string; customData?: string; precioUnitario?: number;
       }>
 
-      const validRows = rows.filter(r => r.fecha && r.clienteId && r.c1 && r.c2)
+      const validRows = rows.filter(r => r.fecha && r.c1 && r.c2)
       if (validRows.length === 0) {
         return NextResponse.json({ error: 'No hay filas válidas' }, { status: 400 })
       }
@@ -73,19 +85,25 @@ export async function POST(req: Request) {
       const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, select: { c1: true, c2: true, clienteId: true, final: true } })
 
       const created = await db.registro.createMany({
-        data: validRows.map(r => ({
+        data: validRows.map(r => {
+          // Resolve client: if not provided, try to detect from catalog
+          let effectiveClienteId = r.clienteId || ''
+          if (!effectiveClienteId) {
+            effectiveClienteId = lookupCliente(catalogo, r.c1, r.c2)
+          }
+          return {
           tenantId: tid,
           fecha: r.fecha,
-          clienteId: r.clienteId,
+          clienteId: effectiveClienteId,
           cliente: r.cliente || '',
           c1: r.c1,
           c2: r.c2,
           cant: Number(r.cant) || 1,
-          precioUnitario: r.precioUnitario && r.precioUnitario > 0 ? Number(r.precioUnitario) : lookupPrecio(catalogo, r.c1, r.c2, r.clienteId),
+          precioUnitario: r.precioUnitario && r.precioUnitario > 0 ? Number(r.precioUnitario) : lookupPrecio(catalogo, r.c1, r.c2, effectiveClienteId),
           obs: r.obs || '',
           customData: r.customData || '',
           pasadoRegistro: true,
-        }))
+        }})
       })
 
       return NextResponse.json({ count: created.count }, { status: 201 })
@@ -93,17 +111,29 @@ export async function POST(req: Request) {
 
     // Single entry
     const { fecha, clienteId, cliente, c1, c2, cant, obs, customData, precioUnitario } = body
-    if (!fecha || !clienteId || !c1 || !c2 || !cant) {
-      return NextResponse.json({ error: 'Completa fecha, cliente, conceptos y cantidad' }, { status: 400 })
+    if (!fecha || !c1 || !c2 || !cant) {
+      return NextResponse.json({ error: 'Completa fecha, conceptos y cantidad' }, { status: 400 })
+    }
+    // Resolve client: if not provided, try to detect from catalog
+    let effectiveClienteId = clienteId || ''
+    let effectiveCliente = cliente || ''
+    if (!effectiveClienteId && c1 && c2) {
+      const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, select: { c1: true, c2: true, clienteId: true, final: true } })
+      const detectedId = lookupCliente(catalogo, c1, c2)
+      if (detectedId) {
+        effectiveClienteId = detectedId
+        const cli = await db.cliente.findUnique({ where: { id: detectedId } })
+        effectiveCliente = cli?.nombre || ''
+      }
     }
     // Lookup catalog price if not provided
     let pu = Number(precioUnitario) || 0
     if (!pu) {
       const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, select: { c1: true, c2: true, clienteId: true, final: true } })
-      pu = lookupPrecio(catalogo, c1, c2, clienteId)
+      pu = lookupPrecio(catalogo, c1, c2, effectiveClienteId)
     }
     const registro = await db.registro.create({
-      data: { tenantId: tid, fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, precioUnitario: pu, obs: obs || '', customData: customData || '', pasadoRegistro: false }
+      data: { tenantId: tid, fecha, clienteId: effectiveClienteId, cliente: effectiveCliente, c1, c2, cant: Number(cant) || 1, precioUnitario: pu, obs: obs || '', customData: customData || '', pasadoRegistro: false }
     })
     return NextResponse.json(registro, { status: 201 })
   } catch (err) {
