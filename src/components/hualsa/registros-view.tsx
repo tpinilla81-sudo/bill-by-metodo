@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -44,6 +44,7 @@ export function RegistrosView() {
   const [fHasta, setFHasta] = useState('')
   const [fCliente, setFCliente] = useState('')
   const [fC1, setFC1] = useState('')
+  const [fC2, setFC2] = useState('')
   const [fQ, setFQ] = useState('')
 
   // Excel import
@@ -97,12 +98,14 @@ export function RegistrosView() {
   }
 
   const c1FilterOptions = [...new Set(catalogo.map(x => x.c1))].sort()
+  const c2FilterOptions = useMemo(() => [...new Set(catalogo.filter(x => !fC1 || fC1 === '__all__' || x.c1 === fC1).map(x => x.c2))].sort(), [catalogo, fC1])
 
   const filtered = registros.filter(r => {
     if (fDesde && r.fecha < fDesde) return false
     if (fHasta && r.fecha > fHasta) return false
     if (fCliente && fCliente !== '__all__' && r.clienteId !== fCliente) return false
     if (fC1 && fC1 !== '__all__' && r.c1 !== fC1) return false
+    if (fC2 && fC2 !== '__all__' && r.c2 !== fC2) return false
     if (fQ) { const blob = (r.c1 + ' ' + r.c2 + ' ' + (r.obs || '') + ' ' + (r.cliente || '')).toLowerCase(); if (!blob.includes(fQ.toLowerCase())) return false }
     return true
   }).sort((a, b) => a.fecha.localeCompare(b.fecha))
@@ -217,8 +220,8 @@ export function RegistrosView() {
     if (importPreview.length === 0) return
     setImporting(true)
     try {
-      const validRows = importPreview.filter(r => r.fecha && r.c1 && r.c2 && r.clienteId)
-      if (validRows.length === 0) { showStatus('err', 'No hay filas válidas (requieren fecha, cliente y conceptos)'); setImporting(false); return }
+      const validRows = importPreview.filter(r => r.fecha && r.c1 && r.c2)
+      if (validRows.length === 0) { showStatus('err', 'No hay filas válidas (requieren fecha y conceptos)'); setImporting(false); return }
 
       const res = await fetch('/api/registros', {
         method: 'POST',
@@ -456,14 +459,15 @@ export function RegistrosView() {
         {showFilters && (
           <Card>
             <CardContent className="p-4">
-              <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto_auto] gap-3 items-end">
+              <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_auto_auto] gap-3 items-end">
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Desde</Label><Input type="date" value={fDesde} onChange={e => setFDesde(e.target.value)} /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Hasta</Label><Input type="date" value={fHasta} onChange={e => setFHasta(e.target.value)} /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Cliente</Label><Select value={fCliente} onValueChange={setFCliente}><SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger><SelectContent><SelectItem value="__all__">— Todos —</SelectItem>{clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent></Select></div>
-                <div><Label className="text-xs uppercase font-bold text-slate-500">C1</Label><Select value={fC1} onValueChange={setFC1}><SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger><SelectContent><SelectItem value="__all__">— Todos —</SelectItem>{c1FilterOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Concepto 1</Label><Select value={fC1} onValueChange={v => { setFC1(v); setFC2('') }}><SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger><SelectContent><SelectItem value="__all__">— Todos —</SelectItem>{c1FilterOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Concepto 2</Label><Select value={fC2} onValueChange={setFC2}><SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger><SelectContent><SelectItem value="__all__">— Todos —</SelectItem>{c2FilterOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Buscar</Label><Input value={fQ} onChange={e => setFQ(e.target.value)} placeholder="Texto..." /></div>
                 <Button variant="default" className="bg-[#005bb5] hover:bg-[#003d7a] text-white"><Filter className="h-4 w-4 mr-1" /> FILTRAR</Button>
-                <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFCliente(''); setFC1(''); setFQ('') }}><RotateCcw className="h-4 w-4" /></Button>
+                <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFCliente(''); setFC1(''); setFC2(''); setFQ('') }}><RotateCcw className="h-4 w-4" /></Button>
               </div>
             </CardContent>
           </Card>
@@ -638,7 +642,7 @@ export function RegistrosView() {
               <div className="max-h-28 overflow-auto text-xs text-amber-600 space-y-0.5">{importErrors.slice(0, 15).map((err, i) => <div key={i}>{err}</div>)}{importErrors.length > 15 && <div>... y {importErrors.length - 15} más</div>}</div>
             </div>
           )}
-          <div className="text-sm text-gray-600 mb-2"><b>{importPreview.filter(r => r.fecha && r.c1 && r.c2 && r.clienteId).length}</b> filas válidas · <b className="text-amber-600">{importPreview.filter(r => !(r.fecha && r.c1 && r.c2 && r.clienteId)).length} con errores</b> · <b className="text-green-600">{importPreview.length} total</b></div>
+          <div className="text-sm text-gray-600 mb-2"><b>{importPreview.filter(r => r.fecha && r.c1 && r.c2).length}</b> filas válidas · <b className="text-amber-600">{importPreview.filter(r => !(r.fecha && r.c1 && r.c2)).length} con errores</b> · <b className="text-green-600">{importPreview.length} total</b></div>
           <div className="overflow-auto max-h-[350px] border rounded-xl">
             <table className="w-full text-xs">
               <thead className="sticky top-0"><tr className="bg-gray-100">
@@ -654,12 +658,12 @@ export function RegistrosView() {
               </tr></thead>
               <tbody>
                 {importPreview.map((r, i) => {
-                  const ok = !!(r.fecha && r.c1 && r.c2 && r.clienteId)
+                  const ok = !!(r.fecha && r.c1 && r.c2)
                   return (
                     <tr key={i} className={`border-b ${ok ? '' : 'bg-red-50'}`}>
                       <td className="p-2">{ok ? <CheckCircle className="h-4 w-4 text-green-500" /> : <AlertCircle className="h-4 w-4 text-red-400" />}</td>
                       <td className="p-2">{r.fecha ? fmtDate(r.fecha) : '—'}</td>
-                      <td className="p-2">{r.cliente || <span className="text-red-400">Sin cliente</span>}</td>
+                      <td className="p-2">{r.cliente || <span className="text-amber-500">Sin cliente</span>}</td>
                       <td className="p-2">{r.c1 || '—'}</td>
                       <td className="p-2">{r.c2 || '—'}</td>
                       <td className="p-2 text-right">{r.cant || 1}</td>
@@ -674,7 +678,7 @@ export function RegistrosView() {
           </div>
           <div className="flex gap-3 mt-4">
             <Button variant="outline" onClick={() => setImportModalOpen(false)} className="flex-1 h-12 rounded-xl">Cancelar</Button>
-            <Button onClick={handleImportConfirm} className="flex-1 h-12 rounded-xl bg-[#2bb24c] hover:bg-[#23963e] text-white font-bold" disabled={importing || importPreview.filter(r => r.fecha && r.c1 && r.c2 && r.clienteId).length === 0}>{importing ? <span className="animate-pulse">Importando...</span> : <>IMPORTAR {importPreview.filter(r => r.fecha && r.c1 && r.c2 && r.clienteId).length} FILAS</>}</Button>
+            <Button onClick={handleImportConfirm} className="flex-1 h-12 rounded-xl bg-[#2bb24c] hover:bg-[#23963e] text-white font-bold" disabled={importing || importPreview.filter(r => r.fecha && r.c1 && r.c2).length === 0}>{importing ? <span className="animate-pulse">Importando...</span> : <>IMPORTAR {importPreview.filter(r => r.fecha && r.c1 && r.c2).length} FILAS</>}</Button>
           </div>
         </DialogContent>
       </Dialog>

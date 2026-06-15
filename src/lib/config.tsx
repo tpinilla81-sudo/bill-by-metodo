@@ -19,7 +19,7 @@ export interface FieldDef {
 // ─── Default field definitions per section ────────────────────
 export const DEFAULT_FIELDS_ENTRADA: FieldDef[] = [
   { key: 'fecha', label: 'FECHA', type: 'date', visible: true, isCustom: false, required: true, dbColumn: 'fecha' },
-  { key: 'cliente', label: 'CLIENTE', type: 'select', visible: true, isCustom: false, required: true, dbColumn: 'clienteId' },
+  { key: 'cliente', label: 'CLIENTE', type: 'select', visible: true, isCustom: false, required: false, dbColumn: 'clienteId' },
   { key: 'c1', label: 'CONCEPTO 1', type: 'text', visible: true, isCustom: false, required: true, dbColumn: 'c1' },
   { key: 'c2', label: 'CONCEPTO 2', type: 'text', visible: true, isCustom: false, required: true, dbColumn: 'c2' },
   { key: 'cantidad', label: 'CANTIDAD', type: 'number', visible: true, isCustom: false, required: true, dbColumn: 'cant' },

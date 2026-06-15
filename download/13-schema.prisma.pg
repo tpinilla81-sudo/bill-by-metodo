@@ -1,0 +1,176 @@
+// PostgreSQL schema for production deployment on Vercel
+// To use: copy this file over schema.prisma before deploying,
+// or set DATABASE_PROVIDER=postgresql and swap this file in.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Cliente {
+  id          String   @id @default(cuid())
+  tenantId    String
+  nombre      String
+  cif         String   @default("")
+  dir         String   @default("")
+  cp          String   @default("")
+  ciudad      String   @default("")
+  prov        String   @default("")
+  mail        String   @default("")
+  tel         String   @default("")
+  customData  String   @default("")     // JSON: custom field values
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  registros  Registro[]
+  catalogo   Catalogo[]
+}
+
+model Catalogo {
+  id          String   @id @default(cuid())
+  tenantId    String
+  clienteId   String   @default("")
+  c1          String
+  c2          String
+  coste       Float    @default(0)
+  inc         Float    @default(0)
+  final       Float    @default(0)
+  customData  String   @default("")     // JSON: custom field values
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  cliente  Cliente? @relation(fields: [clienteId], references: [id])
+}
+
+model Registro {
+  id              String   @id @default(cuid())
+  tenantId        String
+  fecha           String
+  clienteId       String
+  cliente         String   @default("")
+  c1              String
+  c2              String
+  cant            Int      @default(1)
+  obs             String   @default("")
+  pasadoRegistro  Boolean  @default(false)  // true = ya transferido a Registros
+  facturado       Boolean  @default(false)  // true = ya facturado
+  customData      String   @default("")     // JSON: custom field values
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  clienteRel Cliente? @relation(fields: [clienteId], references: [id])
+}
+
+model Tenant {
+  id            String    @id @default(cuid())
+  name          String                    // Company name (fixed, not editable by user)
+  slug          String    @unique          // URL-friendly identifier (e.g. "hualsa", "bill")
+  logo          String    @default("")     // base64 logo
+  fullName      String    @default("")     // Razón social
+  address       String    @default("")
+  city          String    @default("")
+  province      String    @default("")
+  cif           String    @default("")
+  active        Boolean   @default(true)
+  plan          String    @default("gratuito")  // "gratuito", "mensual", "trimestral", "anual"
+  planStatus    String    @default("activo")    // "activo", "inactivo", "trial"
+  planExpiresAt DateTime?                     // when the plan expires (null for gratuito)
+  maxUsers      Int       @default(1)           // max users allowed
+  maxRegistros  Int       @default(100)         // max registros allowed
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  users         User[]
+  clientes      Cliente[]
+  catalogo      Catalogo[]
+  registros     Registro[]
+  configs       Config[]
+  facturaSeqs   FacturaSeq[]
+  backups       Backup[]
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  password    String                    // hashed
+  name        String   @default("")
+  role        String   @default("user")  // "superadmin", "admin" or "user"
+  permissions String   @default("")      // JSON array: ["entrada","registros","clientes","catalogo","facturas","backup"]
+  tenantId    String                     // which company this user belongs to
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+}
+
+model FacturaSeq {
+  id        String   @id @default(cuid())
+  tenantId  String
+  seq       Int      @default(1)
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId])
+}
+
+model Backup {
+  id          String   @id @default(cuid())
+  tenantId    String
+  filename    String   @unique   // e.g. bill_backup_xxx_2026-06-10_14-30-05_cambio.json
+  type        String   @default("auto")  // "manual", "cambio", "auto"
+  data        String   // JSON string with all the backup data (stored as TEXT in PostgreSQL)
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+}
+
+model Config {
+  id              String   @id @default(cuid())
+  tenantId        String
+  companyName     String   @default("BILL by Metodo")
+  companyFullName String   @default("")
+  companyAddress  String   @default("")
+  companyCity     String   @default("")
+  companyProvince String   @default("")
+  companyCif      String   @default("")
+  logo            String   @default("")   // base64 encoded logo image
+  currency        String   @default("€")
+  defaultIva      Float    @default(21)
+  appName         String   @default("BILL by Metodo")
+  appVersion      String   @default("v3.0")
+  // Configurable section labels (JSON strings)
+  labelEntrada    String   @default("")   // JSON: { fecha, cliente, c1, c2, cantidad, observaciones }
+  labelCatalogo   String   @default("")   // JSON: { c1, c2, coste, incremento, precioCliente, cliente }
+  labelRegistros  String   @default("")   // JSON: { fecha, mes, semana, cliente, c1, c2, cantidad, precioUnitario, importe, observaciones }
+  labelFacturas   String   @default("")   // JSON: { numero, fecha, cliente, concepto, cantidad, precioUnitario, importe, baseImponible, totalFactura }
+  labelClientes   String   @default("")   // JSON: { nombre, cif, direccion, cp, ciudad, provincia, mail, telefono }
+  // Section names
+  sectionEntrada  String   @default("ENTRADA")
+  sectionRegistros String  @default("REGISTROS")
+  sectionClientes String   @default("CLIENTES")
+  sectionCatalogo String   @default("CATÁLOGO")
+  sectionFacturas String   @default("FACTURAS")
+  sectionBackup   String   @default("SEGURIDAD")
+  // Transfer settings
+  transferMode    String   @default("auto")   // "auto" or "manual"
+  transferTime    String   @default("00:00")  // HH:mm for auto transfer
+  // Visible fields (JSON arrays of field definitions with key, label, type, visible, isCustom)
+  fieldsEntrada   String   @default("")   // JSON: FieldDef[]
+  fieldsClientes  String   @default("")   // JSON: FieldDef[]
+  fieldsCatalogo  String   @default("")   // JSON: FieldDef[]
+  fieldsRegistros String   @default("")   // JSON: FieldDef[]
+  fieldsFacturas  String   @default("")   // JSON: FieldDef[]
+  updatedAt       DateTime @updatedAt
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId])
+}

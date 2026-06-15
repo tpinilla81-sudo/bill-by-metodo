@@ -48,7 +48,7 @@ model Registro {
   id              String   @id @default(cuid())
   tenantId        String
   fecha           String
-  clienteId       String
+  clienteId       String   @default("")
   cliente         String   @default("")
   c1              String
   c2              String
