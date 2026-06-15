@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Printer, FileSpreadsheet, Receipt, RotateCcw, ArrowLeftRight, CheckCircle2, X, Filter } from 'lucide-react'
+import { Printer, FileSpreadsheet, Receipt, RotateCcw, ArrowLeftRight, CheckCircle2, X, Filter, ChevronDown } from 'lucide-react'
 import { fmtCurrency, fmtDate, fmtMonth, todayISO, currentYear, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_FACTURAS, type ResolvedConfig } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
@@ -35,7 +35,13 @@ export function FacturasView() {
   const [fDesde, setFDesde] = useState('')
   const [fHasta, setFHasta] = useState('')
   const [fMes, setFMes] = useState('')
-  const [fCliente, setFCliente] = useState('')
+  const [fClientes, setFClientes] = useState<string[]>([])
+  const [fC1s, setFC1s] = useState<string[]>([])
+  const [fC2s, setFC2s] = useState<string[]>([])
+  // Multi-select dropdown open states
+  const [openClientes, setOpenClientes] = useState(false)
+  const [openC1, setOpenC1] = useState(false)
+  const [openC2, setOpenC2] = useState(false)
 
   // Invoice settings
   const [fNumero, setFNumero] = useState('')
@@ -69,6 +75,17 @@ export function FacturasView() {
     loadData()
   }, [loadData])
 
+  // Close multi-select dropdowns when clicking outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (!(e.target as HTMLElement).closest('.relative')) {
+        setOpenClientes(false); setOpenC1(false); setOpenC2(false)
+      }
+    }
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
+  }, [])
+
   // Set default factura number and IVA
   if (!fNumero && data.seq) {
     setFNumero(String(data.seq).padStart(4, '0') + '/' + currentYear())
@@ -91,17 +108,31 @@ export function FacturasView() {
     return r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
   }
 
+  // Derive c1/c2 options from catalog for filter dropdowns
+  const allC1Options = useMemo(() => [...new Set(catalogo.map(c => c.c1).filter(Boolean))].sort(), [catalogo])
+  const c2OptionsFiltered = useMemo(() => {
+    if (fC1s.length === 0) return [...new Set(catalogo.map(c => c.c2).filter(Boolean))].sort()
+    return [...new Set(catalogo.filter(c => fC1s.includes(c.c1)).map(c => c.c2).filter(Boolean))].sort()
+  }, [catalogo, fC1s])
+
+  // Helper: toggle a value in a string array
+  function toggleMulti(current: string[], value: string): string[] {
+    return current.includes(value) ? current.filter(v => v !== value) : [...current, value]
+  }
+
   // Filtered registros
   const filtered = useMemo(() =>
     registros.filter(r => {
       if (fDesde && r.fecha < fDesde) return false
       if (fHasta && r.fecha > fHasta) return false
       if (fMes && r.fecha.slice(0, 7) !== fMes) return false
-      if (fCliente && fCliente !== '__all__' && r.clienteId !== fCliente) return false
+      if (fClientes.length > 0 && !fClientes.includes(r.clienteId)) return false
+      if (fC1s.length > 0 && !fC1s.includes(r.c1)) return false
+      if (fC2s.length > 0 && !fC2s.includes(r.c2)) return false
       if (!showFacturados && r.facturado) return false
       return true
     }).sort((a, b) => a.fecha.localeCompare(b.fecha))
-  , [registros, fDesde, fHasta, fMes, fCliente, showFacturados])
+  , [registros, fDesde, fHasta, fMes, fClientes, fC1s, fC2s, showFacturados])
 
   const selectedItems = filtered.filter(r => selection[r.id] !== false)
   const totalCant = selectedItems.reduce((s, r) => s + r.cant, 0)
@@ -175,7 +206,7 @@ export function FacturasView() {
     const sel = selectedItems
     if (!sel.length) { alert('No hay líneas seleccionadas'); return }
     const cliIds = [...new Set(sel.map(r => r.clienteId))]
-    const effectiveFCliente = (fCliente && fCliente !== '__all__') ? fCliente : ''
+    const effectiveFCliente = fClientes.length === 1 ? fClientes[0] : ''
     const targetCliId = effectiveFCliente || cliIds[0]
     const cli = clientes.find(c => c.id === targetCliId) || { id: '', nombre: '(varios)', cif: '', dir: '', cp: '', ciudad: '', prov: '', mail: '', tel: '' }
     const lineasBase: LineaFactura[] = (effectiveFCliente ? sel.filter(r => r.clienteId === effectiveFCliente) : sel).map(r => ({ fecha: r.fecha, c1: r.c1, c2: r.c2, cant: r.cant, clienteId: r.clienteId, obs: r.obs || '', precioUnitario: getPrecio(r) }))
@@ -520,7 +551,7 @@ export function FacturasView() {
         {showFilters && (
           <Card>
             <CardContent className="p-4">
-              <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_auto_auto] gap-3 items-end">
+              <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_auto_auto_auto_auto] gap-3 items-end">
                 <div>
                   <Label className="text-xs uppercase font-bold text-slate-500">Desde</Label>
                   <Input type="date" value={fDesde} onChange={e => setFDesde(e.target.value)} />
@@ -533,20 +564,73 @@ export function FacturasView() {
                   <Label className="text-xs uppercase font-bold text-slate-500">Mes</Label>
                   <Input type="month" value={fMes} onChange={e => setFMes(e.target.value)} />
                 </div>
-                <div>
-                  <Label className="text-xs uppercase font-bold text-slate-500">Cliente</Label>
-                  <Select value={fCliente} onValueChange={setFCliente}>
-                    <SelectTrigger><SelectValue placeholder="— Todos —" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">— Todos —</SelectItem>
-                      {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                {/* Multi-select Cliente */}
+                <div className="relative">
+                  <Label className="text-xs uppercase font-bold text-slate-500">Cliente{fClientes.length > 0 ? ` (${fClientes.length})` : ''}</Label>
+                  <button
+                    type="button"
+                    onClick={() => { setOpenClientes(!openClientes); setOpenC1(false); setOpenC2(false) }}
+                    className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+                  >
+                    <span className="truncate">{fClientes.length === 0 ? '— Todos —' : clientes.filter(c => fClientes.includes(c.id)).map(c => c.nombre).join(', ')}</span>
+                    <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-1" />
+                  </button>
+                  {openClientes && (
+                    <div className="absolute z-50 mt-1 w-full min-w-[200px] bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                      {clientes.map(c => (
+                        <label key={c.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm">
+                          <Checkbox checked={fClientes.includes(c.id)} onCheckedChange={() => setFClientes(prev => toggleMulti(prev, c.id))} />
+                          <span className="truncate">{c.nombre}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <Button className="bg-[#005bb5] hover:bg-[#003d7a] text-white">
-                  <Filter className="h-4 w-4 mr-1" /> FILTRAR
-                </Button>
-                <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFCliente('') }}>
+                {/* Multi-select Concepto 1 */}
+                <div className="relative">
+                  <Label className="text-xs uppercase font-bold text-slate-500">Concepto 1{fC1s.length > 0 ? ` (${fC1s.length})` : ''}</Label>
+                  <button
+                    type="button"
+                    onClick={() => { setOpenC1(!openC1); setOpenClientes(false); setOpenC2(false) }}
+                    className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+                  >
+                    <span className="truncate">{fC1s.length === 0 ? '— Todos —' : fC1s.join(', ')}</span>
+                    <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-1" />
+                  </button>
+                  {openC1 && (
+                    <div className="absolute z-50 mt-1 w-full min-w-[200px] bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                      {allC1Options.map(opt => (
+                        <label key={opt} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm">
+                          <Checkbox checked={fC1s.includes(opt)} onCheckedChange={() => { setFC1s(prev => toggleMulti(prev, opt)); setFC2s([]) }} />
+                          <span className="truncate">{opt}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Multi-select Concepto 2 */}
+                <div className="relative">
+                  <Label className="text-xs uppercase font-bold text-slate-500">Concepto 2{fC2s.length > 0 ? ` (${fC2s.length})` : ''}</Label>
+                  <button
+                    type="button"
+                    onClick={() => { setOpenC2(!openC2); setOpenClientes(false); setOpenC1(false) }}
+                    className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+                  >
+                    <span className="truncate">{fC2s.length === 0 ? '— Todos —' : fC2s.join(', ')}</span>
+                    <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-1" />
+                  </button>
+                  {openC2 && (
+                    <div className="absolute z-50 mt-1 w-full min-w-[200px] bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                      {c2OptionsFiltered.map(opt => (
+                        <label key={opt} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm">
+                          <Checkbox checked={fC2s.includes(opt)} onCheckedChange={() => setFC2s(prev => toggleMulti(prev, opt))} />
+                          <span className="truncate">{opt}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFClientes([]); setFC1s([]); setFC2s([]) }}>
                   <RotateCcw className="h-4 w-4" />
                 </Button>
               </div>
@@ -583,7 +667,7 @@ export function FacturasView() {
               <Button variant="outline" onClick={handleAlternos} title="Desmarca días alternos">
                 <ArrowLeftRight className="h-4 w-4 mr-1" /> Alternos
               </Button>
-              <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFCliente(''); setFNumero('') }}>
+              <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFClientes([]); setFC1s([]); setFC2s([]); setFNumero('') }}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Limpiar
               </Button>
               <Button onClick={handleGenerar} className="bg-green-600 hover:bg-green-700 text-white">
