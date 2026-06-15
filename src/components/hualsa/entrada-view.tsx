@@ -86,7 +86,26 @@ function ComboInput({
   )
 }
 
-export function EntradaView() {
+// Permission check helpers
+const SCREEN_PERMS = ['entrada', 'entrada.pasarRegistros', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
+
+function parsePerms(permissions: string): string[] {
+  if (!permissions || permissions.trim() === '') return []
+  try { const p = JSON.parse(permissions); return Array.isArray(p) ? p.filter((x: string) => (SCREEN_PERMS as readonly string[]).includes(x)) : [] } catch { return [] }
+}
+
+function canTransfer(role: string, permissions: string): boolean {
+  if (role === 'admin' || role === 'superadmin') return true
+  const perms = parsePerms(permissions)
+  if (perms.length === 0) return false
+  return perms.includes('entrada.pasarRegistros')
+}
+
+function canSeePrices(role: string): boolean {
+  return role === 'admin' || role === 'superadmin'
+}
+
+export function EntradaView({ userRole = 'user', userPermissions = '' }: { userRole?: string; userPermissions?: string }) {
   const { data, loadData, loading } = useEntradaData()
   const { config, update } = useConfig()
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -123,9 +142,16 @@ export function EntradaView() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // Auto-transfer timer
+  const { clientes } = data
+
+  const clienteVisible = isVisible('cliente')
+  const userCanTransfer = canTransfer(userRole, userPermissions)
+  const userCanSeePrices = canSeePrices(userRole)
+
+  // Auto-transfer timer — only runs if user has transfer permission
   useEffect(() => {
     if (transferMode !== 'auto') return
+    if (!userCanTransfer) return
     function checkAutoTransfer() {
       const now = new Date()
       const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
@@ -137,37 +163,48 @@ export function EntradaView() {
     autoTimerRef.current = setInterval(checkAutoTransfer, 30000)
     return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transferMode, transferTime])
-
-  const { clientes } = data
+  }, [transferMode, transferTime, userCanTransfer])
 
   // Cascading filters based on catalog + selections
-  // C1 options filtered by selected client
+  // C1 options: if client field is visible and a client is selected, filter by client
+  // If client field is hidden, show ALL (auto-detect will resolve later)
   const c1Options = [...new Set(
     data.catalogo
-      .filter(x => !clienteId || !x.clienteId || x.clienteId === clienteId)
+      .filter(x => !clienteVisible || !clienteId || !x.clienteId || x.clienteId === clienteId)
       .map(x => x.c1)
   )].sort()
 
   // C2 options filtered by selected client + C1
   const c2Options = [...new Set(
     data.catalogo
-      .filter(x => (!clienteId || !x.clienteId || x.clienteId === clienteId) && (!c1 || x.c1 === c1))
+      .filter(x => (!clienteVisible || !clienteId || !x.clienteId || x.clienteId === clienteId) && (!c1 || x.c1 === c1))
       .map(x => x.c2)
   )].sort()
 
   const allC2Options = [...new Set(data.catalogo.map(x => x.c2))].sort()
 
-  // Auto-price: when client, c1 and c2 are all selected, find the price
+  // Auto-detect client from catalog when field is hidden and c1+c2 are selected
+  const detectedCliente = useMemo(() => {
+    if (clienteVisible || clienteId || !c1 || !c2) return null
+    const item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2 && x.clienteId)
+    if (!item) return null
+    const cli = data.clientes.find(c => c.id === item.clienteId)
+    return cli ? { id: cli.id, nombre: cli.nombre } : null
+  }, [data.catalogo, data.clientes, clienteVisible, clienteId, c1, c2])
+
+  // Auto-price: works with or without client selected
   const autoPrice = useMemo(() => {
-    if (!clienteId || !c1 || !c2) return null
-    // First: exact match (client + c1 + c2)
-    let item = data.catalogo.find(x => x.clienteId === clienteId && x.c1 === c1 && x.c2 === c2)
-    // Fallback: generic (no client + c1 + c2)
-    if (!item) item = data.catalogo.find(x => !x.clienteId && x.c1 === c1 && x.c2 === c2)
-    // Fallback: any match c1 + c2
-    if (!item) item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
-    return item ? Number(item.final) || 0 : null
+    if (!c1 || !c2) return null
+    if (clienteId) {
+      let item = data.catalogo.find(x => x.clienteId === clienteId && x.c1 === c1 && x.c2 === c2)
+      if (!item) item = data.catalogo.find(x => !x.clienteId && x.c1 === c1 && x.c2 === c2)
+      if (!item) item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
+      return item ? Number(item.final) || 0 : null
+    } else {
+      let item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
+      if (!item) item = data.catalogo.find(x => x.c1.toLowerCase() === c1.toLowerCase() && x.c2.toLowerCase() === c2.toLowerCase())
+      return item ? Number(item.final) || 0 : null
+    }
   }, [data.catalogo, clienteId, c1, c2])
 
   function showStatus(type: 'ok' | 'err', text: string) {
@@ -180,15 +217,28 @@ export function EntradaView() {
   }
 
   async function handleSave() {
-    // Validate required core fields
-    if (!fecha || !clienteId || !c1 || !c2 || !cant) {
-      showStatus('err', 'Completa todos los campos obligatorios')
+    // If cliente field is visible, it's required
+    if (clienteVisible && !clienteId) {
+      showStatus('err', 'Selecciona un cliente')
       return
     }
-    const cli = clientes.find(c => c.id === clienteId)
+    if (!fecha || !c1 || !c2 || !cant) {
+      showStatus('err', 'Completa fecha, conceptos y cantidad')
+      return
+    }
+    // Resolve client: if field is hidden, auto-detect from catalog
+    let effectiveClienteId = clienteId
+    let effectiveClienteName = ''
+    if (effectiveClienteId) {
+      const cli = clientes.find(c => c.id === effectiveClienteId)
+      effectiveClienteName = cli?.nombre || ''
+    } else if (detectedCliente) {
+      effectiveClienteId = detectedCliente.id
+      effectiveClienteName = detectedCliente.nombre
+    }
     const customDataStr = serializeCustomData(customValues)
-    const currentPrice = precioUnit(c1, c2, clienteId)
-    const body = { fecha, clienteId, cliente: cli?.nombre || '', c1, c2, cant: Number(cant), obs, customData: customDataStr, precioUnitario: currentPrice }
+    const currentPrice = autoPrice || 0
+    const body = { fecha, clienteId: effectiveClienteId, cliente: effectiveClienteName, c1, c2, cant: Number(cant), obs, customData: customDataStr, precioUnitario: currentPrice }
 
     if (editingId) {
       await fetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
@@ -348,7 +398,8 @@ export function EntradaView() {
           </div>
         )}
 
-        {/* Transfer Mode Banner */}
+        {/* Transfer Mode Banner — only for users with transfer permission */}
+        {userCanTransfer && (
         <div className={`rounded-xl overflow-hidden border ${transferMode === 'auto' ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
           <button onClick={() => setShowTransferSettings(!showTransferSettings)} className="w-full flex items-center justify-between px-4 py-2.5 text-sm">
             <div className="flex items-center gap-2">
@@ -371,6 +422,7 @@ export function EntradaView() {
             </div>
           )}
         </div>
+        )}
 
         {/* Dynamic field inputs */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
@@ -379,8 +431,8 @@ export function EntradaView() {
           ))}
         </div>
 
-        {/* Auto-price indicator */}
-        {autoPrice !== null && (
+        {/* Auto-price indicator — only for admin/superadmin */}
+        {userCanSeePrices && autoPrice !== null && (
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200 p-3 flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-green-600 uppercase tracking-wider">Precio del catálogo</p>
@@ -398,7 +450,7 @@ export function EntradaView() {
           <button onClick={handleSave} disabled={loading} className="flex-1 h-12 rounded-xl bg-[#2bb24c] hover:bg-[#23963e] active:scale-[0.98] transition-all text-white text-sm font-bold shadow-md shadow-green-200/50 disabled:opacity-50 flex items-center justify-center gap-2">
             <Save className="h-4 w-4" />{editingId ? 'ACTUALIZAR' : 'GUARDAR'}
           </button>
-          {transferMode === 'manual' && activeEntries.length > 0 && (
+          {userCanTransfer && transferMode === 'manual' && activeEntries.length > 0 && (
             <button onClick={handleTransfer} disabled={transferring} className="flex-1 h-12 rounded-xl bg-[#005bb5] hover:bg-[#003d7a] active:scale-[0.98] transition-all text-white text-sm font-bold shadow-md shadow-blue-200/50 disabled:opacity-50 flex items-center justify-center gap-2">
               <ArrowRightCircle className="h-4 w-4" />{transferring ? 'Transfiriendo...' : 'PASAR AL REGISTRO'}
             </button>
@@ -422,7 +474,7 @@ export function EntradaView() {
                   <div className="flex-1 min-w-0">
                     <div className="mb-1 flex items-center gap-2">
                       <span className="text-xs text-gray-400">{r.fecha}</span>
-                      <span className="text-sm text-[#005bb5] font-semibold truncate">{r.cliente}</span>
+                      <span className="text-sm text-[#005bb5] font-semibold truncate">{r.cliente || '—'}</span>
                     </div>
                     <div className="flex items-baseline gap-1.5 text-sm text-gray-600">
                       <span className="font-medium">{r.c1}</span>
@@ -449,7 +501,7 @@ export function EntradaView() {
             <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
               <div className="text-4xl mb-2">📝</div>
               <p className="text-gray-400 text-sm">Sin entradas activas</p>
-              <p className="text-gray-300 text-xs mt-1">Las entradas se transferirán al registro {transferMode === 'auto' ? `automáticamente a las ${transferTime}` : 'con el botón "Pasar al registro"'}</p>
+              <p className="text-gray-300 text-xs mt-1">Las entradas se transferirán al registro {transferMode === 'auto' ? 'automáticamente' : 'con el botón "Pasar al registro"'}</p>
             </div>
           )}
         </div>
