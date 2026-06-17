@@ -71,6 +71,14 @@ export async function POST(req: Request) {
 
     // Batch import
     if (body.batch && Array.isArray(body.batch)) {
+      // Check 'entrada.grilla' permission for regular users
+      if (user && user.role === 'user') {
+        const perms = user.permissions ? (() => { try { return JSON.parse(user.permissions) } catch { return [] } })() : []
+        if (!Array.isArray(perms) || !perms.includes('entrada.grilla')) {
+          return NextResponse.json({ error: 'No tienes permiso para usar la entrada masiva (grilla)' }, { status: 403 })
+        }
+      }
+
       const rows = body.batch as Array<{
         fecha: string; clienteId: string; cliente: string;
         c1: string; c2: string; cant: number; obs: string; customData?: string; precioUnitario?: number;
