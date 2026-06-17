@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { getAuthUser } from '@/lib/auth'
+import { getAuthUser } from '@/lib/tenant-context'
 import { getEffectiveTenantId } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'

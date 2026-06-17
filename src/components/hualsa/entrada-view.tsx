@@ -115,7 +115,9 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   const lastTransferDateRef = useRef<string>('')
 
   const fieldDefs = config?.fieldsEntrada || DEFAULT_FIELDS_ENTRADA
-  const visibleFields = fieldDefs.filter(f => f.visible)
+  // Force cliente field HIDDEN in Entrada view: it's auto-detected from catalog
+  // based on c1+c2 selection. Cliente is only visible in the Registros view.
+  const visibleFields = fieldDefs.filter(f => f.visible && f.key !== 'cliente')
   const transferMode = config?.transferMode || 'auto'
   const transferTime = config?.transferTime || '00:00'
 
@@ -144,7 +146,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   const { clientes } = data
 
-  const clienteVisible = isVisible('cliente')
+  const clienteVisible = false  // forced hidden in Entrada; auto-detected from catalog
   const userCanTransfer = canTransfer(userRole, userPermissions)
   const userCanSeePrices = canSeePrices(userRole)
 
@@ -238,15 +240,25 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     }
     const customDataStr = serializeCustomData(customValues)
     const currentPrice = autoPrice || 0
-    const body = { fecha, clienteId: effectiveClienteId, cliente: effectiveClienteName, c1, c2, cant: Number(cant), obs, customData: customDataStr, precioUnitario: currentPrice }
+    const body = { fecha, clienteId: effectiveClienteId || null, cliente: effectiveClienteName, c1, c2, cant: Number(cant), obs, customData: customDataStr, precioUnitario: currentPrice }
 
     if (editingId) {
-      await fetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+      const res = await fetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        showStatus('err', `Error al actualizar: ${err.error || res.statusText}`)
+        return
+      }
       setEditingId(null)
       showStatus('ok', 'Entrada actualizada ✓')
     } else {
-      await fetch('/api/registros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      showStatus('ok', 'Entrada guardada ✓')
+      const res = await fetch('/api/registros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        showStatus('err', `Error al guardar: ${err.error || res.statusText}`)
+        return
+      }
+      showStatus('ok', 'Guardado en Registros ✓')
     }
     setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
     triggerBackup()

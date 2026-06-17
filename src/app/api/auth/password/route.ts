@@ -1,4 +1,5 @@
-import { getAuthUser, verifyPassword, hashPassword } from '@/lib/auth'
+import { verifyPassword, hashPassword } from '@/lib/auth'
+import { getAuthUser } from '@/lib/tenant-context'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 

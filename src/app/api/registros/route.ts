@@ -84,27 +84,44 @@ export async function POST(req: Request) {
       // Lookup catalog prices for batch rows
       const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, select: { c1: true, c2: true, clienteId: true, final: true } })
 
-      const created = await db.registro.createMany({
-        data: validRows.map(r => {
-          // Resolve client: if not provided, try to detect from catalog
-          let effectiveClienteId = r.clienteId || ''
-          if (!effectiveClienteId) {
-            effectiveClienteId = lookupCliente(catalogo, r.c1, r.c2)
+      // Build a clientes name lookup so we can fill the `cliente` text field
+      // when clienteId is auto-detected from the catalog (and no name was provided).
+      const clientesMap = new Map<string, string>()
+      const clientesRows = await db.cliente.findMany({ where: { tenantId: tid }, select: { id: true, nombre: true } })
+      for (const c of clientesRows) clientesMap.set(c.id, c.nombre)
+
+      // Use individual create() (not createMany) so nullable clienteId works
+      // reliably across Prisma versions and we can fill the cliente name.
+      let createdCount = 0
+      for (const r of validRows) {
+        // Resolve client: if not provided, try to detect from catalog
+        let effectiveClienteId = r.clienteId || ''
+        if (!effectiveClienteId) {
+          effectiveClienteId = lookupCliente(catalogo, r.c1, r.c2)
+        }
+        let effectiveClienteName = r.cliente || ''
+        if (effectiveClienteId && !effectiveClienteName) {
+          effectiveClienteName = clientesMap.get(effectiveClienteId) || ''
+        }
+        await db.registro.create({
+          data: {
+            tenantId: tid,
+            fecha: r.fecha,
+            // Pass null when no cliente detected (schema is String? @default(""))
+            clienteId: effectiveClienteId || null,
+            cliente: effectiveClienteName,
+            c1: r.c1,
+            c2: r.c2,
+            cant: Number(r.cant) || 1,
+            precioUnitario: r.precioUnitario && r.precioUnitario > 0 ? Number(r.precioUnitario) : lookupPrecio(catalogo, r.c1, r.c2, effectiveClienteId),
+            obs: r.obs || '',
+            customData: r.customData || '',
+            pasadoRegistro: true,
           }
-          return {
-          tenantId: tid,
-          fecha: r.fecha,
-          clienteId: effectiveClienteId,
-          cliente: r.cliente || '',
-          c1: r.c1,
-          c2: r.c2,
-          cant: Number(r.cant) || 1,
-          precioUnitario: r.precioUnitario && r.precioUnitario > 0 ? Number(r.precioUnitario) : lookupPrecio(catalogo, r.c1, r.c2, effectiveClienteId),
-          obs: r.obs || '',
-          customData: r.customData || '',
-          pasadoRegistro: true,
-        }})
-      })
+        })
+        createdCount++
+      }
+      const created = { count: createdCount }
 
       return NextResponse.json({ count: created.count }, { status: 201 })
     }
@@ -133,7 +150,7 @@ export async function POST(req: Request) {
       pu = lookupPrecio(catalogo, c1, c2, effectiveClienteId)
     }
     const registro = await db.registro.create({
-      data: { tenantId: tid, fecha, clienteId: effectiveClienteId, cliente: effectiveCliente, c1, c2, cant: Number(cant) || 1, precioUnitario: pu, obs: obs || '', customData: customData || '', pasadoRegistro: false }
+      data: { tenantId: tid, fecha, clienteId: effectiveClienteId || null, cliente: effectiveCliente, c1, c2, cant: Number(cant) || 1, precioUnitario: pu, obs: obs || '', customData: customData || '', pasadoRegistro: true }
     })
     return NextResponse.json(registro, { status: 201 })
   } catch (err) {
@@ -179,7 +196,9 @@ export async function PUT(req: Request) {
     if (!existing) return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data: any = { fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '' }
+    const data: any = { fecha, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '' }
+    // Only set clienteId when a real value is provided (avoid FK violation on "")
+    if (clienteId) data.clienteId = clienteId
     if (customData !== undefined) data.customData = customData
     if (facturado !== undefined) data.facturado = Boolean(facturado)
     if (precioUnitario !== undefined) data.precioUnitario = Number(precioUnitario)
