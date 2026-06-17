@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Trash2, Save, CheckCircle, AlertCircle, Table, Download, Upload } from 'lucide-react'
+import { Plus, Trash2, Save, CheckCircle, AlertCircle, Table } from 'lucide-react'
 import { todayISO, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
 import { useConfig, parseCustomData, serializeCustomData, type FieldDef } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
@@ -248,51 +248,6 @@ export function EntradaGrilla() {
     }
   }
 
-  // CSV import
-  function handleImportCSV(file: File) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const text = String(e.target?.result || '')
-      const lines = text.split(/\r?\n/).filter(l => l.trim())
-      if (lines.length === 0) return
-      // Detect delimiter (comma or semicolon)
-      const delim = lines[0].includes(';') ? ';' : ','
-      // Skip header if it looks like one
-      const firstLine = lines[0].toLowerCase()
-      const hasHeader = firstLine.includes('fecha') || firstLine.includes('cliente') || firstLine.includes('c1')
-      const dataLines = hasHeader ? lines.slice(1) : lines
-      const newRows: GrillaRow[] = dataLines.map(line => {
-        const parts = line.split(delim).map(p => p.trim().replace(/^"|"$/g, ''))
-        return {
-          id: uid(),
-          fecha: parts[0] || todayISO(),
-          clienteId: parts[1] || '',
-          c1: parts[2] || '',
-          c2: parts[3] || '',
-          cant: parts[4] || '1',
-          obs: parts[5] || '',
-          customValues: {},
-        }
-      })
-      setRows(newRows.length > 0 ? newRows : [emptyRow()])
-      showStatus('ok', `${newRows.length} filas importadas`)
-    }
-    reader.readAsText(file)
-  }
-
-  function handleExportTemplate() {
-    const header = 'fecha,clienteId,c1,c2,cantidad,observaciones'
-    const example = `${todayISO()},,EJEMPLO_C1,EJEMPLO_C2,1,Ejemplo`
-    const csv = `${header}\n${example}`
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'plantilla_entradas.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   // Stats
   const validCount = rows.filter(r => r.fecha && r.c1 && r.c2).length
   const totalCant = rows.reduce((s, r) => s + (Number(r.cant) || 0), 0)
@@ -323,13 +278,6 @@ export function EntradaGrilla() {
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5 items-center">
-          <Button variant="outline" size="sm" onClick={handleExportTemplate} title="Descargar plantilla CSV">
-            <Download className="h-4 w-4 mr-1" /> Plantilla
-          </Button>
-          <label className="inline-flex items-center h-9 px-3 text-sm rounded-md border border-input bg-background hover:bg-accent cursor-pointer">
-            <Upload className="h-4 w-4 mr-1" /> Importar CSV
-            <input type="file" accept=".csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleImportCSV(f); e.target.value = '' }} />
-          </label>
           <div className="flex items-center gap-1.5 px-2 h-9 rounded-md border border-input bg-background">
             <span className="text-xs text-slate-500">Filas:</span>
             <input
