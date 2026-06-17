@@ -495,14 +495,9 @@ export function EntradaGrilla() {
         <div className="text-xs text-slate-500">
           💡 <b>Tip:</b> Al pulsar <b>+1</b> o <b>Filas</b>, se copian los datos de la última fila rellena · Enter baja a la siguiente · botón <b>+</b> duplica fila · el precio se autodetecta del catálogo
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={addRow}>
-            <Plus className="h-4 w-4 mr-1" /> Añadir fila
-          </Button>
-          <Button onClick={handleSave} disabled={saving || validCount === 0} className="bg-[#2bb24c] hover:bg-[#239a3f] text-white">
-            <Save className="h-4 w-4 mr-1" /> {saving ? 'Guardando...' : `GUARDAR ${validCount} entrada(s)`}
-          </Button>
-        </div>
+        <Button onClick={handleSave} disabled={saving || validCount === 0} className="bg-[#2bb24c] hover:bg-[#239a3f] text-white">
+          <Save className="h-4 w-4 mr-1" /> {saving ? 'Guardando...' : `GUARDAR ${validCount} entrada(s)`}
+        </Button>
       </div>
     </div>
   )
