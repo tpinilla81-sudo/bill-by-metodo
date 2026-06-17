@@ -17,7 +17,7 @@ import { AuthProvider, useAuth } from '@/lib/auth-context'
 export type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'facturas' | 'backup' | 'config' | 'admin' | 'suscripcion'
 
 // Screen permission keys (including sub-permissions)
-const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
+const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
 
 // Parse permissions from JSON string to array
 function parsePermissions(permissionsStr: string): string[] {

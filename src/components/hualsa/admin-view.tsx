@@ -58,6 +58,7 @@ interface UserItem {
 const SCREEN_OPTIONS = [
   { key: 'entrada', label: 'Entrada' },
   { key: 'entrada.pasarRegistros', label: '  ↳ Pasar a Registros', parent: 'entrada' },
+  { key: 'entrada.grilla', label: '  ↳ Entrada Masiva (Grilla)', parent: 'entrada' },
   { key: 'registros', label: 'Registros' },
   { key: 'clientes', label: 'Clientes' },
   { key: 'catalogo', label: 'Catálogo' },

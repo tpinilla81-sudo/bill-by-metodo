@@ -84,6 +84,10 @@ export async function POST(req: Request) {
       // Lookup catalog prices for batch rows
       const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, select: { c1: true, c2: true, clienteId: true, final: true } })
 
+      // pasadoRegistro: default true (batch import typically used for historical data)
+      // but if body.pasadoRegistro === false, keep them as pending entradas
+      const pasadoRegistro = body.pasadoRegistro !== undefined ? Boolean(body.pasadoRegistro) : true
+
       const created = await db.registro.createMany({
         data: validRows.map(r => {
           // Resolve client: if not provided, try to detect from catalog
@@ -102,7 +106,7 @@ export async function POST(req: Request) {
           precioUnitario: r.precioUnitario && r.precioUnitario > 0 ? Number(r.precioUnitario) : lookupPrecio(catalogo, r.c1, r.c2, effectiveClienteId),
           obs: r.obs || '',
           customData: r.customData || '',
-          pasadoRegistro: true,
+          pasadoRegistro,
         }})
       })
 
