@@ -56,6 +56,7 @@ export function EntradaGrilla() {
   const [rows, setRows] = useState<GrillaRow[]>(() => Array.from({ length: 5 }, () => emptyRow()))
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [rowCountInput, setRowCountInput] = useState('5')
 
   const fieldDefs = config?.fieldsEntrada || []
   const customFields = fieldDefs.filter(f => f.isCustom && f.visible)
@@ -70,6 +71,9 @@ export function EntradaGrilla() {
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
+
+  // Keep rowCountInput synced when rows change by other means (+5, +10, duplicate, delete, CSV import, etc.)
+  useEffect(() => { setRowCountInput(String(rows.length)) }, [rows.length])
 
   // Build c1/c2 option lists for dropdowns
   const c1Options = useMemo(() => {
@@ -311,8 +315,10 @@ export function EntradaGrilla() {
               type="number"
               min={1}
               max={500}
-              value={rows.length}
-              onChange={e => setRowCount(Number(e.target.value) || 1)}
+              value={rowCountInput}
+              onChange={e => setRowCountInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur() } }}
+              onBlur={() => setRowCount(Number(rowCountInput) || 1)}
               className="w-16 h-7 px-1 text-sm text-center border-0 bg-transparent focus:outline-none focus:ring-1 focus:ring-[#005bb5] rounded"
             />
           </div>
