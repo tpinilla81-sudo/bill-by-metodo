@@ -113,6 +113,21 @@ export function EntradaGrilla() {
     setRows(Array.from({ length: 5 }, () => emptyRow()))
   }
 
+  // Set exact number of rows (add or remove from the end)
+  function setRowCount(n: number) {
+    const target = Math.max(1, Math.min(500, n))
+    setRows(prev => {
+      if (prev.length === target) return prev
+      if (prev.length < target) {
+        const lastRow = prev[prev.length - 1]
+        const baseFecha = lastRow?.fecha || todayISO()
+        const baseClienteId = lastRow?.clienteId || ''
+        return [...prev, ...Array.from({ length: target - prev.length }, () => ({ ...emptyRow(baseFecha), clienteId: baseClienteId }))]
+      }
+      return prev.slice(0, target)
+    })
+  }
+
   function duplicateRow(id: string) {
     setRows(prev => {
       const idx = prev.findIndex(r => r.id === id)
@@ -282,7 +297,7 @@ export function EntradaGrilla() {
             {rows.length} filas · {validCount} válidas · {totalCant} unidades
           </span>
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5 items-center">
           <Button variant="outline" size="sm" onClick={handleExportTemplate} title="Descargar plantilla CSV">
             <Download className="h-4 w-4 mr-1" /> Plantilla
           </Button>
@@ -290,6 +305,17 @@ export function EntradaGrilla() {
             <Upload className="h-4 w-4 mr-1" /> Importar CSV
             <input type="file" accept=".csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleImportCSV(f); e.target.value = '' }} />
           </label>
+          <div className="flex items-center gap-1.5 px-2 h-9 rounded-md border border-input bg-background">
+            <span className="text-xs text-slate-500">Filas:</span>
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={rows.length}
+              onChange={e => setRowCount(Number(e.target.value) || 1)}
+              className="w-16 h-7 px-1 text-sm text-center border-0 bg-transparent focus:outline-none focus:ring-1 focus:ring-[#005bb5] rounded"
+            />
+          </div>
           <Button variant="outline" size="sm" onClick={() => addManyRows(5)} title="Añadir 5 filas">
             <Plus className="h-4 w-4 mr-1" /> +5
           </Button>
