@@ -53,10 +53,10 @@ function lookupCliente(catalogo: CatalogoItem[], c1: string, c2: string): string
 export function EntradaGrilla() {
   const { config } = useConfig()
   const [data, setData] = useState<GrillaData>({ clientes: [], catalogo: [] })
-  const [rows, setRows] = useState<GrillaRow[]>(() => Array.from({ length: 5 }, () => emptyRow()))
+  const [rows, setRows] = useState<GrillaRow[]>(() => Array.from({ length: 1 }, () => emptyRow()))
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
-  const [rowCountInput, setRowCountInput] = useState('5')
+  const [rowCountInput, setRowCountInput] = useState('1')
 
   const fieldDefs = config?.fieldsEntrada || []
   const customFields = fieldDefs.filter(f => f.isCustom && f.visible)
@@ -114,7 +114,7 @@ export function EntradaGrilla() {
 
   function clearAll() {
     if (!confirm('¿Borrar todas las filas?')) return
-    setRows(Array.from({ length: 5 }, () => emptyRow()))
+    setRows([emptyRow()])
   }
 
   // Set exact number of rows (add or remove from the end)
@@ -217,7 +217,7 @@ export function EntradaGrilla() {
         return
       }
       showStatus('ok', `${result.count} entrada(s) guardada(s) ✓`)
-      setRows(Array.from({ length: 5 }, () => emptyRow()))
+      setRows([emptyRow()])
       triggerBackup()
     } catch (err) {
       console.error('Grilla save error:', err)
