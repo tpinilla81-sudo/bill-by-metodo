@@ -325,12 +325,6 @@ export function EntradaGrilla() {
           <Button variant="outline" size="sm" onClick={addRow} title="Añadir una fila">
             <Plus className="h-4 w-4 mr-1" /> +1
           </Button>
-          <Button variant="outline" size="sm" onClick={() => addManyRows(5)} title="Añadir 5 filas">
-            <Plus className="h-4 w-4 mr-1" /> +5
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => addManyRows(10)} title="Añadir 10 filas">
-            <Plus className="h-4 w-4 mr-1" /> +10
-          </Button>
           <Button variant="outline" size="sm" onClick={clearAll} title="Borrar todo">
             <Trash2 className="h-4 w-4" />
           </Button>
