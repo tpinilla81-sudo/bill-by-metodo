@@ -91,18 +91,37 @@ export function EntradaGrilla() {
     setRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)))
   }
 
+  // Find the last "filled" row: the last one that has c1 (and ideally c2)
+  // Used as a template when adding new rows
+  function lastFilledRow(): GrillaRow | null {
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (rows[i].c1) return rows[i]
+    }
+    return null
+  }
+
+  function newRowFromTemplate(): GrillaRow {
+    const tpl = lastFilledRow()
+    if (!tpl) return emptyRow()
+    // Copy all data EXCEPT obs (usually unique per entry) and customValues? — actually keep them, user can clear
+    return {
+      id: uid(),
+      fecha: tpl.fecha,
+      clienteId: tpl.clienteId,
+      c1: tpl.c1,
+      c2: tpl.c2,
+      cant: tpl.cant,
+      obs: '',  // leave obs empty, usually each entry has its own
+      customValues: { ...tpl.customValues },
+    }
+  }
+
   function addRow() {
-    const lastRow = rows[rows.length - 1]
-    const newFecha = lastRow?.fecha || todayISO()
-    const newClienteId = lastRow?.clienteId || ''
-    setRows(prev => [...prev, emptyRow(newFecha)])
+    setRows(prev => [...prev, newRowFromTemplate()])
   }
 
   function addManyRows(n: number) {
-    const lastRow = rows[rows.length - 1]
-    const baseFecha = lastRow?.fecha || todayISO()
-    const baseClienteId = lastRow?.clienteId || ''
-    setRows(prev => [...prev, ...Array.from({ length: n }, () => ({ ...emptyRow(baseFecha), clienteId: baseClienteId }))])
+    setRows(prev => [...prev, ...Array.from({ length: n }, () => newRowFromTemplate())])
   }
 
   function deleteRow(id: string) {
@@ -123,10 +142,12 @@ export function EntradaGrilla() {
     setRows(prev => {
       if (prev.length === target) return prev
       if (prev.length < target) {
-        const lastRow = prev[prev.length - 1]
-        const baseFecha = lastRow?.fecha || todayISO()
-        const baseClienteId = lastRow?.clienteId || ''
-        return [...prev, ...Array.from({ length: target - prev.length }, () => ({ ...emptyRow(baseFecha), clienteId: baseClienteId }))]
+        const tpl = lastFilledRow()
+        const baseRow = tpl
+          ? { id: '', fecha: tpl.fecha, clienteId: tpl.clienteId, c1: tpl.c1, c2: tpl.c2, cant: tpl.cant, obs: '', customValues: { ...tpl.customValues } }
+          : { id: '', fecha: todayISO(), clienteId: '', c1: '', c2: '', cant: '1', obs: '', customValues: {} }
+        const newRows = Array.from({ length: target - prev.length }, () => ({ ...baseRow, id: uid() }))
+        return [...prev, ...newRows]
       }
       return prev.slice(0, target)
     })
@@ -472,7 +493,7 @@ export function EntradaGrilla() {
       {/* Footer with save */}
       <div className="flex items-center justify-between bg-white rounded-lg px-4 py-2.5 shadow-sm border">
         <div className="text-xs text-slate-500">
-          💡 <b>Tip:</b> Enter para bajar a la siguiente fila · botón <b>+</b> para duplicar · el precio se autodetecta del catálogo
+          💡 <b>Tip:</b> Al pulsar <b>+1</b> o <b>Filas</b>, se copian los datos de la última fila rellena · Enter baja a la siguiente · botón <b>+</b> duplica fila · el precio se autodetecta del catálogo
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={addRow}>

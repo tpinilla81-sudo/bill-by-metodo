@@ -89,36 +89,42 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'No hay filas válidas' }, { status: 400 })
       }
 
-      // Lookup catalog prices for batch rows
-      const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, select: { c1: true, c2: true, clienteId: true, final: true } })
+      try {
+        // Lookup catalog prices for batch rows
+        const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, select: { c1: true, c2: true, clienteId: true, final: true } })
 
-      // pasadoRegistro: default true (batch import typically used for historical data)
-      // but if body.pasadoRegistro === false, keep them as pending entradas
-      const pasadoRegistro = body.pasadoRegistro !== undefined ? Boolean(body.pasadoRegistro) : true
+        // pasadoRegistro: default true (batch import typically used for historical data)
+        // but if body.pasadoRegistro === false, keep them as pending entradas
+        const pasadoRegistro = body.pasadoRegistro !== undefined ? Boolean(body.pasadoRegistro) : true
 
-      const created = await db.registro.createMany({
-        data: validRows.map(r => {
-          // Resolve client: if not provided, try to detect from catalog
-          let effectiveClienteId = r.clienteId || ''
-          if (!effectiveClienteId) {
-            effectiveClienteId = lookupCliente(catalogo, r.c1, r.c2)
-          }
-          return {
-          tenantId: tid,
-          fecha: r.fecha,
-          clienteId: effectiveClienteId,
-          cliente: r.cliente || '',
-          c1: r.c1,
-          c2: r.c2,
-          cant: Number(r.cant) || 1,
-          precioUnitario: r.precioUnitario && r.precioUnitario > 0 ? Number(r.precioUnitario) : lookupPrecio(catalogo, r.c1, r.c2, effectiveClienteId),
-          obs: r.obs || '',
-          customData: r.customData || '',
-          pasadoRegistro,
-        }})
-      })
+        const created = await db.registro.createMany({
+          data: validRows.map(r => {
+            // Resolve client: if not provided, try to detect from catalog
+            let effectiveClienteId = r.clienteId || ''
+            if (!effectiveClienteId) {
+              effectiveClienteId = lookupCliente(catalogo, r.c1, r.c2)
+            }
+            return {
+            tenantId: tid,
+            fecha: r.fecha,
+            clienteId: effectiveClienteId,
+            cliente: r.cliente || '',
+            c1: r.c1,
+            c2: r.c2,
+            cant: Number(r.cant) || 1,
+            precioUnitario: r.precioUnitario && r.precioUnitario > 0 ? Number(r.precioUnitario) : lookupPrecio(catalogo, r.c1, r.c2, effectiveClienteId),
+            obs: r.obs || '',
+            customData: r.customData || '',
+            pasadoRegistro,
+          }})
+        })
 
-      return NextResponse.json({ count: created.count }, { status: 201 })
+        return NextResponse.json({ count: created.count }, { status: 201 })
+      } catch (innerErr) {
+        console.error('Batch create error detail:', innerErr)
+        const message = innerErr instanceof Error ? innerErr.message : 'Error desconocido'
+        return NextResponse.json({ error: `Error al crear registros: ${message}` }, { status: 500 })
+      }
     }
 
     // Single entry
