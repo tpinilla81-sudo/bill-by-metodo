@@ -104,10 +104,12 @@ export async function POST(req: Request) {
             if (!effectiveClienteId) {
               effectiveClienteId = lookupCliente(catalogo, r.c1, r.c2)
             }
+            // If still empty, use null so Prisma doesn't try to validate FK
+            // (the field is now String? @default(""))
             return {
             tenantId: tid,
             fecha: r.fecha,
-            clienteId: effectiveClienteId,
+            clienteId: effectiveClienteId || null,
             cliente: r.cliente || '',
             c1: r.c1,
             c2: r.c2,
@@ -151,7 +153,7 @@ export async function POST(req: Request) {
       pu = lookupPrecio(catalogo, c1, c2, effectiveClienteId)
     }
     const registro = await db.registro.create({
-      data: { tenantId: tid, fecha, clienteId: effectiveClienteId, cliente: effectiveCliente, c1, c2, cant: Number(cant) || 1, precioUnitario: pu, obs: obs || '', customData: customData || '', pasadoRegistro: false }
+      data: { tenantId: tid, fecha, clienteId: effectiveClienteId || null, cliente: effectiveCliente, c1, c2, cant: Number(cant) || 1, precioUnitario: pu, obs: obs || '', customData: customData || '', pasadoRegistro: false }
     })
     return NextResponse.json(registro, { status: 201 })
   } catch (err) {
@@ -197,7 +199,7 @@ export async function PUT(req: Request) {
     if (!existing) return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data: any = { fecha, clienteId, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '' }
+    const data: any = { fecha, clienteId: clienteId || null, cliente: cliente || '', c1, c2, cant: Number(cant) || 1, obs: obs || '' }
     if (customData !== undefined) data.customData = customData
     if (facturado !== undefined) data.facturado = Boolean(facturado)
     if (precioUnitario !== undefined) data.precioUnitario = Number(precioUnitario)
