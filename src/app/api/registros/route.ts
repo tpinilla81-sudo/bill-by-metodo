@@ -91,9 +91,10 @@ export async function POST(req: Request) {
       const clientesRows = await db.cliente.findMany({ where: { tenantId: tid }, select: { id: true, nombre: true } })
       for (const c of clientesRows) clientesMap.set(c.id, c.nombre)
 
-      // Respect the caller's pasadoRegistro flag (grilla sends false, import sends true).
-      // Default to true so existing callers keep the old behaviour.
-      const pasadoRegistroFlag = body.pasadoRegistro !== undefined ? Boolean(body.pasadoRegistro) : true
+      // Respect the caller's pasadoRegistro flag.
+      // Default to FALSE so a batch from the grilla lands in Entradas (not Registros).
+      // Excel import explicitly sends pasadoRegistro: true to skip Entradas.
+      const pasadoRegistroFlag = body.pasadoRegistro !== undefined ? Boolean(body.pasadoRegistro) : false
 
       // Use individual create() per row so one bad row doesn't abort the rest.
       // Collect per-row errors so the user can see WHICH row failed and WHY
@@ -179,7 +180,9 @@ export async function POST(req: Request) {
       pu = lookupPrecio(catalogo, c1, c2, effectiveClienteId)
     }
     const registro = await db.registro.create({
-      data: { tenantId: tid, fecha, clienteId: effectiveClienteId || null, cliente: effectiveCliente, c1, c2, cant: Number(cant) || 1, precioUnitario: pu, obs: obs || '', customData: customData || '', pasadoRegistro: true }
+      // Default to false (= Entrada). Caller can send pasadoRegistro: true to skip Entradas and go straight to Registros
+      // (Excel import does this). Form Entrada and Grilla send false (or omit, defaulting to false).
+      data: { tenantId: tid, fecha, clienteId: effectiveClienteId || null, cliente: effectiveCliente, c1, c2, cant: Number(cant) || 1, precioUnitario: pu, obs: obs || '', customData: customData || '', pasadoRegistro: body.pasadoRegistro !== undefined ? Boolean(body.pasadoRegistro) : false }
     })
     return NextResponse.json(registro, { status: 201 })
   } catch (err) {
