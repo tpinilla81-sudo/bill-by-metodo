@@ -68,6 +68,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
+    console.log('[POST /api/registros] Incoming body:', JSON.stringify(body).slice(0, 500))
 
     // Batch import
     if (body.batch && Array.isArray(body.batch)) {
@@ -103,23 +104,28 @@ export async function POST(req: Request) {
         if (effectiveClienteId && !effectiveClienteName) {
           effectiveClienteName = clientesMap.get(effectiveClienteId) || ''
         }
-        await db.registro.create({
-          data: {
-            tenantId: tid,
-            fecha: r.fecha,
-            // Pass null when no cliente detected (schema is String? @default(""))
-            clienteId: effectiveClienteId || null,
-            cliente: effectiveClienteName,
-            c1: r.c1,
-            c2: r.c2,
-            cant: Number(r.cant) || 1,
-            precioUnitario: r.precioUnitario && r.precioUnitario > 0 ? Number(r.precioUnitario) : lookupPrecio(catalogo, r.c1, r.c2, effectiveClienteId),
-            obs: r.obs || '',
-            customData: r.customData || '',
-            pasadoRegistro: true,
-          }
-        })
-        createdCount++
+        const createData = {
+          tenantId: tid,
+          fecha: r.fecha,
+          // Pass null when no cliente detected (schema is String? @default(""))
+          clienteId: effectiveClienteId || null,
+          cliente: effectiveClienteName,
+          c1: r.c1,
+          c2: r.c2,
+          cant: Number(r.cant) || 1,
+          precioUnitario: r.precioUnitario && r.precioUnitario > 0 ? Number(r.precioUnitario) : lookupPrecio(catalogo, r.c1, r.c2, effectiveClienteId),
+          obs: r.obs || '',
+          customData: r.customData || '',
+          pasadoRegistro: true,
+        }
+        console.log(`[POST /api/registros] Row #${createdCount + 1} create() data:`, JSON.stringify(createData).slice(0, 300))
+        try {
+          await db.registro.create({ data: createData })
+          createdCount++
+        } catch (rowErr) {
+          console.error(`[POST /api/registros] Row #${createdCount + 1} FAILED:`, rowErr)
+          throw rowErr
+        }
       }
       const created = { count: createdCount }
 

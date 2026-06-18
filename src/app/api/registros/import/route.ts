@@ -174,17 +174,35 @@ export async function POST(req: Request) {
       })
     }
 
-    const created = uniqueRows.length > 0
-      ? await db.registro.createMany({
-          data: uniqueRows.map(r => ({
-            tenantId,
-            fecha: r.fecha, clienteId: r.clienteId || null, cliente: r.cliente,
-            c1: r.c1, c2: r.c2, cant: r.cant, obs: r.obs,
-            precioUnitario: r.precioUnitario,
-            customData: r.customData, pasadoRegistro: true,
-          }))
-        })
-      : { count: 0 }
+    // Use individual create() (not createMany) so nullable clienteId works
+    // reliably and we get clear per-row errors if any row fails.
+    let createdCount = 0
+    if (uniqueRows.length > 0) {
+      for (const r of uniqueRows) {
+        try {
+          await db.registro.create({
+            data: {
+              tenantId,
+              fecha: r.fecha,
+              clienteId: r.clienteId || null,
+              cliente: r.cliente,
+              c1: r.c1,
+              c2: r.c2,
+              cant: r.cant,
+              obs: r.obs,
+              precioUnitario: r.precioUnitario,
+              customData: r.customData,
+              pasadoRegistro: true,
+            }
+          })
+          createdCount++
+        } catch (rowErr) {
+          console.error('[Import Excel] Row FAILED:', rowErr, 'Row data:', r)
+          throw rowErr
+        }
+      }
+    }
+    const created = { count: createdCount }
 
     return NextResponse.json({
       success: true, imported: created.count, total: rows.length,

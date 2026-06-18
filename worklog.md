@@ -99,3 +99,37 @@ Stage Summary:
 - The wipe of node_modules/.next between sessions is a recurring environment issue.
 - Server is now daemonized (PPID=1) with auto-restart watchdog.
 - User needs to hard-refresh browser (Ctrl+Shift+R) to load fresh JS bundle.
+
+---
+Task ID: 10
+Agent: Main Agent
+Task: Fix "save 1 works, save 4 fails" — found second createMany in /api/registros/import route
+
+Work Log:
+- User reported: single save works, but 4-row save fails. Suggested "save directly to registros".
+- Source code review confirmed main /api/registros/route.ts already uses individual create() with pasadoRegistro: true (correct).
+- BUT: Found ANOTHER createMany usage in /api/registros/import/route.ts (Excel import endpoint) that still used createMany with clienteId: r.clienteId || null.
+- This was the source of the "Argument clienteId is missing" error when importing 4+ rows.
+- Also possible: user has stale browser JS still sending pasadoRegistro: false (cached).
+
+Fixes Applied:
+1. /api/registros/import/route.ts: Replaced createMany with individual create() loop, with per-row try/catch and error logging.
+2. /api/registros/route.ts POST: Added detailed console.log for incoming body and each row's create data, with per-row try/catch. Now if a single row fails, we'll see EXACTLY which row and why.
+
+Build & Restart:
+- next build succeeded (BUILD_ID: 2UlMDulcomwUdxer9kkVp)
+- Server restarted (PID 21945, PPID=1, HTTP 200)
+- Logs now show every POST with full payload + per-row create data
+
+Verification:
+- Single POST (MILCA / ALQUILER NAVE, no cliente) → HTTP 201 ✅
+- Batch POST with 4 rows → HTTP 201, count: 4 ✅
+- Server log shows all 4 rows created successfully with clienteId: null, pasadoRegistro: true
+- Test rows cleaned up.
+
+Stage Summary:
+- Both code paths now use individual create() — no createMany anywhere in user-facing registro creation.
+- Detailed logging added so if the user still sees an error, we can see EXACTLY what payload arrived and which row failed.
+- All saves go directly to Registros (pasadoRegistro: true) per user's request.
+- User should hard-refresh browser (Ctrl+Shift+R) to load fresh JS.
+- If error persists after hard-refresh, ask user to share the new server log entries (visible in /tmp/bill-server.log) so we can see what payload actually arrived.
