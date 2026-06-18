@@ -1,5 +1,5 @@
 'use client'
-// CACHE-BUST v2026-06-18-v3 — forces new chunk hash after createMany→create fix
+// CACHE-BUST v2026-06-18-v4 — Entrada rows now mirror Registros table layout
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus } from 'lucide-react'
-import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
+import { todayISO, fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 
@@ -150,6 +150,38 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   const clienteVisible = false  // forced hidden in Entrada; auto-detected from catalog
   const userCanTransfer = canTransfer(userRole, userPermissions)
   const userCanSeePrices = canSeePrices(userRole)
+
+  // ─── Precio / importe helpers (mirror of Registros view) ───
+  function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
+    let it = data.catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
+    if (!it) it = data.catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && !x.clienteId)
+    if (!it) it = data.catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val)
+    return it ? Number(it.final) || 0 : 0
+  }
+  function getPrecio(r: Registro): number {
+    return r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+  }
+  // ─── Cell value formatter (mirror of Registros view) ───
+  function getCellValue(r: Registro, field: FieldDef): React.ReactNode {
+    const pu = getPrecio(r)
+    const imp = pu * r.cant
+    const d = new Date(r.fecha)
+    const customData = parseCustomData((r as Record<string, unknown>).customData as string || '')
+    if (field.isCustom) return String(customData[field.key] || '')
+    switch (field.key) {
+      case 'fecha': return fmtDate(r.fecha)
+      case 'mes': return d.getMonth() + 1
+      case 'semana': return getISOWeek(r.fecha)
+      case 'cliente': return r.cliente
+      case 'c1': return r.c1
+      case 'c2': return r.c2
+      case 'cantidad': return r.cant
+      case 'precioUnitario': return fmtCurrency(pu)
+      case 'importe': return fmtCurrency(imp)
+      case 'observaciones': return r.obs
+      default: return ''
+    }
+  }
 
   // Auto-transfer timer — only runs if user has transfer permission
   useEffect(() => {
@@ -476,48 +508,56 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
         </div>
       </div>
 
-      {/* ─── SCROLLABLE ENTRIES ─── */}
-      <div className="flex-1 min-h-0 overflow-auto">
-        <div className="space-y-2">
-          {activeEntries.map(r => {
-            const rCustom = parseCustomData((r as Record<string, unknown>).customData as string || '')
-            return (
-              <div key={r.id} className={`bg-white rounded-lg border p-3 shadow-sm transition-all ${editingId === r.id ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-200' : 'border-gray-100 hover:bg-gray-50'}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="mb-1 flex items-center gap-2">
-                      <span className="text-xs text-gray-400">{r.fecha}</span>
-                      <span className="text-sm text-[#005bb5] font-semibold truncate">{r.cliente || '—'}</span>
-                    </div>
-                    <div className="flex items-baseline gap-1.5 text-sm text-gray-600">
-                      <span className="font-medium">{r.c1}</span>
-                      <span className="text-gray-300">·</span>
-                      <span>{r.c2}</span>
-                      <span className="text-gray-300">·</span>
-                      <span className="font-bold text-gray-900">{r.cant}x</span>
-                    </div>
-                    {r.obs && <p className="text-xs text-gray-400 mt-0.5 truncate">{r.obs}</p>}
-                    {visibleFields.filter(f => f.isCustom).map(f => {
-                      const val = rCustom[f.key]
-                      return val ? <p key={f.key} className="text-xs text-gray-500 mt-0.5 truncate"><span className="font-medium">{f.label}:</span> {String(val)}</p> : null
-                    })}
-                  </div>
-                  <div className="flex gap-1 shrink-0">
-                    <button onClick={() => handleEdit(r)} className="h-8 w-8 rounded-lg flex items-center justify-center text-indigo-500 hover:bg-indigo-50 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                    <button onClick={() => handleDelete(r.id)} className="h-8 w-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-          {activeEntries.length === 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-              <div className="text-4xl mb-2">📝</div>
-              <p className="text-gray-400 text-sm">Sin entradas activas</p>
-              <p className="text-gray-300 text-xs mt-1">Las entradas se transferirán al registro {transferMode === 'auto' ? 'automáticamente' : 'con el botón "Pasar al registro"'}</p>
-            </div>
-          )}
+      {/* ─── SCROLLABLE TABLE (mirrors Registros view) ─── */}
+      <div className="flex-1 min-h-0 bg-white rounded-lg border shadow-sm flex flex-col">
+        <div className="flex-1 min-h-0 overflow-auto">
+          <table className="w-full text-sm min-w-[900px]">
+            <thead className="sticky top-0 z-10 shadow-sm">
+              <tr className="bg-[#005bb5] text-white">
+                {visibleFields.map(f => (
+                  <th key={f.key} className="p-2.5 text-left font-semibold border-b border-[#004a94] bg-[#005bb5]">{f.label}</th>
+                ))}
+                <th className="p-2.5 text-left font-semibold border-b border-[#004a94] bg-[#005bb5]">Acc.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeEntries.map(r => (
+                <tr key={r.id} className={`border-b transition-colors ${editingId === r.id ? 'bg-amber-50 ring-2 ring-amber-200' : 'hover:bg-blue-50/50'}`}>
+                  {visibleFields.map(f => (
+                    <td key={f.key} className={`p-2 ${f.key === 'importe' ? 'font-bold text-[#005bb5]' : f.key === 'precioUnitario' ? 'text-gray-600' : f.key === 'observaciones' ? 'text-gray-500 text-xs' : ''}`}>
+                      {getCellValue(r, f)}
+                    </td>
+                  ))}
+                  <td className="p-2 whitespace-nowrap">
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </td>
+                </tr>
+              ))}
+              {activeEntries.length === 0 && (
+                <tr>
+                  <td colSpan={visibleFields.length + 1} className="p-8 text-center text-gray-400">
+                    {loading ? 'Cargando...' : 'Sin entradas activas'}
+                    {activeEntries.length === 0 && !loading && (
+                      <div className="text-xs text-gray-300 mt-1">Las entradas se transferirán al registro {transferMode === 'auto' ? 'automáticamente' : 'con el botón "Pasar al registro"'}</div>
+                    )}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
+        {/* Fixed footer totals — only when entries exist */}
+        {activeEntries.length > 0 && (
+          <div className="flex-shrink-0 bg-gray-100 font-bold text-sm px-2.5 py-2.5 border-t flex items-center gap-4">
+            <span>TOTALES</span>
+            <span>Líneas: <span className="text-[#005bb5]">{activeEntries.length}</span></span>
+            <span>Cantidad: <span className="text-[#005bb5]">{activeEntries.reduce((s, r) => s + r.cant, 0)}</span></span>
+            {userCanSeePrices && (
+              <span>Importe: <span className="text-[#005bb5]">{fmtCurrency(activeEntries.reduce((s, r) => s + getPrecio(r) * r.cant, 0))}</span></span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
