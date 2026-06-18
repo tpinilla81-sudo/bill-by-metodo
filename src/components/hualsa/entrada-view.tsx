@@ -1,5 +1,5 @@
 'use client'
-// CACHE-BUST v2026-06-18-v4 — Entrada rows now mirror Registros table layout
+// CACHE-BUST v2026-06-18-v5 — Entrada rows now mirror Registros table layout
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
@@ -503,8 +503,9 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
         </div>
 
         {/* Stats bar */}
-        <div className="flex flex-wrap gap-4 bg-white rounded-lg px-4 py-2.5 shadow-sm text-sm font-bold border">
+        <div className="flex flex-wrap gap-4 bg-white rounded-lg px-4 py-2.5 shadow-sm text-sm font-bold border items-center">
           <span>Entradas:<b className="text-[#005bb5] ml-1">{activeEntries.length}</b></span>
+          <span className="ml-auto text-[10px] font-mono bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">TABLE-v5</span>
         </div>
       </div>
 
