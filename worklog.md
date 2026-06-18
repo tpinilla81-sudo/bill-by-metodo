@@ -68,3 +68,34 @@ Stage Summary:
 - Both single and batch saves set pasadoRegistro=true (go directly to Registros, not Entradas).
 - Server is daemonized (PPID=1) and will auto-restart on crash.
 - User should hard-refresh browser (Ctrl+Shift+R) to load new JS bundle.
+
+---
+Task ID: 9
+Agent: Main Agent
+Task: Fix "Error al crear registros: Invalid prisma.registro.createMany() ... clienteId is missing" in grilla (Excel import in registros-view)
+
+Work Log:
+- User reported the SAME error as Task 8 but in the grilla (Excel import feature in registros-view.tsx)
+- Investigated: source code already had the correct fix from Task 8 (uses create() not createMany())
+- BUT: `.next/` build artifacts AND `node_modules/` had been completely wiped (likely by some cleanup process between sessions)
+- No server was running (port 3000 dead, port 81 Caddy returning 502)
+- The error the user saw was from a stale server state (running old compiled JS that still used createMany)
+
+Recovery Steps:
+1. bun install --no-progress (884 packages installed in 5s)
+2. ./node_modules/.bin/prisma generate (v6.19.3)
+3. ./node_modules/.bin/prisma db push --accept-data-loss (already in sync - schema was already updated in Task 8)
+4. ./node_modules/.bin/next build (succeeded, 23 routes)
+5. bash scripts/start-bill-server.sh (double-fork daemon, PID 3123, PPID=1)
+6. Server verified: HTTP 200 on port 3000
+
+Verification with authenticated curl:
+- Reproduced EXACT user scenario: batch POST with MILCA / ALQUILER NAVE, no cliente
+- Result: HTTP 201, {"count":2}, both rows saved with clienteId=None, pasadoRegistro=true
+- Test rows cleaned up from DB.
+
+Stage Summary:
+- Source code was already correct from Task 8 - just needed to rebuild and restart.
+- The wipe of node_modules/.next between sessions is a recurring environment issue.
+- Server is now daemonized (PPID=1) with auto-restart watchdog.
+- User needs to hard-refresh browser (Ctrl+Shift+R) to load fresh JS bundle.
