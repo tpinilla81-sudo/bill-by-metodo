@@ -133,3 +133,36 @@ Stage Summary:
 - All saves go directly to Registros (pasadoRegistro: true) per user's request.
 - User should hard-refresh browser (Ctrl+Shift+R) to load fresh JS.
 - If error persists after hard-refresh, ask user to share the new server log entries (visible in /tmp/bill-server.log) so we can see what payload actually arrived.
+
+---
+Task ID: 11
+Agent: Main Agent
+Task: User still seeing "da error" after previous fixes — browser cache root cause
+
+Work Log:
+- User reported error persists after Task 10 fixes.
+- Investigated server log: NO entries from user's recent attempts (only my curl tests).
+- Verified compiled server code in .next/server/chunks/ has correct logic:
+  * /api/registros POST uses create() (not createMany) with pasadoRegistro: true
+  * Only createMany remaining is in /api/backup, /api/auto-backup/restore, /api/catalogo (not user-facing for registro creation)
+- Root cause: Browser has cached OLD JS chunks (same chunk hash names because Turbopack content-hashes, source code changes weren't enough to change hashes).
+
+Aggressive Fix Applied:
+1. custom-server.js: Added Cache-Control: no-store, no-cache, must-revalidate, max-age=0 + Pragma: no-cache + Expires: 0 headers to EVERY response (HTML, JS chunks, API responses). Browser will always fetch fresh.
+2. Added cache-bust comment to entrada-view.tsx and registros-view.tsx.
+3. Deleted .next/ completely and ran fresh `next build`.
+4. New BUILD_ID: lId_vIx0aBNNvFArls3Up
+5. Restarted server (PID 23003, PPID=1).
+
+Verification:
+- curl -sI http://localhost:3000/ → Cache-Control: no-store, no-cache, must-revalidate, max-age=0 ✓
+- curl -sI http://localhost:3000/_next/static/chunks/*.js → same no-cache headers ✓
+- Single POST (MILCA / ALQUILER NAVE, no cliente) → HTTP 201 ✓
+- Batch POST with 4 rows → HTTP 201, count: 4 ✓
+- Test rows cleaned up.
+
+Stage Summary:
+- Server now FORCES browser to never cache. Every load fetches fresh JS.
+- This means user's browser CANNOT serve stale createMany code anymore.
+- User just needs to refresh ONCE more (regular F5 should now work, no need for Ctrl+Shift+R).
+- If error persists after this, it's NOT a cache issue — ask user to share the exact network response from DevTools.

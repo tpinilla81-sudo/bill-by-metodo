@@ -1,4 +1,5 @@
 'use client'
+// CACHE-BUST v2026-06-18-v3 — forces new chunk hash after createMany→create fix
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
