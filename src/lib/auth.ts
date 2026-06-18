@@ -114,6 +114,9 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   return verifySession(token)
 }
 
+// Alias for backwards compatibility
+export const getAuthUser = getSessionUser
+
 // ─── Role-based access helpers ───────────────────────────────
 
 // requireAdmin: Allows "admin" or "superadmin" roles

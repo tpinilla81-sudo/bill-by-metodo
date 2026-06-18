@@ -6,10 +6,11 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus } from 'lucide-react'
+import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus, Table } from 'lucide-react'
 import { todayISO, fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
+import { EntradaGrilla } from '@/components/hualsa/entrada-grilla'
 
 interface EntradaViewData {
   registros: Registro[]
@@ -88,7 +89,7 @@ function ComboInput({
 }
 
 // Permission check helpers
-const SCREEN_PERMS = ['entrada', 'entrada.pasarRegistros', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
+const SCREEN_PERMS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
 
 function parsePerms(permissions: string): string[] {
   if (!permissions || permissions.trim() === '') return []
@@ -104,6 +105,13 @@ function canTransfer(role: string, permissions: string): boolean {
 
 function canSeePrices(role: string): boolean {
   return role === 'admin' || role === 'superadmin'
+}
+
+function canUseGrilla(role: string, permissions: string): boolean {
+  if (role === 'admin' || role === 'superadmin') return true
+  const perms = parsePerms(permissions)
+  if (perms.length === 0) return false
+  return perms.includes('entrada.grilla')
 }
 
 export function EntradaView({ userRole = 'user', userPermissions = '' }: { userRole?: string; userPermissions?: string }) {
@@ -150,6 +158,8 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   const clienteVisible = false  // forced hidden in Entrada; auto-detected from catalog
   const userCanTransfer = canTransfer(userRole, userPermissions)
   const userCanSeePrices = canSeePrices(userRole)
+  const userCanUseGrilla = canUseGrilla(userRole, userPermissions)
+  const [grillaMode, setGrillaMode] = useState(false)
 
   // ─── Precio / importe helpers (mirror of Registros view) ───
   function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
@@ -427,6 +437,31 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
+      {/* ─── Mode toggle: Normal / Grilla ─── */}
+      {userCanUseGrilla && (
+        <div className="flex-shrink-0 flex items-center justify-end gap-2 pb-2">
+          <div className="inline-flex rounded-lg border bg-white p-0.5 shadow-sm">
+            <button
+              onClick={() => setGrillaMode(false)}
+              className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${!grillaMode ? 'bg-[#005bb5] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              Normal
+            </button>
+            <button
+              onClick={() => setGrillaMode(true)}
+              className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-1 ${grillaMode ? 'bg-[#2bb24c] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              <Table className="h-3.5 w-3.5" /> Grilla masiva
+            </button>
+          </div>
+        </div>
+      )}
+
+      {grillaMode && userCanUseGrilla ? (
+        <EntradaGrilla />
+      ) : (
+      <>
+
       {/* ─── FIXED HEADER (form) ─── */}
       <div className="flex-shrink-0 space-y-2 pb-2">
         {statusMsg && (
@@ -560,6 +595,8 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   )
 }
