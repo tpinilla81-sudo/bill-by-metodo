@@ -234,7 +234,17 @@ export function EntradaGrilla() {
       })
       const result = await res.json()
       if (!res.ok) {
+        // Backend now returns specific error text (which row failed and why)
         showStatus('err', result.error || 'Error al guardar')
+        return
+      }
+      if (res.status === 207 && result.partial) {
+        // Partial success: some rows saved, some failed
+        showStatus('err', result.error || `Se guardaron ${result.count} de ${batch.length} filas`)
+        // Keep the rows that failed so the user can fix and retry — but clear the saved ones.
+        // For simplicity here we just clear all and show the error; user can re-enter.
+        setRows([emptyRow()])
+        triggerBackup()
         return
       }
       showStatus('ok', `${result.count} entrada(s) guardada(s) ✓`)

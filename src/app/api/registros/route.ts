@@ -91,10 +91,17 @@ export async function POST(req: Request) {
       const clientesRows = await db.cliente.findMany({ where: { tenantId: tid }, select: { id: true, nombre: true } })
       for (const c of clientesRows) clientesMap.set(c.id, c.nombre)
 
-      // Use individual create() (not createMany) so nullable clienteId works
-      // reliably across Prisma versions and we can fill the cliente name.
+      // Respect the caller's pasadoRegistro flag (grilla sends false, import sends true).
+      // Default to true so existing callers keep the old behaviour.
+      const pasadoRegistroFlag = body.pasadoRegistro !== undefined ? Boolean(body.pasadoRegistro) : true
+
+      // Use individual create() per row so one bad row doesn't abort the rest.
+      // Collect per-row errors so the user can see WHICH row failed and WHY
+      // (instead of the generic "Error creando registro" we used to throw).
       let createdCount = 0
-      for (const r of validRows) {
+      const failures: { row: number; c1: string; c2: string; fecha: string; reason: string }[] = []
+      for (let i = 0; i < validRows.length; i++) {
+        const r = validRows[i]
         // Resolve client: if not provided, try to detect from catalog
         let effectiveClienteId = r.clienteId || ''
         if (!effectiveClienteId) {
@@ -116,20 +123,36 @@ export async function POST(req: Request) {
           precioUnitario: r.precioUnitario && r.precioUnitario > 0 ? Number(r.precioUnitario) : lookupPrecio(catalogo, r.c1, r.c2, effectiveClienteId),
           obs: r.obs || '',
           customData: r.customData || '',
-          pasadoRegistro: true,
+          pasadoRegistro: pasadoRegistroFlag,
         }
-        console.log(`[POST /api/registros] Row #${createdCount + 1} create() data:`, JSON.stringify(createData).slice(0, 300))
         try {
           await db.registro.create({ data: createData })
           createdCount++
         } catch (rowErr) {
-          console.error(`[POST /api/registros] Row #${createdCount + 1} FAILED:`, rowErr)
-          throw rowErr
+          const reason = rowErr instanceof Error ? rowErr.message : String(rowErr)
+          console.error(`[POST /api/registros] Row #${i + 1} FAILED:`, reason, 'Row data:', JSON.stringify(createData).slice(0, 200))
+          failures.push({ row: i + 1, c1: r.c1, c2: r.c2, fecha: r.fecha, reason })
         }
       }
-      const created = { count: createdCount }
 
-      return NextResponse.json({ count: created.count }, { status: 201 })
+      // All rows succeeded
+      if (failures.length === 0) {
+        return NextResponse.json({ count: createdCount }, { status: 201 })
+      }
+      // Some succeeded, some failed — return partial success with details
+      if (createdCount > 0) {
+        return NextResponse.json({
+          count: createdCount,
+          partial: true,
+          failures,
+          error: `Se guardaron ${createdCount} de ${validRows.length} filas. Fallaron: ${failures.map(f => `#${f.row} (${f.c1}/${f.c2}): ${f.reason}`).join('; ')}`,
+        }, { status: 207 })
+      }
+      // All failed — give the user the most actionable reason
+      return NextResponse.json({
+        error: `No se pudo guardar ninguna fila. Primera falla: ${failures[0].reason} (fila ${failures[0].row}: ${failures[0].c1}/${failures[0].c2} del ${failures[0].fecha})`,
+        failures,
+      }, { status: 500 })
     }
 
     // Single entry
