@@ -48,6 +48,11 @@ export function RegistrosView() {
   const [fC2, setFC2] = useState('')
   const [fQ, setFQ] = useState('')
 
+  // Sort control: 'entrada' = order in which records were entered (createdAt),
+  // which is what users mean by "ordenar según como pasa desde entradas".
+  type SortKey = 'entrada' | 'fecha_asc' | 'fecha_desc' | 'cliente' | 'c1' | 'c2' | 'importe' | 'cant'
+  const [sortBy, setSortBy] = useState<SortKey>('entrada')
+
   // Excel import
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<Partial<Registro & { precioUnitario?: number; importe?: number }>[]>([])
@@ -109,7 +114,29 @@ export function RegistrosView() {
     if (fC2 && fC2 !== '__all__' && r.c2 !== fC2) return false
     if (fQ) { const blob = (r.c1 + ' ' + r.c2 + ' ' + (r.obs || '') + ' ' + (r.cliente || '')).toLowerCase(); if (!blob.includes(fQ.toLowerCase())) return false }
     return true
-  }).sort((a, b) => a.fecha.localeCompare(b.fecha))
+  }).sort((a, b) => {
+    switch (sortBy) {
+      case 'entrada':
+        // Most recently entered first (matches how they appear in Entradas — newest on top)
+        return (b.createdAt || '').localeCompare(a.createdAt || '')
+      case 'fecha_asc':
+        return a.fecha.localeCompare(b.fecha)
+      case 'fecha_desc':
+        return b.fecha.localeCompare(a.fecha)
+      case 'cliente':
+        return (a.cliente || '').localeCompare(b.cliente || '')
+      case 'c1':
+        return (a.c1 || '').localeCompare(b.c1 || '')
+      case 'c2':
+        return (a.c2 || '').localeCompare(b.c2 || '')
+      case 'cant':
+        return b.cant - a.cant
+      case 'importe':
+        return (getPrecio(b) * b.cant) - (getPrecio(a) * a.cant)
+      default:
+        return 0
+    }
+  })
 
   let tCant = 0, tImp = 0
   filtered.forEach(r => { tCant += r.cant; tImp += getPrecio(r) * r.cant })
@@ -502,11 +529,27 @@ export function RegistrosView() {
           </div>
         )}
 
-        {/* Stats bar — always visible */}
-        <div className="flex flex-wrap gap-4 bg-white rounded-lg px-4 py-2.5 shadow-sm text-sm font-bold border">
+        {/* Stats bar — always visible, includes sort selector */}
+        <div className="flex flex-wrap gap-4 bg-white rounded-lg px-4 py-2.5 shadow-sm text-sm font-bold border items-center">
           <span>Líneas:<b className="text-[#005bb5] ml-1">{filtered.length}</b></span>
           <span>Cantidad:<b className="text-[#005bb5] ml-1">{tCant}</b></span>
           <span>Importe:<b className="text-[#2bb24c] ml-1">{fmtCurrency(tImp)}</b></span>
+          <div className="flex items-center gap-1.5 ml-2">
+            <span className="text-xs font-semibold text-slate-500 uppercase">Ordenar:</span>
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+              <SelectTrigger className="h-7 w-44 text-xs font-semibold border-slate-200"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="entrada">Orden de entrada (más reciente primero)</SelectItem>
+                <SelectItem value="fecha_desc">Fecha (más reciente primero)</SelectItem>
+                <SelectItem value="fecha_asc">Fecha (más antigua primero)</SelectItem>
+                <SelectItem value="cliente">Cliente (A-Z)</SelectItem>
+                <SelectItem value="c1">Concepto 1 (A-Z)</SelectItem>
+                <SelectItem value="c2">Concepto 2 (A-Z)</SelectItem>
+                <SelectItem value="cant">Cantidad (mayor primero)</SelectItem>
+                <SelectItem value="importe">Importe (mayor primero)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           {selectedIds.size === 0 && filtered.length > 0 && (
             <>
               <div className="flex-1" />

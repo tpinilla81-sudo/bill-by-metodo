@@ -75,4 +75,6 @@ export interface Registro {
   pasadoRegistro: boolean
   facturado: boolean
   customData?: string
+  createdAt?: string
+  updatedAt?: string
 }

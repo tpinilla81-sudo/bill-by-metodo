@@ -40,7 +40,10 @@ export async function GET(req: Request) {
       where = { tenantId: tid, pasadoRegistro: true }
     }
 
-    const registros = await db.registro.findMany({ where, orderBy: { fecha: 'desc' } })
+    // Default sort: createdAt desc (most recent entry first).
+    // The UI can re-sort client-side; this just gives a sensible default that
+    // reflects the order in which records were entered (orden de entrada).
+    const registros = await db.registro.findMany({ where, orderBy: { createdAt: 'desc' } })
     return NextResponse.json(registros)
   } catch (err) {
     console.error('Registros GET error:', err)
