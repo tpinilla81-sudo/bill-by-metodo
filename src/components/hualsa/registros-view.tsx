@@ -609,7 +609,7 @@ export function RegistrosView() {
             </div>
             <div>
               <Label className="text-xs uppercase font-bold text-slate-500">Cantidad</Label>
-              <Input type="number" step="1" value={editCant} onChange={e => setEditCant(e.target.value)} />
+              <Input type="number" step="any" min="0" value={editCant} onChange={e => setEditCant(e.target.value)} />
             </div>
             <div>
               <Label className="text-xs uppercase font-bold text-slate-500">Observaciones</Label>

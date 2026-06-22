@@ -394,7 +394,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
-          <div className="px-3 pb-2"><Input type="number" value={cant} onChange={e => setCant(e.target.value)} min="1" className="h-9 text-sm text-center border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" /></div>
+          <div className="px-3 pb-2"><Input type="number" step="any" value={cant} onChange={e => setCant(e.target.value)} min="0" className="h-9 text-sm text-center border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" /></div>
         </div>
       )
     }

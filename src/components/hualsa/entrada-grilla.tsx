@@ -388,6 +388,8 @@ export function EntradaGrilla() {
                   <td className="px-1 py-1">
                     <input
                       type="number"
+                      step="any"
+                      min="0"
                       data-row-id={row.id}
                       data-field="cant"
                       value={row.cant}
