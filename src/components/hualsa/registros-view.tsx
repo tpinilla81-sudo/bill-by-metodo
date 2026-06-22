@@ -1,5 +1,5 @@
 'use client'
-// CACHE-BUST v2026-06-18-v3 — forces new chunk hash after createMany→create fix
+// CACHE-BUST v2026-06-22-v1 — adds entrada_asc sort option (ascending entry order)
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -50,8 +50,9 @@ export function RegistrosView() {
 
   // Sort control: 'entrada' = order in which records were entered (createdAt),
   // which is what users mean by "ordenar según como pasa desde entradas".
-  type SortKey = 'entrada' | 'fecha_asc' | 'fecha_desc' | 'cliente' | 'c1' | 'c2' | 'importe' | 'cant'
-  const [sortBy, setSortBy] = useState<SortKey>('entrada')
+  // 'entrada_desc' = newest entry first (default), 'entrada_asc' = oldest entry first.
+  type SortKey = 'entrada_desc' | 'entrada_asc' | 'fecha_asc' | 'fecha_desc' | 'cliente' | 'c1' | 'c2' | 'importe' | 'cant'
+  const [sortBy, setSortBy] = useState<SortKey>('entrada_desc')
 
   // Excel import
   const [importModalOpen, setImportModalOpen] = useState(false)
@@ -116,9 +117,12 @@ export function RegistrosView() {
     return true
   }).sort((a, b) => {
     switch (sortBy) {
-      case 'entrada':
+      case 'entrada_desc':
         // Most recently entered first (matches how they appear in Entradas — newest on top)
         return (b.createdAt || '').localeCompare(a.createdAt || '')
+      case 'entrada_asc':
+        // Oldest entry first — useful for tracking the original entry order top-to-bottom
+        return (a.createdAt || '').localeCompare(b.createdAt || '')
       case 'fecha_asc':
         return a.fecha.localeCompare(b.fecha)
       case 'fecha_desc':
@@ -539,7 +543,8 @@ export function RegistrosView() {
             <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
               <SelectTrigger className="h-7 w-44 text-xs font-semibold border-slate-200"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="entrada">Orden de entrada (más reciente primero)</SelectItem>
+                <SelectItem value="entrada_desc">Orden de entrada (más reciente primero)</SelectItem>
+                <SelectItem value="entrada_asc">Orden de entrada (más antiguo primero)</SelectItem>
                 <SelectItem value="fecha_desc">Fecha (más reciente primero)</SelectItem>
                 <SelectItem value="fecha_asc">Fecha (más antigua primero)</SelectItem>
                 <SelectItem value="cliente">Cliente (A-Z)</SelectItem>
