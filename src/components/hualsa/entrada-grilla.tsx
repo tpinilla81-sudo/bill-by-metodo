@@ -75,17 +75,30 @@ export function EntradaGrilla() {
   // Keep rowCountInput synced when rows change by other means (+5, +10, duplicate, delete, CSV import, etc.)
   useEffect(() => { setRowCountInput(String(rows.length)) }, [rows.length])
 
-  // Build c1/c2 option lists for dropdowns
+  // Build c1 option list for dropdowns (all unique c1 values from catalog)
   const c1Options = useMemo(() => {
     const all = data.catalogo.map(c => c.c1).filter(Boolean)
     return [...new Set(all)].sort()
   }, [data.catalogo])
 
-  // C2 options depend on selected c1 (per row) - we'll just provide all unique c2
+  // C2 options depend on selected c1 (per row) - computed inline in render
+  // using the helper below so each row filters its own c2 list.
   const allC2Options = useMemo(() => {
     const all = data.catalogo.map(c => c.c2).filter(Boolean)
     return [...new Set(all)].sort()
   }, [data.catalogo])
+
+  // Per-row c2 options: filter catalog by the row's c1, then unique sort.
+  // Falls back to allC2Options when no c1 is selected yet.
+  function c2OptionsFor(c1: string): string[] {
+    if (!c1) return allC2Options
+    const set = new Set<string>()
+    for (const c of data.catalogo) {
+      if (c.c1 === c1 && c.c2) set.add(c.c2)
+    }
+    // If no matching catalog entries, fall back so user can still type a value
+    return set.size > 0 ? [...set].sort() : allC2Options
+  }
 
   function updateRow(id: string, patch: Partial<GrillaRow>) {
     setRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)))
@@ -369,7 +382,12 @@ export function EntradaGrilla() {
                       options={c1Options}
                       rowId={row.id}
                       field="c1"
-                      onChange={v => updateRow(row.id, { c1: v })}
+                      onChange={v => {
+                        // When c1 changes, clear c2 if it's no longer valid for the new c1.
+                        const validC2s = c2OptionsFor(v)
+                        const nextC2 = validC2s.includes(row.c2) ? row.c2 : ''
+                        updateRow(row.id, { c1: v, c2: nextC2 })
+                      }}
                       onKeyDown={e => handleKeyDown(e, idx, 'c1')}
                       onFillDown={() => fillDown(row.id, 'c1')}
                     />
@@ -377,7 +395,7 @@ export function EntradaGrilla() {
                   <td className="px-1 py-1">
                     <CellCombo
                       value={row.c2}
-                      options={allC2Options}
+                      options={c2OptionsFor(row.c1)}
                       rowId={row.id}
                       field="c2"
                       onChange={v => updateRow(row.id, { c2: v })}
