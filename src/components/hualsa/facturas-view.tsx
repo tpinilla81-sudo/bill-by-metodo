@@ -276,7 +276,14 @@ export function FacturasView() {
       : ''
 
     const lineasHtml = lineas.map(r => {
-      const p = pu(r.c1, r.c2, r.clienteId)
+      // IMPORTANT: use the historical precioUnitario stored on the line,
+      // NOT the current catalog price. Otherwise, if prices in the catalog
+      // change after the registro was created, the printed invoice line items
+      // would show the new catalog price while the totals (computed from
+      // r.precioUnitario) would still be based on the historical price —
+      // causing the sum of line items not to match the displayed total.
+      // Only fall back to catalog lookup when the line has no stored price.
+      const p = r.precioUnitario > 0 ? r.precioUnitario : pu(r.c1, r.c2, r.clienteId)
       return `<tr>
         <td style="padding:7px 10px;border:1px solid #bbb;">${fechaLbl(r.fecha)}</td>
         <td style="padding:7px 10px;border:1px solid #bbb;">${r.c1}${r.c2 ? ' - ' + r.c2 : ''}${r.obs ? ' (' + r.obs + ')' : ''}</td>
