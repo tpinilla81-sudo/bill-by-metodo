@@ -205,6 +205,12 @@ export function RegistrosView() {
           const rawC2 = getRowVal(row, getLabel('c2'), 'CONCEPTO 2', 'Concepto 2', 'C2', 'c2')
           const rawCant = getRowVal(row, getLabel('cantidad'), 'CANTIDAD', 'Cant', 'Cantidad', 'CANT', 'cantidad')
           const rawObs = getRowVal(row, getLabel('observaciones'), 'OBSERVACIONES', 'Obs', 'Observaciones', 'obs')
+          // Read optional precio column from Excel — if present, it overrides the
+          // catalog price. The norm: "facturación por registro" means the price
+          // stored on the registro is the one used at invoice time, so we must
+          // honor a price column in the imported Excel rather than silently
+          // overwriting it with the catalog price.
+          const rawPrecio = getRowVal(row, getLabel('precioUnitario'), 'PRECIO', 'Precio', 'PRECIO UNITARIO', 'Precio Unitario', 'PU', 'p.u.', 'precio')
 
           // Skip empty rows
           if (!rawFecha && !rawCliente && !rawC1 && !rawC2 && !rawCant) return
@@ -223,7 +229,9 @@ export function RegistrosView() {
 
           const cantNum = Number(rawCant) || 1
           const clienteId = matchedCliente?.id || ''
-          const pu = precioUnit(rawC1, rawC2, clienteId)
+          // Excel precio column takes priority; fall back to catalog only when not provided.
+          const parsedPrecio = rawPrecio ? Number(String(rawPrecio).replace(',', '.')) : 0
+          const pu = parsedPrecio > 0 ? parsedPrecio : precioUnit(rawC1, rawC2, clienteId)
           const imp = pu * cantNum
 
           preview.push({

@@ -82,6 +82,10 @@ export async function POST(req: Request) {
     const colCant = findCol(firstRow, ['cantidad', 'cant', 'qty', 'quantity', 'unidades'])
     const colObs = findCol(firstRow, ['observaciones', 'obs', 'notas', 'nota'])
     const colClienteId = findCol(firstRow, ['clienteid', 'cliente_id', 'id cliente'])
+    // Optional precio column — if present in the Excel, its value overrides
+    // the catalog price. Honors the "facturación por registro" rule: the
+    // imported Excel's price becomes the registro's precioUnitario.
+    const colPrecio = findCol(firstRow, ['precio', 'precio unitario', 'precio_unitario', 'pu', 'p.u.', 'p unit', 'punit', 'tarifa'])
 
     if (!colFecha) return NextResponse.json({ error: 'No se encuentra la columna "Fecha"' }, { status: 400 })
     if (!colC1) return NextResponse.json({ error: 'No se encuentra la columna "Concepto 1"' }, { status: 400 })
@@ -94,7 +98,7 @@ export async function POST(req: Request) {
       precioUnitario: number;
     }[] = []
 
-    const coreCols = new Set([colFecha, colCliente, colC1, colC2, colCant, colObs, colClienteId].filter(Boolean))
+    const coreCols = new Set([colFecha, colCliente, colC1, colC2, colCant, colObs, colClienteId, colPrecio].filter(Boolean))
     const customCols = Object.keys(firstRow).filter(k => !coreCols.has(k) && String(firstRow[k]) !== '')
 
     for (let i = 0; i < rows.length; i++) {
@@ -130,10 +134,35 @@ export async function POST(req: Request) {
         if (row[col] !== undefined && row[col] !== '') customData[col] = row[col]
       }
 
+      // Excel precio column (if present) takes priority over catalog lookup.
+      // Handles both "1.234,56" (es) and "1,234.56" (en) formats by stripping
+      // thousands separators and replacing the decimal comma.
+      let precio = 0
+      if (colPrecio && row[colPrecio] !== undefined && row[colPrecio] !== '') {
+        const raw = String(row[colPrecio]).trim()
+        // If it has both '.' and ',', the last one is the decimal separator.
+        let normalized = raw
+        if (raw.includes('.') && raw.includes(',')) {
+          if (raw.lastIndexOf(',') > raw.lastIndexOf('.')) {
+            // Spanish: 1.234,56 -> 1234.56
+            normalized = raw.replace(/\./g, '').replace(',', '.')
+          } else {
+            // English: 1,234.56 -> 1234.56
+            normalized = raw.replace(/,/g, '')
+          }
+        } else if (raw.includes(',')) {
+          // Single comma: treat as decimal separator
+          normalized = raw.replace(',', '.')
+        }
+        const parsed = Number(normalized)
+        if (!Number.isNaN(parsed) && parsed > 0) precio = parsed
+      }
+      if (precio === 0) precio = lookupPrecio(c1, c2, clienteId)
+
       validRows.push({
         fecha, clienteId, cliente: clienteNombre, c1, c2, cant, obs,
         customData: Object.keys(customData).length > 0 ? JSON.stringify(customData) : '',
-        precioUnitario: lookupPrecio(c1, c2, clienteId),
+        precioUnitario: precio,
       })
     }
 
