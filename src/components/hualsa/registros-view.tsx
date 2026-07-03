@@ -259,6 +259,8 @@ export function RegistrosView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // Excel import lands directly in Registros (skips Entradas).
+          pasadoRegistro: true,
           batch: validRows.map(r => ({
             fecha: r.fecha,
             clienteId: r.clienteId || '',
@@ -267,6 +269,10 @@ export function RegistrosView() {
             c2: r.c2 || '',
             cant: r.cant || 1,
             obs: r.obs || '',
+            // Pass the price computed during preview so the saved registro
+            // has the same price the user saw in the import preview (frozen
+            // at preview time, not re-looked-up from catalog at save time).
+            precioUnitario: r.precioUnitario || 0,
           }))
         })
       })
