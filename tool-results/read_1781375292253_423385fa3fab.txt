@@ -1,0 +1,990 @@
+     1→'use client'
+     2→
+     3→import { useState, useCallback, useEffect } from 'react'
+     4→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     5→import { Input } from '@/components/ui/input'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Label } from '@/components/ui/label'
+     8→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+     9→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    10→import { Switch } from '@/components/ui/switch'
+    11→import { Checkbox } from '@/components/ui/checkbox'
+    12→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+    13→import { Building2, Users, Plus, Pencil, Trash2, CheckCircle, Shield, Copy, Eye, EyeOff, KeyRound, CreditCard, Zap, Clock, TrendingUp } from 'lucide-react'
+    14→
+    15→// ─── Types ───────────────────────────────────────────────────
+    16→interface Tenant {
+    17→  id: string
+    18→  name: string
+    19→  slug: string
+    20→  fullName: string
+    21→  address: string
+    22→  city: string
+    23→  province: string
+    24→  cif: string
+    25→  logo: string
+    26→  active: boolean
+    27→  plan: string
+    28→  planStatus: string
+    29→  planExpiresAt: string | null
+    30→  maxUsers: number
+    31→  maxRegistros: number
+    32→  userCount: number
+    33→  registroCount: number
+    34→  createdAt: string
+    35→}
+    36→
+    37→interface AutoUser {
+    38→  id: string
+    39→  email: string
+    40→  password: string
+    41→  name: string
+    42→  role: string
+    43→}
+    44→
+    45→interface UserItem {
+    46→  id: string
+    47→  email: string
+    48→  name: string
+    49→  role: string
+    50→  tenantId: string
+    51→  tenantName: string
+    52→  active: boolean
+    53→  permissions: string
+    54→  createdAt: string
+    55→}
+    56→
+    57→// Screen permissions available for regular users
+    58→const SCREEN_OPTIONS = [
+    59→  { key: 'entrada', label: 'Entrada' },
+    60→  { key: 'registros', label: 'Registros' },
+    61→  { key: 'clientes', label: 'Clientes' },
+    62→  { key: 'catalogo', label: 'Catálogo' },
+    63→  { key: 'facturas', label: 'Facturas' },
+    64→  { key: 'backup', label: 'Seguridad (Backup)' },
+    65→] as const
+    66→
+    67→// Plan configuration
+    68→const PLAN_CONFIG: Record<string, { label: string; maxUsers: number; maxRegistros: number; desc: string; color: string }> = {
+    69→  gratuito: { label: 'Gratuito', maxUsers: 1, maxRegistros: 100, desc: 'Sin soporte', color: 'bg-gray-100 text-gray-700' },
+    70→  mensual: { label: 'Mensual', maxUsers: 5, maxRegistros: 5000, desc: 'Soporte email', color: 'bg-blue-100 text-blue-700' },
+    71→  trimestral: { label: 'Trimestral', maxUsers: 15, maxRegistros: 20000, desc: 'Soporte prioritario', color: 'bg-purple-100 text-purple-700' },
+    72→  anual: { label: 'Anual', maxUsers: 999, maxRegistros: 999999, desc: 'Soporte dedicado', color: 'bg-amber-100 text-amber-700' },
+    73→}
+    74→
+    75→// Parse permissions from JSON string
+    76→function parsePermissions(permsStr: string): string[] {
+    77→  if (!permsStr || permsStr.trim() === '') return []
+    78→  try {
+    79→    const parsed = JSON.parse(permsStr)
+    80→    if (Array.isArray(parsed)) return parsed
+    81→    return []
+    82→  } catch {
+    83→    return []
+    84→  }
+    85→}
+    86→
+    87→// ─── Tenants Tab ─────────────────────────────────────────────
+    88→function TenantsTab() {
+    89→  const [tenants, setTenants] = useState<Tenant[]>([])
+    90→  const [loading, setLoading] = useState(true)
+    91→  const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+    92→  const [showDialog, setShowDialog] = useState(false)
+    93→  const [editId, setEditId] = useState<string | null>(null)
+    94→  const [createdCredentials, setCreatedCredentials] = useState<AutoUser | null>(null)
+    95→
+    96→  // Form state — only name needed for creation
+    97→  const [formName, setFormName] = useState('')
+    98→  const [formSlug, setFormSlug] = useState('')
+    99→  const [formActive, setFormActive] = useState(true)
+   100→
+   101→  const loadData = useCallback(async () => {
+   102→    try {
+   103→      const res = await fetch('/api/tenants')
+   104→      if (res.ok) setTenants(await res.json())
+   105→    } catch (err) {
+   106→      console.error('Error loading tenants:', err)
+   107→    }
+   108→    setLoading(false)
+   109→  }, [])
+   110→
+   111→  // eslint-disable-next-line react-hooks/set-state-in-effect
+   112→  useEffect(() => { loadData() }, [loadData])
+   113→
+   114→  function showMsg(type: 'ok' | 'err', text: string) {
+   115→    setStatusMsg({ type, text })
+   116→    setTimeout(() => setStatusMsg(null), 5000)
+   117→  }
+   118→
+   119→  function resetForm() {
+   120→    setEditId(null); setFormName(''); setFormSlug('')
+   121→    setFormActive(true); setShowDialog(false)
+   122→  }
+   123→
+   124→  function openCreate() {
+   125→    resetForm()
+   126→    setShowDialog(true)
+   127→  }
+   128→
+   129→  function openEdit(t: Tenant) {
+   130→    setEditId(t.id); setFormName(t.name); setFormSlug(t.slug); setFormActive(t.active)
+   131→    setShowDialog(true)
+   132→  }
+   133→
+   134→  // Auto-generate slug from name
+   135→  function handleNameChange(name: string) {
+   136→    setFormName(name)
+   137→    if (!editId) {
+   138→      const slug = name.trim().toLowerCase()
+   139→        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+   140→        .replace(/[^a-z0-9\s-]/g, '')
+   141→        .replace(/[\s_]+/g, '-')
+   142→        .replace(/-+/g, '-')
+   143→        .replace(/^-|-$/g, '')
+   144→      setFormSlug(slug)
+   145→    }
+   146→  }
+   147→
+   148→  async function handleSave() {
+   149→    if (!editId && !formName.trim()) {
+   150→      showMsg('err', 'El nombre es obligatorio')
+   151→      return
+   152→    }
+   153→
+   154→    try {
+   155→      if (editId) {
+   156→        // Update — only active status can be changed by superadmin
+   157→        const res = await fetch('/api/tenants', {
+   158→          method: 'PUT',
+   159→          headers: { 'Content-Type': 'application/json' },
+   160→          body: JSON.stringify({
+   161→            id: editId,
+   162→            active: formActive,
+   163→          }),
+   164→        })
+   165→        if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+   166→        showMsg('ok', 'Empresa actualizada ✓')
+   167→      } else {
+   168→        // Create — name only, this also auto-creates an admin user
+   169→        const res = await fetch('/api/tenants', {
+   170→          method: 'POST',
+   171→          headers: { 'Content-Type': 'application/json' },
+   172→          body: JSON.stringify({
+   173→            name: formName,
+   174→            slug: formSlug,
+   175→          }),
+   176→        })
+   177→        if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+   178→        const data = await res.json()
+   179→        showMsg('ok', 'Empresa creada con usuario admin automático ✓')
+   180→        // Show the auto-generated credentials
+   181→        if (data.autoUser) {
+   182→          setCreatedCredentials(data.autoUser)
+   183→        }
+   184→      }
+   185→      resetForm()
+   186→      loadData()
+   187→    } catch {
+   188→      showMsg('err', 'Error de conexión')
+   189→    }
+   190→  }
+   191→
+   192→  async function handleToggleActive(t: Tenant) {
+   193→    const newActive = !t.active
+   194→    if (!confirm(`¿${newActive ? 'Activar' : 'Desactivar'} la empresa "${t.name}"?`)) return
+   195→
+   196→    try {
+   197→      const res = await fetch('/api/tenants', {
+   198→        method: 'PUT',
+   199→        headers: { 'Content-Type': 'application/json' },
+   200→        body: JSON.stringify({ id: t.id, active: newActive }),
+   201→      })
+   202→      if (!res.ok) { showMsg('err', 'Error al actualizar'); return }
+   203→      showMsg('ok', `Empresa ${newActive ? 'activada' : 'desactivada'} ✓`)
+   204→      loadData()
+   205→    } catch {
+   206→      showMsg('err', 'Error de conexión')
+   207→    }
+   208→  }
+   209→
+   210→  function copyToClipboard(text: string) {
+   211→    navigator.clipboard.writeText(text)
+   212→    showMsg('ok', 'Copiado al portapapeles ✓')
+   213→  }
+   214→
+   215→  if (loading) return <div className="p-6 text-center text-gray-400">Cargando empresas...</div>
+   216→
+   217→  return (
+   218→    <div className="space-y-4">
+   219→      {statusMsg && (
+   220→        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+   221→          {statusMsg.type === 'ok' && <CheckCircle className="h-4 w-4" />}
+   222→          {statusMsg.text}
+   223→        </div>
+   224→      )}
+   225→
+   226→      {/* Credentials display dialog */}
+   227→      {createdCredentials && (
+   228→        <Card className="border-2 border-[#2bb24c] bg-green-50/50">
+   229→          <CardHeader>
+   230→            <CardTitle className="text-base flex items-center gap-2">
+   231→              <KeyRound className="h-5 w-5 text-[#2bb24c]" />
+   232→              Credenciales generadas automáticamente
+   233→            </CardTitle>
+   234→          </CardHeader>
+   235→          <CardContent className="space-y-3">
+   236→            <p className="text-sm text-gray-600">
+   237→              Se ha creado un usuario administrador para esta empresa. <strong>Guarda estas credenciales</strong>, la contraseña no se volverá a mostrar.
+   238→            </p>
+   239→            <div className="bg-white rounded-lg p-4 space-y-2 border">
+   240→              <div className="flex items-center gap-2">
+   241→                <Label className="text-xs uppercase font-bold text-slate-500 w-24">Email:</Label>
+   242→                <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded flex-1">{createdCredentials.email}</code>
+   243→                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => copyToClipboard(createdCredentials.email)}>
+   244→                  <Copy className="h-3.5 w-3.5" />
+   245→                </Button>
+   246→              </div>
+   247→              <div className="flex items-center gap-2">
+   248→                <Label className="text-xs uppercase font-bold text-slate-500 w-24">Contraseña:</Label>
+   249→                <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded flex-1">{createdCredentials.password}</code>
+   250→                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => copyToClipboard(createdCredentials.password)}>
+   251→                  <Copy className="h-3.5 w-3.5" />
+   252→                </Button>
+   253→              </div>
+   254→              <div className="flex items-center gap-2">
+   255→                <Label className="text-xs uppercase font-bold text-slate-500 w-24">Rol:</Label>
+   256→                <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">
+   257→                  <Shield className="h-3 w-3" /> Admin
+   258→                </span>
+   259→              </div>
+   260→            </div>
+   261→            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs text-amber-700">
+   262→              El administrador de la empresa deberá completar los datos (razón social, CIF, dirección, logo...) desde Configuración.
+   263→            </div>
+   264→            <div className="flex justify-end">
+   265→              <Button variant="outline" size="sm" onClick={() => setCreatedCredentials(null)}>
+   266→                Cerrar
+   267→              </Button>
+   268→            </div>
+   269→          </CardContent>
+   270→        </Card>
+   271→      )}
+   272→
+   273→      <div className="flex items-center justify-between">
+   274→        <p className="text-sm text-gray-500">Crea empresas con el nombre. Los datos, logo, etc. los completa el admin de cada empresa desde Configuración.</p>
+   275→        <Button onClick={openCreate} className="bg-[#005bb5] hover:bg-[#004a94] text-white">
+   276→          <Plus className="h-4 w-4 mr-1" /> Nueva Empresa
+   277→        </Button>
+   278→      </div>
+   279→
+   280→      <div className="bg-white rounded-lg border overflow-auto shadow-sm">
+   281→        <table className="w-full text-sm">
+   282→          <thead>
+   283→            <tr className="bg-blue-50">
+   284→              <th className="p-3 text-left font-semibold border-b">Nombre</th>
+   285→              <th className="p-3 text-left font-semibold border-b">Slug</th>
+   286→              <th className="p-3 text-center font-semibold border-b">Plan</th>
+   287→              <th className="p-3 text-center font-semibold border-b">Usuarios</th>
+   288→              <th className="p-3 text-center font-semibold border-b">Registros</th>
+   289→              <th className="p-3 text-center font-semibold border-b">Estado</th>
+   290→              <th className="p-3 text-center font-semibold border-b">Acciones</th>
+   291→            </tr>
+   292→          </thead>
+   293→          <tbody>
+   294→            {tenants.map(t => {
+   295→              const planCfg = PLAN_CONFIG[t.plan] || PLAN_CONFIG.gratuito
+   296→              return (
+   297→                <tr key={t.id} className={`border-b hover:bg-gray-50 ${!t.active ? 'opacity-50' : ''}`}>
+   298→                  <td className="p-3 font-bold text-gray-800">{t.name}</td>
+   299→                  <td className="p-3 text-gray-500 font-mono text-xs">{t.slug}</td>
+   300→                  <td className="p-3 text-center">
+   301→                    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${planCfg.color}`}>
+   302→                      {planCfg.label}
+   303→                    </span>
+   304→                  </td>
+   305→                  <td className="p-3 text-center">
+   306→                    <span className={`inline-flex items-center justify-center text-xs font-bold px-2.5 py-1 rounded-full ${t.userCount >= t.maxUsers && t.maxUsers > 0 ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+   307→                      {t.userCount}/{t.maxUsers >= 999 ? '∞' : t.maxUsers}
+   308→                    </span>
+   309→                  </td>
+   310→                  <td className="p-3 text-center">
+   311→                    <span className={`inline-flex items-center justify-center text-xs font-bold px-2.5 py-1 rounded-full ${t.registroCount >= t.maxRegistros && t.maxRegistros < 999999 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+   312→                      {t.registroCount}/{t.maxRegistros >= 999999 ? '∞' : t.maxRegistros.toLocaleString()}
+   313→                    </span>
+   314→                  </td>
+   315→                  <td className="p-3 text-center">
+   316→                    <button onClick={() => handleToggleActive(t)} className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full cursor-pointer transition-colors ${t.active ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}>
+   317→                      {t.active ? 'Activo' : 'Inactivo'}
+   318→                    </button>
+   319→                  </td>
+   320→                  <td className="p-3 text-center">
+   321→                    <Button size="icon" variant="ghost" className="h-8 w-8 text-[#005bb5] hover:bg-blue-50" onClick={() => openEdit(t)}>
+   322→                      <Pencil className="h-4 w-4" />
+   323→                    </Button>
+   324→                  </td>
+   325→                </tr>
+   326→              )
+   327→            })}
+   328→            {tenants.length === 0 && (
+   329→              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay empresas creadas</td></tr>
+   330→            )}
+   331→          </tbody>
+   332→        </table>
+   333→      </div>
+   334→
+   335→      {/* Create/Edit Dialog */}
+   336→      <Dialog open={showDialog} onOpenChange={(open) => { if (!open) resetForm() }}>
+   337→        <DialogContent className="max-w-md">
+   338→          <DialogHeader>
+   339→            <DialogTitle className="flex items-center gap-2">
+   340→              <Building2 className="h-5 w-5 text-[#005bb5]" />
+   341→              {editId ? 'Editar Empresa' : 'Nueva Empresa'}
+   342→            </DialogTitle>
+   343→          </DialogHeader>
+   344→          <div className="space-y-4 py-2">
+   345→            <div>
+   346→              <Label className="text-xs uppercase font-bold text-slate-500">Nombre de la empresa</Label>
+   347→              {editId ? (
+   348→                <div className="flex items-center gap-2 mt-1">
+   349→                  <Input value={formName} disabled className="bg-gray-50 text-gray-500" />
+   350→                  <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-bold whitespace-nowrap">FIJO</span>
+   351→                </div>
+   352→              ) : (
+   353→                <Input value={formName} onChange={e => handleNameChange(e.target.value)} placeholder="Ej: Transportes Hualsa" className="mt-1" />
+   354→              )}
+   355→            </div>
+   356→            {!editId && formSlug && (
+   357→              <div>
+   358→                <Label className="text-xs uppercase font-bold text-slate-500">Slug (auto-generado)</Label>
+   359→                <Input value={formSlug} disabled className="bg-gray-50 text-gray-500 font-mono mt-1" />
+   360→                <p className="text-[10px] text-gray-400 mt-1">Se creará el admin: <strong>{formSlug}@bill.es</strong></p>
+   361→              </div>
+   362→            )}
+   363→
+   364→            {/* Active toggle (only for edit) */}
+   365→            {editId && (
+   366→              <div className="flex items-center gap-3">
+   367→                <Label className="text-xs uppercase font-bold text-slate-500">Activo</Label>
+   368→                <Switch checked={formActive} onCheckedChange={setFormActive} />
+   369→                <span className={`text-xs font-bold ${formActive ? 'text-green-600' : 'text-red-500'}`}>
+   370→                  {formActive ? 'Activo' : 'Inactivo'}
+   371→                </span>
+   372→              </div>
+   373→            )}
+   374→
+   375→            {/* Info banner for creation */}
+   376→            {!editId && (
+   377→              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+   378→                <KeyRound className="h-4 w-4 text-[#005bb5] mt-0.5 shrink-0" />
+   379→                <div className="text-xs text-blue-700 space-y-1">
+   380→                  <p>Al crear la empresa se generará automáticamente un usuario administrador con email <strong>{formSlug || '...'}@bill.es</strong> y una contraseña aleatoria.</p>
+   381→                  <p>El administrador de la empresa completará los datos (razón social, CIF, dirección, logo...) desde su sección de Configuración.</p>
+   382→                  <p>La empresa se crea con el plan <strong>Gratuito</strong> (1 usuario, 100 registros). Puedes cambiar el plan desde la pestaña Suscripciones.</p>
+   383→                </div>
+   384→              </div>
+   385→            )}
+   386→          </div>
+   387→          <DialogFooter>
+   388→            <Button variant="outline" onClick={resetForm}>Cancelar</Button>
+   389→            <Button onClick={handleSave} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
+   390→              <CheckCircle className="h-4 w-4 mr-1" /> {editId ? 'ACTUALIZAR' : 'CREAR'}
+   391→            </Button>
+   392→          </DialogFooter>
+   393→        </DialogContent>
+   394→      </Dialog>
+   395→    </div>
+   396→  )
+   397→}
+   398→
+   399→// ─── Users Tab ───────────────────────────────────────────────
+   400→function UsersTab() {
+   401→  const [users, setUsers] = useState<UserItem[]>([])
+   402→  const [tenants, setTenants] = useState<Tenant[]>([])
+   403→  const [loading, setLoading] = useState(true)
+   404→  const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+   405→  const [showDialog, setShowDialog] = useState(false)
+   406→  const [editId, setEditId] = useState<string | null>(null)
+   407→  const [showPassword, setShowPassword] = useState(false)
+   408→
+   409→  // Form state
+   410→  const [formEmail, setFormEmail] = useState('')
+   411→  const [formPassword, setFormPassword] = useState('')
+   412→  const [formName, setFormName] = useState('')
+   413→  const [formRole, setFormRole] = useState('user')
+   414→  const [formTenantId, setFormTenantId] = useState('')
+   415→  const [formActive, setFormActive] = useState(true)
+   416→  const [formPermissions, setFormPermissions] = useState<string[]>([])
+   417→
+   418→  const loadData = useCallback(async () => {
+   419→    try {
+   420→      const [uRes, tRes] = await Promise.all([fetch('/api/users'), fetch('/api/tenants')])
+   421→      if (uRes.ok) setUsers(await uRes.json())
+   422→      if (tRes.ok) setTenants(await tRes.json())
+   423→    } catch (err) {
+   424→      console.error('Error loading users:', err)
+   425→    }
+   426→    setLoading(false)
+   427→  }, [])
+   428→
+   429→  // eslint-disable-next-line react-hooks/set-state-in-effect
+   430→  useEffect(() => { loadData() }, [loadData])
+   431→
+   432→  function showMsg(type: 'ok' | 'err', text: string) {
+   433→    setStatusMsg({ type, text })
+   434→    setTimeout(() => setStatusMsg(null), 3000)
+   435→  }
+   436→
+   437→  function resetForm() {
+   438→    setEditId(null); setFormEmail(''); setFormPassword(''); setFormName('')
+   439→    setFormRole('user'); setFormTenantId(''); setFormActive(true); setShowDialog(false)
+   440→    setShowPassword(false); setFormPermissions([])
+   441→  }
+   442→
+   443→  function openCreate() {
+   444→    resetForm()
+   445→    if (tenants.length > 0) setFormTenantId(tenants[0].id)
+   446→    setShowDialog(true)
+   447→  }
+   448→
+   449→  function openEdit(u: UserItem) {
+   450→    setEditId(u.id); setFormEmail(u.email); setFormPassword(''); setFormName(u.name)
+   451→    setFormRole(u.role); setFormTenantId(u.tenantId); setFormActive(u.active)
+   452→    setFormPermissions(parsePermissions(u.permissions || ''))
+   453→    setShowDialog(true)
+   454→  }
+   455→
+   456→  function togglePermission(key: string) {
+   457→    setFormPermissions(prev =>
+   458→      prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]
+   459→    )
+   460→  }
+   461→
+   462→  async function handleSave() {
+   463→    if (!editId && (!formEmail.trim() || !formPassword.trim())) {
+   464→      showMsg('err', 'Email y contraseña son obligatorios')
+   465→      return
+   466→    }
+   467→    if (!formTenantId) {
+   468→      showMsg('err', 'Selecciona una empresa')
+   469→      return
+   470→    }
+   471→
+   472→    try {
+   473→      if (editId) {
+   474→        const body: Record<string, unknown> = {
+   475→          id: editId,
+   476→          name: formName,
+   477→          role: formRole,
+   478→          tenantId: formTenantId,
+   479→          active: formActive,
+   480→          permissions: formRole === 'user' ? formPermissions : [],
+   481→        }
+   482→        if (formEmail.trim()) body.email = formEmail.trim()
+   483→        if (formPassword.trim()) body.password = formPassword.trim()
+   484→
+   485→        const res = await fetch('/api/users', {
+   486→          method: 'PUT',
+   487→          headers: { 'Content-Type': 'application/json' },
+   488→          body: JSON.stringify(body),
+   489→        })
+   490→        if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+   491→        showMsg('ok', 'Usuario actualizado ✓')
+   492→      } else {
+   493→        const res = await fetch('/api/users', {
+   494→          method: 'POST',
+   495→          headers: { 'Content-Type': 'application/json' },
+   496→          body: JSON.stringify({
+   497→            email: formEmail.trim(),
+   498→            password: formPassword,
+   499→            name: formName,
+   500→            role: formRole,
+   501→            tenantId: formTenantId,
+   502→            permissions: formRole === 'user' ? formPermissions : [],
+   503→          }),
+   504→        })
+   505→        if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+   506→        showMsg('ok', 'Usuario creado ✓')
+   507→      }
+   508→      resetForm()
+   509→      loadData()
+   510→    } catch {
+   511→      showMsg('err', 'Error de conexión')
+   512→    }
+   513→  }
+   514→
+   515→  async function handleDeactivate(id: string) {
+   516→    if (!confirm('¿Desactivar este usuario?')) return
+   517→    try {
+   518→      const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' })
+   519→      if (!res.ok) { const d = await res.json(); showMsg('err', d.error || 'Error al desactivar'); return }
+   520→      showMsg('ok', 'Usuario desactivado ✓')
+   521→      loadData()
+   522→    } catch {
+   523→      showMsg('err', 'Error de conexión')
+   524→    }
+   525→  }
+   526→
+   527→  function getRoleBadge(role: string) {
+   528→    switch (role) {
+   529→      case 'superadmin':
+   530→        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700"><Shield className="h-3 w-3" /> SuperAdmin</span>
+   531→      case 'admin':
+   532→        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700"><Shield className="h-3 w-3" /> Admin</span>
+   533→      default:
+   534→        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600"><Users className="h-3 w-3" /> Usuario</span>
+   535→    }
+   536→  }
+   537→
+   538→  function getPermsSummary(permsStr: string) {
+   539→    const perms = parsePermissions(permsStr)
+   540→    if (perms.length === 0) return <span className="text-xs text-gray-400">Todo</span>
+   541→    return (
+   542→      <div className="flex flex-wrap gap-1">
+   543→        {perms.map(p => {
+   544→          const opt = SCREEN_OPTIONS.find(o => o.key === p)
+   545→          return <span key={p} className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">{opt?.label || p}</span>
+   546→        })}
+   547→      </div>
+   548→    )
+   549→  }
+   550→
+   551→  if (loading) return <div className="p-6 text-center text-gray-400">Cargando usuarios...</div>
+   552→
+   553→  return (
+   554→    <div className="space-y-4">
+   555→      {statusMsg && (
+   556→        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+   557→          {statusMsg.type === 'ok' && <CheckCircle className="h-4 w-4" />}
+   558→          {statusMsg.text}
+   559→        </div>
+   560→      )}
+   561→
+   562→      <div className="flex items-center justify-between">
+   563→        <p className="text-sm text-gray-500">Gestiona los usuarios del sistema.</p>
+   564→        <Button onClick={openCreate} className="bg-[#005bb5] hover:bg-[#004a94] text-white">
+   565→          <Plus className="h-4 w-4 mr-1" /> Nuevo Usuario
+   566→        </Button>
+   567→      </div>
+   568→
+   569→      <div className="bg-white rounded-lg border overflow-auto shadow-sm">
+   570→        <table className="w-full text-sm">
+   571→          <thead>
+   572→            <tr className="bg-blue-50">
+   573→              <th className="p-3 text-left font-semibold border-b">Email</th>
+   574→              <th className="p-3 text-left font-semibold border-b">Nombre</th>
+   575→              <th className="p-3 text-center font-semibold border-b">Rol</th>
+   576→              <th className="p-3 text-left font-semibold border-b">Empresa</th>
+   577→              <th className="p-3 text-left font-semibold border-b">Permisos</th>
+   578→              <th className="p-3 text-center font-semibold border-b">Estado</th>
+   579→              <th className="p-3 text-center font-semibold border-b">Acciones</th>
+   580→            </tr>
+   581→          </thead>
+   582→          <tbody>
+   583→            {users.map(u => (
+   584→              <tr key={u.id} className={`border-b hover:bg-gray-50 ${!u.active ? 'opacity-50' : ''}`}>
+   585→                <td className="p-3 font-medium text-gray-800">{u.email}</td>
+   586→                <td className="p-3 text-gray-600">{u.name || '—'}</td>
+   587→                <td className="p-3 text-center">{getRoleBadge(u.role)}</td>
+   588→                <td className="p-3 text-gray-600">{u.tenantName}</td>
+   589→                <td className="p-3">{u.role === 'user' ? getPermsSummary(u.permissions) : <span className="text-xs text-gray-400">Todo</span>}</td>
+   590→                <td className="p-3 text-center">
+   591→                  <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${u.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+   592→                    {u.active ? 'Activo' : 'Inactivo'}
+   593→                  </span>
+   594→                </td>
+   595→                <td className="p-3 text-center">
+   596→                  <div className="flex items-center justify-center gap-1">
+   597→                    <Button size="icon" variant="ghost" className="h-8 w-8 text-[#005bb5] hover:bg-blue-50" onClick={() => openEdit(u)}>
+   598→                      <Pencil className="h-4 w-4" />
+   599→                    </Button>
+   600→                    <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500 hover:bg-red-50" onClick={() => handleDeactivate(u.id)}>
+   601→                      <Trash2 className="h-4 w-4" />
+   602→                    </Button>
+   603→                  </div>
+   604→                </td>
+   605→              </tr>
+   606→            ))}
+   607→            {users.length === 0 && (
+   608→              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay usuarios creados</td></tr>
+   609→            )}
+   610→          </tbody>
+   611→        </table>
+   612→      </div>
+   613→
+   614→      {/* Create/Edit Dialog */}
+   615→      <Dialog open={showDialog} onOpenChange={(open) => { if (!open) resetForm() }}>
+   616→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   617→          <DialogHeader>
+   618→            <DialogTitle className="flex items-center gap-2">
+   619→              <Users className="h-5 w-5 text-[#005bb5]" />
+   620→              {editId ? 'Editar Usuario' : 'Nuevo Usuario'}
+   621→            </DialogTitle>
+   622→          </DialogHeader>
+   623→          <div className="space-y-4 py-2">
+   624→            <div>
+   625→              <Label className="text-xs uppercase font-bold text-slate-500">Email</Label>
+   626→              <Input
+   627→                value={formEmail}
+   628→                onChange={e => setFormEmail(e.target.value)}
+   629→                placeholder="usuario@ejemplo.com"
+   630→                className="mt-1"
+   631→                disabled={!!editId}
+   632→              />
+   633→            </div>
+   634→            <div>
+   635→              <Label className="text-xs uppercase font-bold text-slate-500">
+   636→                {editId ? 'Nueva Contraseña (dejar vacío para mantener)' : 'Contraseña'}
+   637→              </Label>
+   638→              <div className="relative mt-1">
+   639→                <Input
+   640→                  type={showPassword ? 'text' : 'password'}
+   641→                  value={formPassword}
+   642→                  onChange={e => setFormPassword(e.target.value)}
+   643→                  placeholder={editId ? '••••••••' : 'Contraseña'}
+   644→                  required={!editId}
+   645→                />
+   646→                <button
+   647→                  type="button"
+   648→                  onClick={() => setShowPassword(!showPassword)}
+   649→                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+   650→                >
+   651→                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+   652→                </button>
+   653→              </div>
+   654→            </div>
+   655→            <div>
+   656→              <Label className="text-xs uppercase font-bold text-slate-500">Nombre</Label>
+   657→              <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Nombre completo" className="mt-1" />
+   658→            </div>
+   659→            <div className="grid grid-cols-2 gap-3">
+   660→              <div>
+   661→                <Label className="text-xs uppercase font-bold text-slate-500">Rol</Label>
+   662→                <Select value={formRole} onValueChange={(val) => {
+   663→                  setFormRole(val)
+   664→                  if (val !== 'user') setFormPermissions([])
+   665→                }}>
+   666→                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+   667→                  <SelectContent>
+   668→                    <SelectItem value="user">Usuario</SelectItem>
+   669→                    <SelectItem value="admin">Administrador</SelectItem>
+   670→                    <SelectItem value="superadmin">SuperAdmin</SelectItem>
+   671→                  </SelectContent>
+   672→                </Select>
+   673→              </div>
+   674→              <div>
+   675→                <Label className="text-xs uppercase font-bold text-slate-500">Empresa</Label>
+   676→                <Select value={formTenantId} onValueChange={setFormTenantId}>
+   677→                  <SelectTrigger className="mt-1"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+   678→                  <SelectContent>
+   679→                    {tenants.map(t => (
+   680→                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+   681→                    ))}
+   682→                  </SelectContent>
+   683→                </Select>
+   684→              </div>
+   685→            </div>
+   686→
+   687→            {/* Permissions Section - only for "user" role */}
+   688→            {formRole === 'user' && (
+   689→              <div className="border rounded-lg p-3 bg-gray-50/50">
+   690→                <Label className="text-xs uppercase font-bold text-slate-500 mb-2 block">Permisos de Pantallas</Label>
+   691→                <p className="text-[11px] text-gray-500 mb-3">Selecciona las pantallas a las que este usuario tendrá acceso. Si no seleccionas ninguna, tendrá acceso a todo.</p>
+   692→                <div className="grid grid-cols-2 gap-2">
+   693→                  {SCREEN_OPTIONS.map(opt => (
+   694→                    <label key={opt.key} className="flex items-center gap-2 px-3 py-2 rounded-md border bg-white hover:bg-blue-50/50 cursor-pointer transition-colors">
+   695→                      <Checkbox
+   696→                        checked={formPermissions.includes(opt.key)}
+   697→                        onCheckedChange={() => togglePermission(opt.key)}
+   698→                      />
+   699→                      <span className="text-sm text-gray-700">{opt.label}</span>
+   700→                    </label>
+   701→                  ))}
+   702→                </div>
+   703→              </div>
+   704→            )}
+   705→
+   706→            {/* Info for admin/superadmin role */}
+   707→            {formRole !== 'user' && (
+   708→              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+   709→                Los administradores tienen acceso a todas las pantallas. No es necesario configurar permisos.
+   710→              </div>
+   711→            )}
+   712→
+   713→            {editId && (
+   714→              <div className="flex items-center gap-3">
+   715→                <Label className="text-xs uppercase font-bold text-slate-500">Activo</Label>
+   716→                <Switch checked={formActive} onCheckedChange={setFormActive} />
+   717→                <span className={`text-xs font-bold ${formActive ? 'text-green-600' : 'text-red-500'}`}>
+   718→                  {formActive ? 'Activo' : 'Inactivo'}
+   719→                </span>
+   720→              </div>
+   721→            )}
+   722→          </div>
+   723→          <DialogFooter>
+   724→            <Button variant="outline" onClick={resetForm}>Cancelar</Button>
+   725→            <Button onClick={handleSave} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
+   726→              <CheckCircle className="h-4 w-4 mr-1" /> {editId ? 'ACTUALIZAR' : 'CREAR'}
+   727→            </Button>
+   728→          </DialogFooter>
+   729→        </DialogContent>
+   730→      </Dialog>
+   731→    </div>
+   732→  )
+   733→}
+   734→
+   735→// ─── Subscriptions Tab ───────────────────────────────────────
+   736→function SubscriptionsTab() {
+   737→  const [tenants, setTenants] = useState<Tenant[]>([])
+   738→  const [loading, setLoading] = useState(true)
+   739→  const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+   740→  const [showDialog, setShowDialog] = useState(false)
+   741→  const [editTenant, setEditTenant] = useState<Tenant | null>(null)
+   742→
+   743→  // Form state
+   744→  const [formPlan, setFormPlan] = useState('gratuito')
+   745→  const [formPlanStatus, setFormPlanStatus] = useState('activo')
+   746→  const [formPlanExpiresAt, setFormPlanExpiresAt] = useState('')
+   747→
+   748→  const loadData = useCallback(async () => {
+   749→    try {
+   750→      const res = await fetch('/api/tenants')
+   751→      if (res.ok) setTenants(await res.json())
+   752→    } catch (err) {
+   753→      console.error('Error loading tenants:', err)
+   754→    }
+   755→    setLoading(false)
+   756→  }, [])
+   757→
+   758→  // eslint-disable-next-line react-hooks/set-state-in-effect
+   759→  useEffect(() => { loadData() }, [loadData])
+   760→
+   761→  function showMsg(type: 'ok' | 'err', text: string) {
+   762→    setStatusMsg({ type, text })
+   763→    setTimeout(() => setStatusMsg(null), 5000)
+   764→  }
+   765→
+   766→  function openChangePlan(t: Tenant) {
+   767→    setEditTenant(t)
+   768→    setFormPlan(t.plan)
+   769→    setFormPlanStatus(t.planStatus)
+   770→    setFormPlanExpiresAt(t.planExpiresAt ? new Date(t.planExpiresAt).toISOString().split('T')[0] : '')
+   771→    setShowDialog(true)
+   772→  }
+   773→
+   774→  async function handleSavePlan() {
+   775→    if (!editTenant) return
+   776→
+   777→    try {
+   778→      const body: Record<string, unknown> = {
+   779→        id: editTenant.id,
+   780→        plan: formPlan,
+   781→        planStatus: formPlanStatus,
+   782→      }
+   783→      if (formPlanExpiresAt) {
+   784→        body.planExpiresAt = new Date(formPlanExpiresAt).toISOString()
+   785→      } else {
+   786→        body.planExpiresAt = null
+   787→      }
+   788→
+   789→      const res = await fetch('/api/tenants', {
+   790→        method: 'PUT',
+   791→        headers: { 'Content-Type': 'application/json' },
+   792→        body: JSON.stringify(body),
+   793→      })
+   794→      if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
+   795→      showMsg('ok', `Plan de "${editTenant.name}" actualizado a ${PLAN_CONFIG[formPlan]?.label || formPlan} ✓`)
+   796→      setShowDialog(false)
+   797→      setEditTenant(null)
+   798→      loadData()
+   799→    } catch {
+   800→      showMsg('err', 'Error de conexión')
+   801→    }
+   802→  }
+   803→
+   804→  if (loading) return <div className="p-6 text-center text-gray-400">Cargando suscripciones...</div>
+   805→
+   806→  return (
+   807→    <div className="space-y-4">
+   808→      {statusMsg && (
+   809→        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+   810→          {statusMsg.type === 'ok' && <CheckCircle className="h-4 w-4" />}
+   811→          {statusMsg.text}
+   812→        </div>
+   813→      )}
+   814→
+   815→      <p className="text-sm text-gray-500">Gestiona los planes de suscripción de cada empresa. Al cambiar el plan se actualizan los límites automáticamente.</p>
+   816→
+   817→      <div className="bg-white rounded-lg border overflow-auto shadow-sm">
+   818→        <table className="w-full text-sm">
+   819→          <thead>
+   820→            <tr className="bg-blue-50">
+   821→              <th className="p-3 text-left font-semibold border-b">Empresa</th>
+   822→              <th className="p-3 text-center font-semibold border-b">Plan</th>
+   823→              <th className="p-3 text-center font-semibold border-b">Estado</th>
+   824→              <th className="p-3 text-center font-semibold border-b">Expiración</th>
+   825→              <th className="p-3 text-center font-semibold border-b">Usuarios</th>
+   826→              <th className="p-3 text-center font-semibold border-b">Registros</th>
+   827→              <th className="p-3 text-center font-semibold border-b">Acciones</th>
+   828→            </tr>
+   829→          </thead>
+   830→          <tbody>
+   831→            {tenants.map(t => {
+   832→              const planCfg = PLAN_CONFIG[t.plan] || PLAN_CONFIG.gratuito
+   833→              const isExpired = t.planExpiresAt && new Date(t.planExpiresAt) < new Date()
+   834→              return (
+   835→                <tr key={t.id} className={`border-b hover:bg-gray-50 ${!t.active ? 'opacity-50' : ''}`}>
+   836→                  <td className="p-3 font-bold text-gray-800">{t.name}</td>
+   837→                  <td className="p-3 text-center">
+   838→                    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${planCfg.color}`}>
+   839→                      {planCfg.label}
+   840→                    </span>
+   841→                  </td>
+   842→                  <td className="p-3 text-center">
+   843→                    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${
+   844→                      isExpired ? 'bg-red-100 text-red-700' :
+   845→                      t.planStatus === 'activo' ? 'bg-green-100 text-green-700' :
+   846→                      t.planStatus === 'trial' ? 'bg-amber-100 text-amber-700' :
+   847→                      'bg-gray-100 text-gray-600'
+   848→                    }`}>
+   849→                      {isExpired ? 'Expirado' : t.planStatus === 'activo' ? 'Activo' : t.planStatus === 'trial' ? 'Trial' : 'Inactivo'}
+   850→                    </span>
+   851→                  </td>
+   852→                  <td className="p-3 text-center text-gray-500 text-xs">
+   853→                    {t.planExpiresAt ? new Date(t.planExpiresAt).toLocaleDateString('es-ES') : '—'}
+   854→                  </td>
+   855→                  <td className="p-3 text-center">
+   856→                    <span className={`text-xs font-bold ${t.userCount >= t.maxUsers && t.maxUsers > 0 ? 'text-red-600' : 'text-gray-600'}`}>
+   857→                      {t.userCount}/{t.maxUsers >= 999 ? '∞' : t.maxUsers}
+   858→                    </span>
+   859→                  </td>
+   860→                  <td className="p-3 text-center">
+   861→                    <span className={`text-xs font-bold ${t.registroCount >= t.maxRegistros && t.maxRegistros < 999999 ? 'text-red-600' : 'text-gray-600'}`}>
+   862→                      {t.registroCount}/{t.maxRegistros >= 999999 ? '∞' : t.maxRegistros.toLocaleString()}
+   863→                    </span>
+   864→                  </td>
+   865→                  <td className="p-3 text-center">
+   866→                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => openChangePlan(t)}>
+   867→                      <CreditCard className="h-3.5 w-3.5 mr-1" /> Cambiar Plan
+   868→                    </Button>
+   869→                  </td>
+   870→                </tr>
+   871→              )
+   872→            })}
+   873→            {tenants.length === 0 && (
+   874→              <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay empresas creadas</td></tr>
+   875→            )}
+   876→          </tbody>
+   877→        </table>
+   878→      </div>
+   879→
+   880→      {/* Change Plan Dialog */}
+   881→      <Dialog open={showDialog} onOpenChange={(open) => { if (!open) { setShowDialog(false); setEditTenant(null) } }}>
+   882→        <DialogContent className="max-w-md">
+   883→          <DialogHeader>
+   884→            <DialogTitle className="flex items-center gap-2">
+   885→              <CreditCard className="h-5 w-5 text-[#005bb5]" />
+   886→              Cambiar Plan — {editTenant?.name}
+   887→            </DialogTitle>
+   888→          </DialogHeader>
+   889→          <div className="space-y-4 py-2">
+   890→            {/* Current plan info */}
+   891→            {editTenant && (
+   892→              <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-1">
+   893→                <p>Plan actual: <strong>{PLAN_CONFIG[editTenant.plan]?.label || editTenant.plan}</strong></p>
+   894→                <p>Usuarios: {editTenant.userCount}/{editTenant.maxUsers >= 999 ? '∞' : editTenant.maxUsers} · Registros: {editTenant.registroCount}/{editTenant.maxRegistros >= 999999 ? '∞' : editTenant.maxRegistros.toLocaleString()}</p>
+   895→              </div>
+   896→            )}
+   897→
+   898→            <div>
+   899→              <Label className="text-xs uppercase font-bold text-slate-500">Plan</Label>
+   900→              <Select value={formPlan} onValueChange={setFormPlan}>
+   901→                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+   902→                <SelectContent>
+   903→                  <SelectItem value="gratuito">Gratuito — 1 usuario, 100 registros</SelectItem>
+   904→                  <SelectItem value="mensual">Mensual — 5 usuarios, 5.000 registros</SelectItem>
+   905→                  <SelectItem value="trimestral">Trimestral — 15 usuarios, 20.000 registros</SelectItem>
+   906→                  <SelectItem value="anual">Anual — usuarios ∞, registros ∞</SelectItem>
+   907→                </SelectContent>
+   908→              </Select>
+   909→            </div>
+   910→
+   911→            <div className="grid grid-cols-2 gap-3">
+   912→              <div>
+   913→                <Label className="text-xs uppercase font-bold text-slate-500">Estado del Plan</Label>
+   914→                <Select value={formPlanStatus} onValueChange={setFormPlanStatus}>
+   915→                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+   916→                  <SelectContent>
+   917→                    <SelectItem value="activo">Activo</SelectItem>
+   918→                    <SelectItem value="trial">Trial</SelectItem>
+   919→                    <SelectItem value="inactivo">Inactivo</SelectItem>
+   920→                  </SelectContent>
+   921→                </Select>
+   922→              </div>
+   923→              <div>
+   924→                <Label className="text-xs uppercase font-bold text-slate-500">Fecha Expiración</Label>
+   925→                <Input
+   926→                  type="date"
+   927→                  value={formPlanExpiresAt}
+   928→                  onChange={e => setFormPlanExpiresAt(e.target.value)}
+   929→                  className="mt-1"
+   930→                />
+   931→              </div>
+   932→            </div>
+   933→
+   934→            {/* New plan limits preview */}
+   935→            {formPlan && PLAN_CONFIG[formPlan] && (
+   936→              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 space-y-1">
+   937→                <p className="font-bold">Límites del plan {PLAN_CONFIG[formPlan].label}:</p>
+   938→                <p>Usuarios: {PLAN_CONFIG[formPlan].maxUsers >= 999 ? 'Ilimitados' : PLAN_CONFIG[formPlan].maxUsers}</p>
+   939→                <p>Registros: {PLAN_CONFIG[formPlan].maxRegistros >= 999999 ? 'Ilimitados' : PLAN_CONFIG[formPlan].maxRegistros.toLocaleString()}</p>
+   940→                {editTenant && formPlan !== editTenant.plan && (
+   941→                  <p className="font-bold text-amber-600 mt-1">⚠ Se actualizarán los límites automáticamente al guardar.</p>
+   942→                )}
+   943→              </div>
+   944→            )}
+   945→          </div>
+   946→          <DialogFooter>
+   947→            <Button variant="outline" onClick={() => { setShowDialog(false); setEditTenant(null) }}>Cancelar</Button>
+   948→            <Button onClick={handleSavePlan} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
+   949→              <CheckCircle className="h-4 w-4 mr-1" /> GUARDAR PLAN
+   950→            </Button>
+   951→          </DialogFooter>
+   952→        </DialogContent>
+   953→      </Dialog>
+   954→    </div>
+   955→  )
+   956→}
+   957→
+   958→// ─── Admin View (main export) ────────────────────────────────
+   959→export function AdminView() {
+   960→  return (
+   961→    <div className="max-w-5xl pb-8">
+   962→      <div className="flex items-center gap-2 mb-4">
+   963→        <Shield className="h-5 w-5 text-[#005bb5]" />
+   964→        <h2 className="text-lg font-bold text-gray-700">Administración</h2>
+   965→        <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">SUPERADMIN</span>
+   966→      </div>
+   967→
+   968→      <Tabs defaultValue="empresas" className="w-full">
+   969→        <TabsList className="grid w-full grid-cols-3 max-w-lg">
+   970→          <TabsTrigger value="empresas"><Building2 className="h-4 w-4 mr-1.5" /> Empresas</TabsTrigger>
+   971→          <TabsTrigger value="usuarios"><Users className="h-4 w-4 mr-1.5" /> Usuarios</TabsTrigger>
+   972→          <TabsTrigger value="suscripciones"><CreditCard className="h-4 w-4 mr-1.5" /> Suscripciones</TabsTrigger>
+   973→        </TabsList>
+   974→
+   975→        <TabsContent value="empresas" className="mt-4">
+   976→          <TenantsTab />
+   977→        </TabsContent>
+   978→
+   979→        <TabsContent value="usuarios" className="mt-4">
+   980→          <UsersTab />
+   981→        </TabsContent>
+   982→
+   983→        <TabsContent value="suscripciones" className="mt-4">
+   984→          <SubscriptionsTab />
+   985→        </TabsContent>
+   986→      </Tabs>
+   987→    </div>
+   988→  )
+   989→}
+   990→

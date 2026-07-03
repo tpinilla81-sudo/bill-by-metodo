@@ -1,0 +1,512 @@
+     1→'use client'
+     2→
+     3→import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+     4→import { Input } from '@/components/ui/input'
+     5→import { Button } from '@/components/ui/button'
+     6→import { Label } from '@/components/ui/label'
+     7→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+     8→import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus } from 'lucide-react'
+     9→import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
+    10→import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
+    11→import { triggerBackup } from '@/lib/trigger-backup'
+    12→
+    13→interface EntradaViewData {
+    14→  registros: Registro[]
+    15→  clientes: Cliente[]
+    16→  catalogo: CatalogoItem[]
+    17→}
+    18→
+    19→function useEntradaData() {
+    20→  const [data, setData] = useState<EntradaViewData>({ registros: [], clientes: [], catalogo: [] })
+    21→  const [loading, setLoading] = useState(false)
+    22→
+    23→  const loadData = useCallback(async () => {
+    24→    setLoading(true)
+    25→    const [rRes, cRes, catRes] = await Promise.all([
+    26→      fetch('/api/registros?filter=entrada'), fetch('/api/clientes'), fetch('/api/catalogo')
+    27→    ])
+    28→    setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json() })
+    29→    setLoading(false)
+    30→  }, [])
+    31→
+    32→  return { data, loadData, loading }
+    33→}
+    34→
+    35→// ─── ComboInput: text input with dropdown suggestions from catalog ───
+    36→function ComboInput({
+    37→  value,
+    38→  onChange,
+    39→  suggestions,
+    40→  placeholder,
+    41→  label,
+    42→}: {
+    43→  value: string
+    44→  onChange: (v: string) => void
+    45→  suggestions: string[]
+    46→  placeholder: string
+    47→  label: string
+    48→}) {
+    49→  const [open, setOpen] = useState(false)
+    50→  const [highlight, setHighlight] = useState(-1)
+    51→  const wrapperRef = useRef<HTMLDivElement>(null)
+    52→
+    53→  const filtered = value
+    54→    ? suggestions.filter(s => s.toLowerCase().includes(value.toLowerCase()))
+    55→    : suggestions
+    56→
+    57→  useEffect(() => {
+    58→    function handleClick(e: MouseEvent) {
+    59→      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) { setOpen(false) }
+    60→    }
+    61→    document.addEventListener('mousedown', handleClick)
+    62→    return () => document.removeEventListener('mousedown', handleClick)
+    63→  }, [])
+    64→
+    65→  function handleKeyDown(e: React.KeyboardEvent) {
+    66→    if (!open || filtered.length === 0) return
+    67→    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(h => Math.min(h + 1, filtered.length - 1)) }
+    68→    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => Math.max(h - 1, 0)) }
+    69→    else if (e.key === 'Enter' && highlight >= 0) { e.preventDefault(); onChange(filtered[highlight]); setOpen(false); setHighlight(-1) }
+    70→    else if (e.key === 'Escape') { setOpen(false) }
+    71→  }
+    72→
+    73→  return (
+    74→    <div ref={wrapperRef} className="relative">
+    75→      <Input value={value} onChange={e => { onChange(e.target.value); setOpen(true); setHighlight(-1) }} onFocus={() => setOpen(true)} onKeyDown={handleKeyDown} placeholder={placeholder} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
+    76→      {open && filtered.length > 0 && (
+    77→        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-[200px] overflow-auto">
+    78→          {filtered.map((s, i) => (
+    79→            <button key={s} className={`w-full text-left px-4 py-2.5 text-base transition-colors ${i === highlight ? 'bg-[#005bb5] text-white' : 'hover:bg-gray-50'} ${s.toLowerCase() === value.toLowerCase() ? 'font-bold' : ''}`} onMouseDown={e => { e.preventDefault(); onChange(s); setOpen(false) }} onMouseEnter={() => setHighlight(i)}>
+    80→              {s}
+    81→            </button>
+    82→          ))}
+    83→        </div>
+    84→      )}
+    85→    </div>
+    86→  )
+    87→}
+    88→
+    89→// Permission check helpers
+    90→const SCREEN_PERMS = ['entrada', 'entrada.pasarRegistros', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
+    91→
+    92→function parsePerms(permissions: string): string[] {
+    93→  if (!permissions || permissions.trim() === '') return []
+    94→  try { const p = JSON.parse(permissions); return Array.isArray(p) ? p.filter((x: string) => (SCREEN_PERMS as readonly string[]).includes(x)) : [] } catch { return [] }
+    95→}
+    96→
+    97→function canTransfer(role: string, permissions: string): boolean {
+    98→  if (role === 'admin' || role === 'superadmin') return true
+    99→  const perms = parsePerms(permissions)
+   100→  if (perms.length === 0) return false
+   101→  return perms.includes('entrada.pasarRegistros')
+   102→}
+   103→
+   104→function canSeePrices(role: string): boolean {
+   105→  return role === 'admin' || role === 'superadmin'
+   106→}
+   107→
+   108→export function EntradaView({ userRole = 'user', userPermissions = '' }: { userRole?: string; userPermissions?: string }) {
+   109→  const { data, loadData, loading } = useEntradaData()
+   110→  const { config, update } = useConfig()
+   111→  const [editingId, setEditingId] = useState<string | null>(null)
+   112→  const [transferring, setTransferring] = useState(false)
+   113→  const [showTransferSettings, setShowTransferSettings] = useState(false)
+   114→  const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+   115→  const lastTransferDateRef = useRef<string>('')
+   116→
+   117→  const fieldDefs = config?.fieldsEntrada || DEFAULT_FIELDS_ENTRADA
+   118→  const visibleFields = fieldDefs.filter(f => f.visible)
+   119→  const transferMode = config?.transferMode || 'auto'
+   120→  const transferTime = config?.transferTime || '00:00'
+   121→
+   122→  const isVisible = (key: string) => visibleFields.some(f => f.key === key)
+   123→  const getField = (key: string) => fieldDefs.find(f => f.key === key)
+   124→
+   125→  const [localTransferMode, setLocalTransferMode] = useState(transferMode)
+   126→  const [localTransferTime, setLocalTransferTime] = useState(transferTime)
+   127→
+   128→  useEffect(() => { setLocalTransferMode(transferMode); setLocalTransferTime(transferTime) }, [transferMode, transferTime])
+   129→
+   130→  // Core fields form state
+   131→  const [fecha, setFecha] = useState(todayISO())
+   132→  const [clienteId, setClienteId] = useState('')
+   133→  const [c1, setC1] = useState('')
+   134→  const [c2, setC2] = useState('')
+   135→  const [cant, setCant] = useState('1')
+   136→  const [obs, setObs] = useState('')
+   137→
+   138→  // Custom fields form state
+   139→  const [customValues, setCustomValues] = useState<Record<string, string>>({})
+   140→
+   141→  const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+   142→
+   143→  useEffect(() => { loadData() }, [loadData])
+   144→
+   145→  const { clientes } = data
+   146→
+   147→  const clienteVisible = isVisible('cliente')
+   148→  const userCanTransfer = canTransfer(userRole, userPermissions)
+   149→  const userCanSeePrices = canSeePrices(userRole)
+   150→
+   151→  // Auto-transfer timer — only runs if user has transfer permission
+   152→  useEffect(() => {
+   153→    if (transferMode !== 'auto') return
+   154→    if (!userCanTransfer) return
+   155→    function checkAutoTransfer() {
+   156→      const now = new Date()
+   157→      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+   158→      const todayStr = todayISO()
+   159→      if (lastTransferDateRef.current === todayStr) return
+   160→      if (currentTime === transferTime) { lastTransferDateRef.current = todayStr; handleTransfer() }
+   161→    }
+   162→    checkAutoTransfer()
+   163→    autoTimerRef.current = setInterval(checkAutoTransfer, 30000)
+   164→    return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current) }
+   165→    // eslint-disable-next-line react-hooks/exhaustive-deps
+   166→  }, [transferMode, transferTime, userCanTransfer])
+   167→
+   168→  // Cascading filters based on catalog + selections
+   169→  // C1 options: if client field is visible and a client is selected, filter by client
+   170→  // If client field is hidden, show ALL (auto-detect will resolve later)
+   171→  const c1Options = [...new Set(
+   172→    data.catalogo
+   173→      .filter(x => !clienteVisible || !clienteId || !x.clienteId || x.clienteId === clienteId)
+   174→      .map(x => x.c1)
+   175→  )].sort()
+   176→
+   177→  // C2 options filtered by selected client + C1
+   178→  const c2Options = [...new Set(
+   179→    data.catalogo
+   180→      .filter(x => (!clienteVisible || !clienteId || !x.clienteId || x.clienteId === clienteId) && (!c1 || x.c1 === c1))
+   181→      .map(x => x.c2)
+   182→  )].sort()
+   183→
+   184→  const allC2Options = [...new Set(data.catalogo.map(x => x.c2))].sort()
+   185→
+   186→  // Auto-detect client from catalog when field is hidden and c1+c2 are selected
+   187→  const detectedCliente = useMemo(() => {
+   188→    if (clienteVisible || clienteId || !c1 || !c2) return null
+   189→    const item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2 && x.clienteId)
+   190→    if (!item) return null
+   191→    const cli = data.clientes.find(c => c.id === item.clienteId)
+   192→    return cli ? { id: cli.id, nombre: cli.nombre } : null
+   193→  }, [data.catalogo, data.clientes, clienteVisible, clienteId, c1, c2])
+   194→
+   195→  // Auto-price: works with or without client selected
+   196→  const autoPrice = useMemo(() => {
+   197→    if (!c1 || !c2) return null
+   198→    if (clienteId) {
+   199→      let item = data.catalogo.find(x => x.clienteId === clienteId && x.c1 === c1 && x.c2 === c2)
+   200→      if (!item) item = data.catalogo.find(x => !x.clienteId && x.c1 === c1 && x.c2 === c2)
+   201→      if (!item) item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
+   202→      return item ? Number(item.final) || 0 : null
+   203→    } else {
+   204→      let item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
+   205→      if (!item) item = data.catalogo.find(x => x.c1.toLowerCase() === c1.toLowerCase() && x.c2.toLowerCase() === c2.toLowerCase())
+   206→      return item ? Number(item.final) || 0 : null
+   207→    }
+   208→  }, [data.catalogo, clienteId, c1, c2])
+   209→
+   210→  function showStatus(type: 'ok' | 'err', text: string) {
+   211→    setStatusMsg({ type, text })
+   212→    setTimeout(() => setStatusMsg(null), 3000)
+   213→  }
+   214→
+   215→  function setCustomValue(key: string, value: string) {
+   216→    setCustomValues(prev => ({ ...prev, [key]: value }))
+   217→  }
+   218→
+   219→  async function handleSave() {
+   220→    // If cliente field is visible, it's required
+   221→    if (clienteVisible && !clienteId) {
+   222→      showStatus('err', 'Selecciona un cliente')
+   223→      return
+   224→    }
+   225→    if (!fecha || !c1 || !c2 || !cant) {
+   226→      showStatus('err', 'Completa fecha, conceptos y cantidad')
+   227→      return
+   228→    }
+   229→    // Resolve client: if field is hidden, auto-detect from catalog
+   230→    let effectiveClienteId = clienteId
+   231→    let effectiveClienteName = ''
+   232→    if (effectiveClienteId) {
+   233→      const cli = clientes.find(c => c.id === effectiveClienteId)
+   234→      effectiveClienteName = cli?.nombre || ''
+   235→    } else if (detectedCliente) {
+   236→      effectiveClienteId = detectedCliente.id
+   237→      effectiveClienteName = detectedCliente.nombre
+   238→    }
+   239→    const customDataStr = serializeCustomData(customValues)
+   240→    const currentPrice = autoPrice || 0
+   241→    const body = { fecha, clienteId: effectiveClienteId, cliente: effectiveClienteName, c1, c2, cant: Number(cant), obs, customData: customDataStr, precioUnitario: currentPrice }
+   242→
+   243→    if (editingId) {
+   244→      await fetch('/api/registros', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
+   245→      setEditingId(null)
+   246→      showStatus('ok', 'Entrada actualizada ✓')
+   247→    } else {
+   248→      await fetch('/api/registros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+   249→      showStatus('ok', 'Entrada guardada ✓')
+   250→    }
+   251→    setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
+   252→    triggerBackup()
+   253→    loadData()
+   254→  }
+   255→
+   256→  function handleEdit(r: Registro) {
+   257→    setEditingId(r.id)
+   258→    setFecha(r.fecha); setClienteId(r.clienteId); setC1(r.c1); setC2(r.c2); setCant(String(r.cant)); setObs(r.obs)
+   259→    // Load custom data
+   260→    const cd = parseCustomData((r as Record<string, unknown>).customData as string || '')
+   261→    setCustomValues(cd as Record<string, string>)
+   262→    window.scrollTo({ top: 0, behavior: 'smooth' })
+   263→  }
+   264→
+   265→  async function handleDelete(id: string) {
+   266→    if (!confirm('¿Eliminar entrada?')) return
+   267→    await fetch(`/api/registros?id=${id}`, { method: 'DELETE' })
+   268→    showStatus('ok', 'Eliminada')
+   269→    triggerBackup()
+   270→    loadData()
+   271→  }
+   272→
+   273→  function handleCancelEdit() {
+   274→    setEditingId(null); setFecha(todayISO()); setClienteId(''); setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
+   275→  }
+   276→
+   277→  async function handleTransfer() {
+   278→    if (data.registros.length === 0) return
+   279→    setTransferring(true)
+   280→    try {
+   281→      const res = await fetch('/api/registros/transfer', { method: 'POST' })
+   282→      const result = await res.json()
+   283→      showStatus('ok', `${result.transferred} entrada(s) pasadas al registro ✓`)
+   284→      triggerBackup()
+   285→      loadData()
+   286→    } catch { showStatus('err', 'Error al transferir') }
+   287→    setTransferring(false)
+   288→  }
+   289→
+   290→  async function handleSaveTransferSettings() {
+   291→    await update({ transferMode: localTransferMode, transferTime: localTransferTime })
+   292→    showStatus('ok', 'Ajustes de transferencia guardados ✓')
+   293→    setShowTransferSettings(false)
+   294→    triggerBackup()
+   295→  }
+   296→
+   297→  const activeEntries = data.registros
+   298→
+   299→  // Render a dynamic field input based on FieldDef
+   300→  function renderFieldInput(field: FieldDef) {
+   301→    if (field.key === 'fecha') {
+   302→      return (
+   303→        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+   304→          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
+   305→          <div className="px-3 pb-2"><Input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" /></div>
+   306→        </div>
+   307→      )
+   308→    }
+   309→    if (field.key === 'cliente') {
+   310→      return (
+   311→        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+   312→          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
+   313→          <div className="px-3 pb-2">
+   314→            <Select value={clienteId} onValueChange={v => { setClienteId(v); setC1(''); setC2('') }}>
+   315→              <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder="Selecciona..." /></SelectTrigger>
+   316→              <SelectContent>{clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
+   317→            </Select>
+   318→          </div>
+   319→        </div>
+   320→      )
+   321→    }
+   322→    if (field.key === 'c1') {
+   323→      return (
+   324→        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-visible">
+   325→          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
+   326→          <div className="px-3 pb-2"><ComboInput value={c1} onChange={v => { setC1(v); setC2('') }} suggestions={c1Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
+   327→        </div>
+   328→      )
+   329→    }
+   330→    if (field.key === 'c2') {
+   331→      return (
+   332→        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-visible">
+   333→          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
+   334→          <div className="px-3 pb-2"><ComboInput value={c2} onChange={setC2} suggestions={c2Options.length > 0 ? c2Options : allC2Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
+   335→        </div>
+   336→      )
+   337→    }
+   338→    if (field.key === 'cantidad') {
+   339→      return (
+   340→        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+   341→          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
+   342→          <div className="px-3 pb-2"><Input type="number" value={cant} onChange={e => setCant(e.target.value)} min="1" className="h-9 text-sm text-center border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" /></div>
+   343→        </div>
+   344→      )
+   345→    }
+   346→    if (field.key === 'observaciones') {
+   347→      return (
+   348→        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+   349→          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
+   350→          <div className="px-3 pb-2"><Input value={obs} onChange={e => setObs(e.target.value)} placeholder="Opcional..." className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" /></div>
+   351→        </div>
+   352→      )
+   353→    }
+   354→    // Custom fields
+   355→    if (field.isCustom) {
+   356→      return (
+   357→        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+   358→          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}{field.required ? ' *' : ''}</Label></div>
+   359→          <div className="px-3 pb-2">
+   360→            {field.type === 'textarea' ? (
+   361→              <textarea value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="w-full h-16 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none resize-none" />
+   362→            ) : field.type === 'date' ? (
+   363→              <Input type="date" value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
+   364→            ) : field.type === 'number' ? (
+   365→              <Input type="number" step="0.01" value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
+   366→            ) : (
+   367→              <Input value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
+   368→            )}
+   369→          </div>
+   370→        </div>
+   371→      )
+   372→    }
+   373→    return null
+   374→  }
+   375→
+   376→  // Get custom field values from a registro for display
+   377→  function getCustomFieldDisplay(r: Registro, field: FieldDef): string {
+   378→    if (!field.isCustom) return ''
+   379→    const cd = parseCustomData((r as Record<string, unknown>).customData as string || '')
+   380→    return String(cd[field.key] || '')
+   381→  }
+   382→
+   383→  return (
+   384→    <div className="flex flex-col flex-1 min-h-0">
+   385→      {/* ─── FIXED HEADER (form) ─── */}
+   386→      <div className="flex-shrink-0 space-y-2 pb-2">
+   387→        {statusMsg && (
+   388→          <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+   389→            {statusMsg.type === 'ok' ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+   390→            {statusMsg.text}
+   391→          </div>
+   392→        )}
+   393→
+   394→        {editingId && (
+   395→          <div className="flex items-center justify-between bg-amber-100 border border-amber-300 rounded-xl px-4 py-2.5">
+   396→            <span className="text-sm font-bold text-amber-800">Modo Edición</span>
+   397→            <Button onClick={handleCancelEdit} size="sm" variant="outline" className="h-9 rounded-full"><X className="h-4 w-4 mr-1" /> Cancelar</Button>
+   398→          </div>
+   399→        )}
+   400→
+   401→        {/* Transfer Mode Banner — only for users with transfer permission */}
+   402→        {userCanTransfer && (
+   403→        <div className={`rounded-xl overflow-hidden border ${transferMode === 'auto' ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
+   404→          <button onClick={() => setShowTransferSettings(!showTransferSettings)} className="w-full flex items-center justify-between px-4 py-2.5 text-sm">
+   405→            <div className="flex items-center gap-2">
+   406→              <Settings2 className="h-4 w-4 shrink-0 text-gray-400" />
+   407→              {transferMode === 'auto' ? <span className="text-blue-700"><Clock className="h-4 w-4 inline mr-1" />Auto-transferencia a las <b>{transferTime}</b></span> : <span className="text-amber-700"><Zap className="h-4 w-4 inline mr-1" />Transferencia manual</span>}
+   408→            </div>
+   409→            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${showTransferSettings ? 'rotate-180' : ''}`} />
+   410→          </button>
+   411→          {showTransferSettings && (
+   412→            <div className="px-4 pb-3 pt-1 border-t border-gray-200/50 space-y-3 bg-white/60">
+   413→              <div className="space-y-2">
+   414→                <Label className="text-xs font-bold text-slate-600 uppercase">Modo de transferencia</Label>
+   415→                <div className="grid grid-cols-2 gap-2">
+   416→                  <button onClick={() => setLocalTransferMode('auto')} className={`flex items-center gap-2 p-2.5 rounded-lg border-2 text-sm transition-all ${localTransferMode === 'auto' ? 'border-[#005bb5] bg-blue-50 text-[#005bb5] font-bold' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}><Clock className="h-4 w-4" /> Automático</button>
+   417→                  <button onClick={() => setLocalTransferMode('manual')} className={`flex items-center gap-2 p-2.5 rounded-lg border-2 text-sm transition-all ${localTransferMode === 'manual' ? 'border-[#2bb24c] bg-green-50 text-[#2bb24c] font-bold' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}><Zap className="h-4 w-4" /> Manual</button>
+   418→                </div>
+   419→              </div>
+   420→              {localTransferMode === 'auto' && <div><Label className="text-xs font-bold text-slate-600 uppercase">Hora</Label><Input type="time" value={localTransferTime} onChange={e => setLocalTransferTime(e.target.value)} className="w-36 text-base font-mono mt-1" /></div>}
+   421→              <button onClick={handleSaveTransferSettings} className="w-full h-10 rounded-lg bg-[#005bb5] hover:bg-[#003d7a] text-white text-sm font-bold flex items-center justify-center gap-1.5"><Save className="h-4 w-4" /> GUARDAR AJUSTES</button>
+   422→            </div>
+   423→          )}
+   424→        </div>
+   425→        )}
+   426→
+   427→        {/* Dynamic field inputs */}
+   428→        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+   429→          {visibleFields.map(field => (
+   430→            <div key={field.key}>{renderFieldInput(field)}</div>
+   431→          ))}
+   432→        </div>
+   433→
+   434→        {/* Auto-price indicator — only for admin/superadmin */}
+   435→        {userCanSeePrices && autoPrice !== null && (
+   436→          <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200 p-3 flex items-center justify-between">
+   437→            <div>
+   438→              <p className="text-xs font-bold text-green-600 uppercase tracking-wider">Precio del catálogo</p>
+   439→              <p className="text-xl font-extrabold text-green-700">{autoPrice.toLocaleString('es-ES', { minimumFractionDigits: 2 })} {config?.currency || '€'}</p>
+   440→            </div>
+   441→            <div className="text-right">
+   442→              <p className="text-xs text-green-500">Total</p>
+   443→              <p className="text-lg font-bold text-green-700">{(autoPrice * (Number(cant) || 1)).toLocaleString('es-ES', { minimumFractionDigits: 2 })} {config?.currency || '€'}</p>
+   444→            </div>
+   445→          </div>
+   446→        )}
+   447→
+   448→        {/* Action buttons */}
+   449→        <div className="flex gap-2">
+   450→          <button onClick={handleSave} disabled={loading} className="flex-1 h-12 rounded-xl bg-[#2bb24c] hover:bg-[#23963e] active:scale-[0.98] transition-all text-white text-sm font-bold shadow-md shadow-green-200/50 disabled:opacity-50 flex items-center justify-center gap-2">
+   451→            <Save className="h-4 w-4" />{editingId ? 'ACTUALIZAR' : 'GUARDAR'}
+   452→          </button>
+   453→          {userCanTransfer && transferMode === 'manual' && activeEntries.length > 0 && (
+   454→            <button onClick={handleTransfer} disabled={transferring} className="flex-1 h-12 rounded-xl bg-[#005bb5] hover:bg-[#003d7a] active:scale-[0.98] transition-all text-white text-sm font-bold shadow-md shadow-blue-200/50 disabled:opacity-50 flex items-center justify-center gap-2">
+   455→              <ArrowRightCircle className="h-4 w-4" />{transferring ? 'Transfiriendo...' : 'PASAR AL REGISTRO'}
+   456→            </button>
+   457→          )}
+   458→        </div>
+   459→
+   460→        {/* Stats bar */}
+   461→        <div className="flex flex-wrap gap-4 bg-white rounded-lg px-4 py-2.5 shadow-sm text-sm font-bold border">
+   462→          <span>Entradas:<b className="text-[#005bb5] ml-1">{activeEntries.length}</b></span>
+   463→        </div>
+   464→      </div>
+   465→
+   466→      {/* ─── SCROLLABLE ENTRIES ─── */}
+   467→      <div className="flex-1 min-h-0 overflow-auto">
+   468→        <div className="space-y-2">
+   469→          {activeEntries.map(r => {
+   470→            const rCustom = parseCustomData((r as Record<string, unknown>).customData as string || '')
+   471→            return (
+   472→              <div key={r.id} className={`bg-white rounded-lg border p-3 shadow-sm transition-all ${editingId === r.id ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-200' : 'border-gray-100 hover:bg-gray-50'}`}>
+   473→                <div className="flex items-start justify-between gap-2">
+   474→                  <div className="flex-1 min-w-0">
+   475→                    <div className="mb-1 flex items-center gap-2">
+   476→                      <span className="text-xs text-gray-400">{r.fecha}</span>
+   477→                      <span className="text-sm text-[#005bb5] font-semibold truncate">{r.cliente || '—'}</span>
+   478→                    </div>
+   479→                    <div className="flex items-baseline gap-1.5 text-sm text-gray-600">
+   480→                      <span className="font-medium">{r.c1}</span>
+   481→                      <span className="text-gray-300">·</span>
+   482→                      <span>{r.c2}</span>
+   483→                      <span className="text-gray-300">·</span>
+   484→                      <span className="font-bold text-gray-900">{r.cant}x</span>
+   485→                    </div>
+   486→                    {r.obs && <p className="text-xs text-gray-400 mt-0.5 truncate">{r.obs}</p>}
+   487→                    {visibleFields.filter(f => f.isCustom).map(f => {
+   488→                      const val = rCustom[f.key]
+   489→                      return val ? <p key={f.key} className="text-xs text-gray-500 mt-0.5 truncate"><span className="font-medium">{f.label}:</span> {String(val)}</p> : null
+   490→                    })}
+   491→                  </div>
+   492→                  <div className="flex gap-1 shrink-0">
+   493→                    <button onClick={() => handleEdit(r)} className="h-8 w-8 rounded-lg flex items-center justify-center text-indigo-500 hover:bg-indigo-50 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+   494→                    <button onClick={() => handleDelete(r.id)} className="h-8 w-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+   495→                  </div>
+   496→                </div>
+   497→              </div>
+   498→            )
+   499→          })}
+   500→          {activeEntries.length === 0 && (
+   501→            <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
+   502→              <div className="text-4xl mb-2">📝</div>
+   503→              <p className="text-gray-400 text-sm">Sin entradas activas</p>
+   504→              <p className="text-gray-300 text-xs mt-1">Las entradas se transferirán al registro {transferMode === 'auto' ? 'automáticamente' : 'con el botón "Pasar al registro"'}</p>
+   505→            </div>
+   506→          )}
+   507→        </div>
+   508→      </div>
+   509→    </div>
+   510→  )
+   511→}
+   512→
