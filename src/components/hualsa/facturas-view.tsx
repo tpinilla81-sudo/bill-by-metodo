@@ -217,8 +217,15 @@ export function FacturasView() {
       const map: Record<string, LineaFactura> = {}
       lineasBase.forEach(r => {
         const mes = r.fecha.slice(0, 7)
-        const k = mes + '|' + r.c1 + '|' + r.c2
-        if (!map[k]) map[k] = { fecha: mes + '-01', c1: r.c1, c2: r.c2, cant: 0, clienteId: r.clienteId, obs: '', precioUnitario: getPrecio(r) }
+        // Group by month + c1 + c2 + precioUnitario (rounded to 2dp).
+        // If the same c1/c2 has DIFFERENT prices in different registros
+        // (price changed mid-month, manual edit, custom price, etc.),
+        // we must NOT merge them — each price tier gets its own line.
+        // Otherwise we'd silently lose the difference and the invoice
+        // wouldn't match the sum of the underlying registros.
+        const pu = getPrecio(r)
+        const k = mes + '|' + r.c1 + '|' + r.c2 + '|' + pu.toFixed(2)
+        if (!map[k]) map[k] = { fecha: mes + '-01', c1: r.c1, c2: r.c2, cant: 0, clienteId: r.clienteId, obs: '', precioUnitario: pu }
         map[k].cant += r.cant
       })
       lineas = Object.values(map).sort((a, b) => a.fecha.localeCompare(b.fecha))
