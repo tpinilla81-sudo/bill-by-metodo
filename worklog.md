@@ -281,3 +281,30 @@ Stage Summary:
 - "Olvidar" button clears local credentials immediately
 - User should hard-refresh browser (Ctrl+Shift+R) to load the new login page
 - SECURITY NOTE: localStorage stores password as plain text. Acceptable for a small business internal tool, but if user wants stronger security we could switch to storing only the email + relying on long-lived session cookie (no password persistence). Asked user if they prefer this alternative.
+
+---
+Task ID: 15
+Agent: Main Agent
+Task: Sigue sin aparecer en permisos la hoja Pre-Facturas + falta tick impresa + eliminar + lápiz editar en facturas
+
+Work Log:
+- Verified source files have the correct code (prefactura in configuracion-view.tsx line 73, toggleImpresa/deleteFactura/Edit3 in facturas-view.tsx)
+- Root cause: browser cache. Previous build had same chunk hashes as old code, so browser was reusing cached chunks even after Ctrl+Shift+R in some cases
+- Also: lápiz de editar (Edit3) was NOT in the listing before — only the eye (open modal) and trash (delete) buttons existed
+
+Fixes Applied:
+1. facturas-view.tsx — openFactura() now accepts startEditing=false param to open modal directly in edit mode
+2. facturas-view.tsx — added Edit3 (lápiz) button in listing actions column, between Eye and Trash2. Only visible when canEditNumero is true. Opens modal directly with editingNumero=true so user can edit the invoice number immediately
+3. Performed CLEAN rebuild: rm -rf .next && next build — forces new content-hashed chunk filenames so the browser cannot possibly serve old cached chunks
+4. New BUILD_ID: boCIdyNgHuPiErU9r-yD2
+5. Verified new chunks contain all the new code:
+   * chunk 66563daf2cd410b1.js contains "Pre-Factura", "toggleImpresa", "Quitar tick impresa"
+6. Server restarted (PID 26942, HTTP 200)
+7. Verified no-cache headers (Cache-Control: no-store, no-cache, must-revalidate) on both HTML and JS chunks
+
+Stage Summary:
+- Listing now has 3 action buttons per row: 👁 Eye (view/print), ✏️ Pencil (edit number — opens modal in edit mode), 🗑 Trash (delete)
+- Tick "impresa" column shows green checkmark, click to toggle
+- Configuración → Usuarios permission list now includes Pre-Factura
+- The clean rebuild + new chunk hashes guarantees the browser will fetch fresh JS this time
+- User MUST do Ctrl+Shift+R (or clear browser cache) once to load the new chunks. After that, the no-cache headers will keep things fresh automatically.

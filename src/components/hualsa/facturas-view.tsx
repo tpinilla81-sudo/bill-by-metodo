@@ -78,10 +78,10 @@ export function FacturasView() {
       (f.fecha || '').includes(q)
   })
 
-  function openFactura(f: FacturaRow) {
+  function openFactura(f: FacturaRow, startEditing = false) {
     setSelected(f)
     setNumeroDraft(f.numero || '')
-    setEditingNumero(false)
+    setEditingNumero(startEditing && canEditNumero)
     let lineas: LineaFactura[] = []
     try { lineas = JSON.parse(f.lineas || '[]') } catch {}
     let cli: Cliente = { id: f.clienteId, nombre: f.clienteNombre, cif: '', dir: '', cp: '', ciudad: '', prov: '', mail: '', tel: '' }
@@ -403,9 +403,14 @@ export function FacturasView() {
                   </td>
                   <td className="p-2 text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => openFactura(f)} title="Ver / editar / imprimir" className="h-8 w-8 p-0">
+                      <Button size="sm" variant="ghost" onClick={() => openFactura(f)} title="Ver / imprimir" className="h-8 w-8 p-0">
                         <Eye className="h-4 w-4" />
                       </Button>
+                      {canEditNumero && (
+                        <Button size="sm" variant="ghost" onClick={() => openFactura(f, true)} title="Editar número de factura" className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                          <Edit3 className="h-4 w-4" />
+                        </Button>
+                      )}
                       {(user?.role === 'admin' || user?.role === 'superadmin') && (
                         <Button size="sm" variant="ghost" onClick={() => deleteFactura(f)} title="Eliminar factura" className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
                           <Trash2 className="h-4 w-4" />
