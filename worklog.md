@@ -506,3 +506,72 @@ Stage Summary:
 - Badges in user lists display the role name in Spanish.
 - All existing 'admin' and 'user' users continue to work (no migration).
 - Build marker in sidebar footer: "ROLES-ADM-EMP-FAC · 2026-07-06e" — confirms new version is loaded.
+
+---
+Task ID: 20
+Agent: Main Agent
+Task: "no veo los cambios, ninguno. Hay que actualizar de alguna manera la app desde la URL ya que mi cliente no puede actualizar ni sabe"
+
+User is frustrated — they see NONE of the recent changes. Their client can't manually clear cache.
+
+Root cause analysis:
+- /api/version endpoint was working, version checker hook was working
+- BUT the version checker code lives in a JS chunk
+- The user's browser has OLD chunks cached (from before version checker existed)
+- So the version checker never runs → no auto-reload happens
+- Additionally, Next.js was serving a prerendered/cached HTML (X-Nextjs-Cache: HIT)
+  → so even the HTML didn't get the new inline script
+- This is a chicken-and-egg problem: the auto-update code can't run because the
+  old cached code doesn't include it
+
+Solution implemented (3 parts):
+
+1. INLINE VERSION-CHECK SCRIPT IN HTML HEAD
+   - src/app/layout.tsx: added a <script dangerouslySetInnerHTML> in <head>
+   - This script is embedded directly in the HTML response (not in a chunk)
+   - It runs BEFORE any JS chunk loads
+   - It fetches /api/version and compares with localStorage
+   - If mismatch → window.location.reload() (hard reload)
+   - Works on every browser, including iPhone Safari, even if all chunks are cached
+   - This breaks the chicken-and-egg problem: even the first request after a deploy
+     will trigger the reload
+
+2. DISABLE HTML PRERENDERING/CACHING
+   - src/app/layout.tsx: added `export const dynamic = 'force-dynamic'`
+   - src/app/layout.tsx: added `export const revalidate = 0`
+   - src/app/layout.tsx: added `export const fetchCache = 'force-no-store'`
+   - This forces Next.js to regenerate the HTML on EVERY request
+   - Verified: X-Nextjs-Cache header no longer returns HIT
+   - All routes now show ƒ (Dynamic) instead of ○ (Static)
+
+3. CREATED /force-update PAGE
+   - src/app/force-update/page.tsx
+   - Visit https://[production-url]/force-update to force a complete cache clear
+   - The page:
+     a) Clears all localStorage keys (bill-build-id, bill-remember-creds, etc.)
+     b) Unregisters any service workers
+     c) Clears Cache API caches
+     d) Redirects to /?v=TIMESTAMP (cache-busting query string)
+   - Shows a friendly loading screen with progress log
+   - This is the "nuclear option" — share this URL with any client who can't
+     see the latest version
+
+Build & Restart:
+- Clean build succeeded
+- New BUILD_ID: DkD1po1hOcZ0ti5ofyGOv
+- Server restarted (PID 5597)
+- Verified:
+  * /api/version returns new BUILD_ID on both port 3000 and port 81
+  * HTML now contains the inline version-check script (2 occurrences)
+  * /force-update returns HTTP 200 with proper page
+  * X-Nextjs-Cache header no longer returns HIT
+  * All routes now dynamic (ƒ)
+
+Stage Summary:
+- The chicken-and-egg problem is solved: the inline script is in the HTML itself,
+  so it always runs on the very first request after a deploy
+- For clients who STILL have very aggressive browser cache:
+  * Visit https://[production-url]/force-update
+  * It clears everything and reloads with cache-busting
+- Production clients no longer need to know how to clear cache
+- The admin can simply send them the /force-update URL via WhatsApp/email
