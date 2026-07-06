@@ -241,93 +241,113 @@ export function FacturasView() {
 <title>${docTitle}</title>
 <style>
   /* margin: 0 en @page para que el navegador NO añada sus cabeceras/pie por defecto
-     (que muestran la fecha, la hora y la URL "about:blank").
-     El padding se aplica en el body para mantener los márgenes visuales deseados.
-     Top/Bottom mayores (22mm) para que la factura respire arriba y abajo;
-     Left/Right de 14mm para aprovechar el ancho de la hoja A4. */
+     (fecha, hora, URL "about:blank"). El padding va en el body. */
   @page { size: A4 portrait; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { background: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 10.5pt; line-height: 1.35; padding: 22mm 14mm; }
-  .page { width: 100%; max-width: 210mm; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; padding-bottom: 16px; border-bottom: 3px solid #2bb24c; }
-  .company-info { flex: 1; min-width: 0; }
-  .company-name { font-size: 17pt; font-weight: 800; color: #1a1a1a; margin-bottom: 4px; }
-  .company-detail { font-size: 9.5pt; color: #444; line-height: 1.45; }
-  .company-detail b { color: #1a1a1a; }
-  .logo-area { margin-left: 20px; flex-shrink: 0; }
-  .logo-area img { max-width: 220px; max-height: 90px; object-fit: contain; }
-  .factura-badge { display: inline-block; margin-top: 10px; padding: 6px 14px; border: 2px solid #1a1a1a; background: #f5f5f5; font-size: 10.5pt; line-height: 1.5; }
-  .factura-badge b { font-size: 10.5pt; }
-  .client-box { border: 2px solid #1a1a1a; padding: 12px 16px; margin-bottom: 22px; background: #f9f9f9; font-size: 10.5pt; line-height: 1.55; }
-  .client-box b { color: #1a1a1a; }
-  .client-label { font-size: 8.5pt; text-transform: uppercase; color: #888; letter-spacing: 1px; margin-bottom: 4px; }
-  /* table-layout: fixed + width columns → el contenido no se reparte libremente.
-     Cada celda lleva white-space:nowrap para NO partir en 2 líneas. */
-  table.lines { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 9.5pt; table-layout: fixed; }
-  table.lines thead th { background: #f0f0f0; color: #1a1a1a; padding: 7px 6px; text-align: left; font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body { font-family: Arial, 'Helvetica', sans-serif; color: #000; font-size: 10pt; line-height: 1.4; padding: 18mm 14mm; }
+  .page { width: 100%; max-width: 182mm; margin: 0 auto; }
+
+  /* ====== CABECERA ====== */
+  /* Izquierda: logo + datos empresa. Derecha: caja de datos del cliente. */
+  .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
+  .header-left { flex: 1; min-width: 0; }
+  .logo-block { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .logo-block img { max-height: 50px; max-width: 220px; object-fit: contain; }
+  .company-name { font-size: 14pt; font-weight: 700; color: #000; line-height: 1.2; }
+  .company-detail { font-size: 9pt; color: #333; line-height: 1.45; }
+  .company-detail b { color: #000; }
+
+  /* Caja datos del cliente (derecha) */
+  .client-box { border: 1px solid #999; padding: 8px 12px; background: #fff; font-size: 9pt; line-height: 1.5; min-width: 200px; max-width: 230px; }
+  .client-box .label { font-size: 8pt; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #ddd; }
+  .client-box b { color: #000; }
+
+  /* ====== BANDA Nº FACTURA + FECHA ====== */
+  .meta-bar { display: flex; justify-content: space-between; align-items: center; margin: 6px 0 14px 0; padding: 8px 12px; background: #f0f0f0; border: 1px solid #ccc; font-size: 10pt; }
+  .meta-bar .num { font-weight: 700; color: #000; }
+  .meta-bar .fecha { color: #333; }
+
+  /* ====== TABLA DE LÍNEAS ====== */
+  table.lines { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 9pt; }
+  table.lines thead th { background: #f0f0f0; color: #333; padding: 6px 6px; text-align: left; font-size: 8.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #bbb; white-space: nowrap; }
   table.lines thead th:nth-child(3), table.lines thead th:nth-child(4), table.lines thead th:nth-child(5) { text-align: right; }
-  table.lines tbody tr:nth-child(even) { background: #fafafa; }
-  table.lines tbody td { padding: 5px 6px; border: 1px solid #ccc; overflow: hidden; text-overflow: ellipsis; }
-  table.lines tbody td:nth-child(3), table.lines tbody td:nth-child(4), table.lines tbody td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; }
-  .totals { margin-left: auto; border-collapse: collapse; font-size: 10.5pt; }
-  .totals td { padding: 7px 12px; border: 1px solid #1a1a1a; }
-  .totals .label { background: #e8e8e8; font-weight: 700; text-align: right; min-width: 160px; }
-  .totals .value { text-align: right; min-width: 130px; font-variant-numeric: tabular-nums; }
-  .totals .total-row { background: #2bb24c; color: #fff; font-weight: 800; font-size: 12pt; }
-  .totals .total-row td { border-color: #2bb24c; }
-  .footer { margin-top: 36px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 8.5pt; color: #999; text-align: center; }
+  table.lines tbody td { padding: 5px 6px; border: 1px solid #bbb; font-size: 9pt; color: #000; vertical-align: top; }
+  table.lines tbody td:nth-child(1) { white-space: nowrap; }
+  table.lines tbody td:nth-child(3), table.lines tbody td:nth-child(4), table.lines tbody td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* ====== TOTALES ====== */
+  .totals-wrap { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+  table.totals { border-collapse: collapse; font-size: 9.5pt; min-width: 280px; }
+  table.totals td { padding: 6px 12px; border: 1px solid #999; }
+  table.totals .label { background: #f0f0f0; font-weight: 700; text-align: right; color: #000; }
+  table.totals .value { text-align: right; min-width: 110px; font-variant-numeric: tabular-nums; color: #000; }
+  table.totals .total-row { background: #006633; color: #fff; font-weight: 700; font-size: 11pt; }
+  table.totals .total-row td { border-color: #006633; color: #fff; }
+
+  /* ====== PIE ====== */
+  .footer { margin-top: 28px; padding-top: 8px; border-top: 1px solid #ccc; font-size: 8pt; color: #666; text-align: center; }
 </style>
 </head>
 <body>
 <div class="page">
+
+  <!-- ===== CABECERA ===== -->
   <div class="header">
-    <div class="company-info">
-      <div class="company-name">${cfg?.companyFullName || 'EMPRESA'}</div>
+    <div class="header-left">
+      ${logoSrc ? '<div class="logo-block"><img src="' + logoSrc + '" alt="Logo"></div>' : ''}
+      <div class="company-name">${cfg?.companyFullName || cfg?.companyName || 'EMPRESA'}</div>
       <div class="company-detail">
         ${cfg?.companyAddress ? cfg.companyAddress + '<br>' : ''}
-        ${cfg?.companyCity ? cfg.companyCity : ''}${cfg?.companyProvince ? ' ' + cfg.companyProvince : ''}${(cfg?.companyCity || cfg?.companyProvince) ? '<br>' : ''}
+        ${(cfg?.companyCity || cfg?.companyProvince) ? (cfg.companyCity || '') + (cfg.companyProvince ? ' ' + cfg.companyProvince : '') + '<br>' : ''}
         ${cfg?.companyCif ? '<b>CIF:</b> ' + cfg.companyCif : ''}
       </div>
-      <div class="factura-badge">
-        <b>${LL.numero}:</b> ${numero || '(en blanco)'}<br>
-        <b>${LL.fecha}:</b> ${fmtDate(fechaFact)}
-      </div>
     </div>
-    ${logoSrc ? '<div class="logo-area"><img src="' + logoSrc + '" alt="Logo"></div>' : ''}
+    <div class="client-box">
+      <div class="label">DATOS DEL CLIENTE</div>
+      <b>${cli.nombre || ''}</b><br>
+      ${cli.cif ? '<b>NIF:</b> ' + cli.cif + '<br>' : ''}
+      ${cli.dir ? cli.dir + '<br>' : ''}
+      ${(cli.cp || cli.ciudad || cli.prov) ? (cli.cp ? cli.cp + ' ' : '') + (cli.ciudad || '') + (cli.prov ? ' (' + cli.prov + ')' : '') : ''}
+    </div>
   </div>
-  <div class="client-label">DATOS DEL CLIENTE</div>
-  <div class="client-box">
-    <b>${LL.cliente}:</b> ${cli.nombre}<br>
-    ${cli.cif ? '<b>CIF:</b> ' + cli.cif + '<br>' : ''}
-    ${cli.dir ? cli.dir + '<br>' : ''}
-    ${cli.cp || cli.ciudad || cli.prov ? (cli.cp ? cli.cp + ' ' : '') + (cli.ciudad || '') + (cli.prov ? ' (' + cli.prov + ')' : '') : ''}
+
+  <!-- ===== BANDA Nº FACTURA + FECHA ===== -->
+  <div class="meta-bar">
+    <span class="num">Nº FACTURA: ${numero || '(en blanco)'}</span>
+    <span class="fecha"><b>${LL.fecha}:</b> ${fmtDate(fechaFact)}</span>
   </div>
+
+  <!-- ===== TABLA DE LÍNEAS ===== -->
   <table class="lines">
     <thead>
       <tr>
         <th style="width:70px;">${LL.fecha}</th>
         <th>${LL.concepto}</th>
-        <th style="width:50px;">${LL.cantidad}</th>
-        <th style="width:85px;">${LL.precioUnitario}</th>
+        <th style="width:55px;">${LL.cantidad}</th>
+        <th style="width:90px;">${LL.precioUnitario}</th>
         <th style="width:95px;">${LL.importe}</th>
       </tr>
     </thead>
     <tbody>${lineasHtml}</tbody>
   </table>
-  <table class="totals">
-    <tr><td class="label">${LL.baseImponible}</td><td class="value">${fmtCurrency(base)}</td></tr>
-    <tr><td class="label">IVA ${iva}%</td><td class="value">${fmtCurrency(ivaImp)}</td></tr>
-    <tr class="total-row"><td>${LL.totalFactura}</td><td>${fmtCurrency(total)}</td></tr>
-  </table>
+
+  <!-- ===== TOTALES ===== -->
+  <div class="totals-wrap">
+    <table class="totals">
+      <tr><td class="label">${LL.baseImponible}</td><td class="value">${fmtCurrency(base)}</td></tr>
+      <tr><td class="label">IVA ${iva}%</td><td class="value">${fmtCurrency(ivaImp)}</td></tr>
+      <tr class="total-row"><td>${LL.totalFactura}</td><td>${fmtCurrency(total)}</td></tr>
+    </table>
+  </div>
+
+  <!-- ===== PIE ===== -->
   <div class="footer">${cfg?.companyFullName || 'EMPRESA'} &mdash; ${cfg?.companyAddress || ''} ${cfg?.companyCity || ''}</div>
+
 </div>
 <script>
   window.onload = function() {
-    // Asegurar que el título del documento sea el nuestro (algunos navegadores
-    // lo usan como nombre por defecto al "Guardar como PDF").
     try { document.title = ${JSON.stringify(docTitle)}; } catch (e) {}
-    // Pequeño retraso para asegurar que las imágenes (logo) carguen antes de imprimir
     setTimeout(function() { window.print(); }, 300);
   };
 </script>
