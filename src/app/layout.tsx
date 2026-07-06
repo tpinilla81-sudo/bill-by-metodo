@@ -34,6 +34,11 @@ export const metadata: Metadata = {
   },
 };
 
+// Force browsers (especially iOS Safari) to never cache the HTML
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+export const fetchCache = 'force-no-store'
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -41,6 +46,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
+      <head>
+        {/* Anti-cache meta tags — critical for iOS Safari */}
+        <meta httpEquiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+        <meta httpEquiv="Pragma" content="no-cache" />
+        <meta httpEquiv="Expires" content="0" />
+        {/* iOS Safari specific: prevents storing in app cache */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+        <meta name="format-detection" content="telephone=no" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
