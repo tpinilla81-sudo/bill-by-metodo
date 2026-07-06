@@ -138,6 +138,7 @@ model Factura {
   total         Float    @default(0)
   modo          String   @default("dia")
   registroIds   String   @default("[]")
+  impresa       Boolean  @default(false)
   createdBy     String   @default("")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
