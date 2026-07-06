@@ -123,6 +123,19 @@ function UsersManager() {
     setShowForm(false)
   }
 
+  // When role changes, set appropriate default permissions
+  function handleRoleChange(newRole: string) {
+    setFormRole(newRole)
+    if (newRole === 'facturacion') {
+      // Apply default facturacion preset (only if user hasn't customized yet)
+      setFormPermissions(FACTURACION_DEFAULT_PERMS)
+    } else if (newRole === 'user') {
+      // Empleado: start with empty (admin chooses)
+      setFormPermissions([])
+    }
+    // For admin/superadmin, permissions are ignored
+  }
+
   function handleEditUser(u: UserItem) {
     setEditingId(u.id)
     setFormEmail(u.email); setFormName(u.name); setFormPassword(''); setFormRole(u.role); setFormActive(u.active); setFormPermissions(parsePermissions(u.permissions || ''))
@@ -134,14 +147,15 @@ function UsersManager() {
     if (!editingId && !formPassword) { showMsg('err', 'La contraseña es obligatoria para nuevos usuarios'); return }
 
     try {
+      const isRegularRole = formRole === 'user' || formRole === 'facturacion'
       if (editingId) {
-        const body: Record<string, unknown> = { id: editingId, email: formEmail, name: formName, role: formRole, active: formActive, permissions: formRole === 'user' ? formPermissions : [] }
+        const body: Record<string, unknown> = { id: editingId, email: formEmail, name: formName, role: formRole, active: formActive, permissions: isRegularRole ? formPermissions : [] }
         if (formPassword) body.password = formPassword
         const res = await tenantFetch('/api/users', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         if (!res.ok) { const d = await res.json().catch(() => ({})); showMsg('err', d.error || 'Error al actualizar'); return }
         showMsg('ok', 'Usuario actualizado ✓')
       } else {
-        const body = { email: formEmail, name: formName, password: formPassword, role: formRole, tenantId: currentUser?.tenantId, permissions: formRole === 'user' ? formPermissions : [] }
+        const body = { email: formEmail, name: formName, password: formPassword, role: formRole, tenantId: currentUser?.tenantId, permissions: isRegularRole ? formPermissions : [] }
         const res = await tenantFetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         if (!res.ok) { const d = await res.json().catch(() => ({})); showMsg('err', d.error || 'Error al crear usuario'); return }
         showMsg('ok', 'Usuario creado ✓')
@@ -182,20 +196,27 @@ function UsersManager() {
       case 'superadmin':
         return <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200">SUPERADMIN</span>
       case 'admin':
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700 border border-blue-200">ADMIN</span>
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700 border border-blue-200">ADMINISTRADOR</span>
+      case 'facturacion':
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">FACTURACIÓN</span>
       default:
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">USUARIO</span>
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">EMPLEADO</span>
     }
   }
 
+  // Default permissions preset for the 'facturacion' role
+  const FACTURACION_DEFAULT_PERMS = ['clientes', 'prefactura', 'facturas']
+
   const roleOptions = isSuperadmin
     ? [
-        { value: 'admin', label: 'Admin', desc: 'Acceso completo a su empresa' },
-        { value: 'user', label: 'Usuario', desc: 'Solo lectura y entradas' },
+        { value: 'admin', label: 'Administrador', desc: 'Acceso completo a su empresa' },
+        { value: 'facturacion', label: 'Facturación', desc: 'Facturas, pre-facturas y clientes' },
+        { value: 'user', label: 'Empleado', desc: 'Acceso personalizado por permisos' },
       ]
     : [
-        { value: 'admin', label: 'Admin', desc: 'Acceso completo a su empresa' },
-        { value: 'user', label: 'Usuario', desc: 'Solo lectura y entradas' },
+        { value: 'admin', label: 'Administrador', desc: 'Acceso completo a su empresa' },
+        { value: 'facturacion', label: 'Facturación', desc: 'Facturas, pre-facturas y clientes' },
+        { value: 'user', label: 'Empleado', desc: 'Acceso personalizado por permisos' },
       ]
 
   if (loading) return <div className="p-6 text-center text-gray-400">Cargando usuarios...</div>
@@ -245,7 +266,7 @@ function UsersManager() {
               </div>
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">Rol / Permisos</Label>
-                <Select value={formRole} onValueChange={setFormRole}>
+                <Select value={formRole} onValueChange={handleRoleChange}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {roleOptions.map(opt => (
@@ -261,23 +282,31 @@ function UsersManager() {
             {/* Role explanation */}
             <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 space-y-2">
               <div className="flex items-center gap-2 font-bold text-slate-700"><Shield className="h-3.5 w-3.5" /> Permisos por rol:</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <div className="flex items-start gap-2">
-                  <span className="font-bold text-blue-700 shrink-0">Admin:</span>
-                  <span>Acceso completo a todas las secciones de su empresa. Puede crear, editar y eliminar registros, clientes, catálogo y facturas. Puede gestionar usuarios de su empresa.</span>
+                  <span className="font-bold text-blue-700 shrink-0">Administrador:</span>
+                  <span>Acceso completo a todas las secciones. Puede gestionar usuarios y configuración.</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="font-bold text-gray-700 shrink-0">Usuario:</span>
-                  <span>Puede ver todas las secciones y crear/editar entradas y registros. No puede gestionar usuarios ni modificar la configuración de la empresa.</span>
+                  <span className="font-bold text-rose-700 shrink-0">Facturación:</span>
+                  <span>Acceso a Clientes, Pre-Factura y Facturas. Ideal para el equipo de facturación.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="font-bold text-gray-700 shrink-0">Empleado:</span>
+                  <span>Acceso personalizado. El administrador elige qué pantallas puede ver.</span>
                 </div>
               </div>
             </div>
 
-            {/* Permissions Section - only for "user" role */}
-            {formRole === 'user' && (
+            {/* Permissions Section - for "empleado" and "facturacion" roles */}
+            {(formRole === 'user' || formRole === 'facturacion') && (
               <div className="border rounded-lg p-3 bg-gray-50/50">
                 <Label className="text-xs uppercase font-bold text-slate-500 mb-2 block">Permisos de Pantallas</Label>
-                <p className="text-[11px] text-gray-500 mb-3">Selecciona las pantallas a las que este usuario tendrá acceso. Si no seleccionas ninguna, tendrá acceso a todo.</p>
+                <p className="text-[11px] text-gray-500 mb-3">
+                  {formRole === 'facturacion'
+                    ? 'Hemos pre-seleccionado los permisos típicos para Facturación. Puedes ajustarlos si lo necesitas.'
+                    : 'Selecciona las pantallas a las que este usuario tendrá acceso. Si no seleccionas ninguna, tendrá acceso a todo.'}
+                </p>
                 <div className="grid grid-cols-1 gap-1.5">
                   {SCREEN_OPTIONS.map(opt => {
                     const parentKey = (opt as any).parent as string | undefined
@@ -297,7 +326,7 @@ function UsersManager() {
                 </div>
               </div>
             )}
-            {formRole !== 'user' && (
+            {formRole !== 'user' && formRole !== 'facturacion' && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
                 Los administradores tienen acceso a todas las pantallas. No es necesario configurar permisos.
               </div>

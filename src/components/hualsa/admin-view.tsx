@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Building2, Users, Plus, Pencil, Trash2, CheckCircle, Shield, Copy, Eye, EyeOff, KeyRound, CreditCard, Zap, Clock, TrendingUp } from 'lucide-react'
+import { Building2, Users, Plus, Pencil, Trash2, CheckCircle, Shield, Copy, Eye, EyeOff, KeyRound, CreditCard, Zap, Clock, TrendingUp, Receipt } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────
 interface Tenant {
@@ -487,7 +487,7 @@ function UsersTab() {
           role: formRole,
           tenantId: formTenantId,
           active: formActive,
-          permissions: formRole === 'user' ? formPermissions : [],
+          permissions: (formRole === 'user' || formRole === 'facturacion') ? formPermissions : [],
         }
         if (formEmail.trim()) body.email = formEmail.trim()
         if (formPassword.trim()) body.password = formPassword.trim()
@@ -509,7 +509,7 @@ function UsersTab() {
             name: formName,
             role: formRole,
             tenantId: formTenantId,
-            permissions: formRole === 'user' ? formPermissions : [],
+            permissions: (formRole === 'user' || formRole === 'facturacion') ? formPermissions : [],
           }),
         })
         if (!res.ok) { const d = await res.json(); showMsg('err', d.error); return }
@@ -539,9 +539,11 @@ function UsersTab() {
       case 'superadmin':
         return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700"><Shield className="h-3 w-3" /> SuperAdmin</span>
       case 'admin':
-        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700"><Shield className="h-3 w-3" /> Admin</span>
+        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700"><Shield className="h-3 w-3" /> Administrador</span>
+      case 'facturacion':
+        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-rose-100 text-rose-700"><Receipt className="h-3 w-3" /> Facturación</span>
       default:
-        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600"><Users className="h-3 w-3" /> Usuario</span>
+        return <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600"><Users className="h-3 w-3" /> Empleado</span>
     }
   }
 
@@ -596,7 +598,7 @@ function UsersTab() {
                 <td className="p-3 text-gray-600">{u.name || '—'}</td>
                 <td className="p-3 text-center">{getRoleBadge(u.role)}</td>
                 <td className="p-3 text-gray-600">{u.tenantName}</td>
-                <td className="p-3">{u.role === 'user' ? getPermsSummary(u.permissions) : <span className="text-xs text-gray-400">Todo</span>}</td>
+                <td className="p-3">{(u.role === 'user' || u.role === 'facturacion') ? getPermsSummary(u.permissions) : <span className="text-xs text-gray-400">Todo</span>}</td>
                 <td className="p-3 text-center">
                   <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${u.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                     {u.active ? 'Activo' : 'Inactivo'}
@@ -671,11 +673,16 @@ function UsersTab() {
                 <Label className="text-xs uppercase font-bold text-slate-500">Rol</Label>
                 <Select value={formRole} onValueChange={(val) => {
                   setFormRole(val)
-                  if (val !== 'user') setFormPermissions([])
+                  if (val === 'facturacion') {
+                    setFormPermissions(['clientes', 'prefactura', 'facturas'])
+                  } else if (val !== 'user') {
+                    setFormPermissions([])
+                  }
                 }}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="user">Usuario</SelectItem>
+                    <SelectItem value="user">Empleado</SelectItem>
+                    <SelectItem value="facturacion">Facturación</SelectItem>
                     <SelectItem value="admin">Administrador</SelectItem>
                     <SelectItem value="superadmin">SuperAdmin</SelectItem>
                   </SelectContent>
@@ -694,11 +701,15 @@ function UsersTab() {
               </div>
             </div>
 
-            {/* Permissions Section - only for "user" role */}
-            {formRole === 'user' && (
+            {/* Permissions Section - for "empleado" and "facturacion" roles */}
+            {(formRole === 'user' || formRole === 'facturacion') && (
               <div className="border rounded-lg p-3 bg-gray-50/50">
                 <Label className="text-xs uppercase font-bold text-slate-500 mb-2 block">Permisos de Pantallas</Label>
-                <p className="text-[11px] text-gray-500 mb-3">Selecciona las pantallas a las que este usuario tendrá acceso. Si no seleccionas ninguna, tendrá acceso a todo.</p>
+                <p className="text-[11px] text-gray-500 mb-3">
+                  {formRole === 'facturacion'
+                    ? 'Hemos pre-seleccionado los permisos típicos para Facturación. Puedes ajustarlos si lo necesitas.'
+                    : 'Selecciona las pantallas a las que este usuario tendrá acceso. Si no seleccionas ninguna, tendrá acceso a todo.'}
+                </p>
                 <div className="grid grid-cols-1 gap-1.5">
                   {SCREEN_OPTIONS.map(opt => {
                     const parentKey = (opt as any).parent as string | undefined
@@ -720,7 +731,7 @@ function UsersTab() {
             )}
 
             {/* Info for admin/superadmin role */}
-            {formRole !== 'user' && (
+            {formRole !== 'user' && formRole !== 'facturacion' && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
                 Los administradores tienen acceso a todas las pantallas. No es necesario configurar permisos.
               </div>

@@ -99,7 +99,7 @@ model User {
   email       String   @unique
   password    String                    // hashed
   name        String   @default("")
-  role        String   @default("user")  // "superadmin", "admin" or "user"
+  role        String   @default("user")  // "superadmin", "admin", "user" (empleado) or "facturacion"
   permissions String   @default("")      // JSON array: ["entrada","registros","clientes","catalogo","facturas","backup"]
   tenantId    String                     // which company this user belongs to
   active      Boolean  @default(true)

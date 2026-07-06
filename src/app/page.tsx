@@ -135,7 +135,7 @@ function AppContent() {
       setActiveView(view)
       return
     }
-    // For regular users, check permissions for screen views
+    // For regular users (empleado / facturacion), check permissions for screen views
     if (['entrada', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'backup'].includes(view)) {
       if (hasPermission(user.role, user.permissions, view)) {
         setActiveView(view)

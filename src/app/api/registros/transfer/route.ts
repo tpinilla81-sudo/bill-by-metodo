@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
-    if (user.role === 'user') {
+    if (user.role === 'user' || user.role === 'facturacion') {
       const perms = user.permissions ? (() => { try { return JSON.parse(user.permissions) } catch { return [] } })() : []
       if (!Array.isArray(perms) || !perms.includes('entrada.pasarRegistros')) {
         return NextResponse.json({ error: 'No tienes permiso para pasar entradas a registros' }, { status: 403 })

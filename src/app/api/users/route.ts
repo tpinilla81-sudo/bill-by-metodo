@@ -83,7 +83,7 @@ export async function POST(request: Request) {
 
     // Parse and validate permissions
     let permsValue = ''
-    if (role === 'user' && permissions) {
+    if ((role === 'user' || role === 'facturacion') && permissions) {
       // Store as JSON string
       if (typeof permissions === 'string') {
         permsValue = permissions
@@ -197,7 +197,7 @@ export async function PUT(request: Request) {
     // Handle permissions
     if (permissions !== undefined) {
       const effectiveRole = role || existing.role
-      if (effectiveRole === 'user') {
+      if (effectiveRole === 'user' || effectiveRole === 'facturacion') {
         if (typeof permissions === 'string') {
           updateData.permissions = permissions
         } else if (Array.isArray(permissions)) {
@@ -209,8 +209,8 @@ export async function PUT(request: Request) {
         // Admin/superadmin: clear permissions (they see everything)
         updateData.permissions = ''
       }
-    } else if (role !== undefined && role !== 'user' && existing.role === 'user') {
-      // If changing from user to admin/superadmin, clear permissions
+    } else if (role !== undefined && role !== 'user' && role !== 'facturacion' && (existing.role === 'user' || existing.role === 'facturacion')) {
+      // If changing from user/facturacion to admin/superadmin, clear permissions
       updateData.permissions = ''
     }
 

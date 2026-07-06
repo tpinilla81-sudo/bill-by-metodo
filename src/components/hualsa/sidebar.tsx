@@ -94,7 +94,8 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
     switch (role) {
       case 'superadmin': return 'SuperAdmin'
       case 'admin': return 'Admin'
-      default: return ''
+      case 'facturacion': return 'Facturación'
+      default: return '' // 'user' = Empleado, no badge shown
     }
   }
 
@@ -165,8 +166,8 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
               // Suscripción: only for admin (not superadmin)
               if (item.key === 'suscripcion' && isSuperadmin) return false
 
-              // Permission-based filtering for regular users
-              if (user?.role === 'user' && item.permissionKey) {
+              // Permission-based filtering for regular users (empleado or facturacion)
+              if ((user?.role === 'user' || user?.role === 'facturacion') && item.permissionKey) {
                 // Special case for configuracion: also visible if user has configuracion.empresa
                 if (item.key === 'config') {
                   if (hasNoPermissions) return true // backwards-compat: empty perms = full access
@@ -209,7 +210,10 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
             <span className="truncate">{user?.name || user?.email}</span>
             {user?.role && user.role !== 'user' && (
               <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                user.role === 'superadmin' ? 'bg-red-900/40 text-red-400' : 'bg-purple-900/40 text-purple-400'
+                user.role === 'superadmin' ? 'bg-red-900/40 text-red-400'
+                  : user.role === 'admin' ? 'bg-purple-900/40 text-purple-400'
+                  : user.role === 'facturacion' ? 'bg-rose-900/40 text-rose-400'
+                  : 'bg-gray-800 text-gray-400'
               }`}>
                 {getRoleLabel(user.role)}
               </span>
@@ -227,7 +231,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
         {/* Safe area padding for iPhone bottom bar */}
         <div className="flex-shrink-0 p-2 text-center text-[10px] text-gray-600 pb-[env(safe-area-inset-bottom,8px)]">
           {displayName}
-          <div className="mt-1 text-[9px] text-gray-700 font-mono">build: CONFIG-EMP-PERM · 2026-07-06d</div>
+          <div className="mt-1 text-[9px] text-gray-700 font-mono">build: ROLES-ADM-EMP-FAC · 2026-07-06e</div>
         </div>
       </aside>
     </>

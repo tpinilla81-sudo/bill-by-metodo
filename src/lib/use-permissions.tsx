@@ -35,6 +35,8 @@ export interface PermissionHelpers {
   // Is the user an admin or superadmin (full access)
   isAdmin: boolean
   isSuperadmin: boolean
+  // Is the user a regular user (empleado or facturacion)
+  isRegularUser: boolean
 
   // Check if user has a specific permission
   // Admins always return true
@@ -61,6 +63,7 @@ export function usePermissions(): PermissionHelpers {
 
   const isSuperadmin = user?.role === 'superadmin'
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
+  const isRegularUser = user?.role === 'user' || user?.role === 'facturacion'
   const permissions = parsePermissions(user?.permissions || '')
   const hasNoSpecificPermissions = permissions.length === 0
 
@@ -80,6 +83,7 @@ export function usePermissions(): PermissionHelpers {
   return {
     isAdmin,
     isSuperadmin,
+    isRegularUser,
     has,
     canView,
     canTransfer: has('entrada.pasarRegistros'),

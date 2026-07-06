@@ -439,3 +439,70 @@ Stage Summary:
 - Inside Configuración, they will only see the "Empresa" tab — "Usuarios" and "Campos" tabs are hidden
 - Cache-busting system is now more aggressive: 60s polling + immediate check on mount + cache-busting query string
 - When the user reloads their browser, they will get the new BUILD_ID, which differs from the one in their localStorage → triggers auto-reload → fresh HTML → fresh JS chunks → new features visible
+
+---
+Task ID: 19
+Agent: Main Agent
+Task: "en los roles poner, administrador/empleado/facturación"
+
+User wants the role system changed to three named roles: Administrador, Empleado, Facturación.
+
+Work Log:
+- Investigated current role system: 'superadmin', 'admin', 'user' (String column in DB, no enum constraint)
+- Decided to add a NEW role value 'facturacion' (no DB migration needed since role is a plain String)
+- Renamed UI labels:
+  * 'admin' → "Administrador"
+  * 'user' → "Empleado"
+  * 'facturacion' → "Facturación" (NEW)
+- Prisma schema: updated comment to mention facturacion role
+- src/lib/permissions.ts: no change needed (already correctly checks only admin/superadmin for full access)
+- src/lib/use-permissions.tsx: added isRegularUser helper (true for 'user' OR 'facturacion')
+- src/app/api/users/route.ts:
+  * POST: accepts 'facturacion' role, stores permissions if role is user OR facturacion
+  * PUT: same logic for updating users
+- src/app/api/registros/transfer/route.ts: blocks 'facturacion' too (only admin can transfer without perm)
+- src/components/hualsa/configuracion-view.tsx:
+  * Updated getRoleBadge with new labels and facturacion badge (rose color)
+  * Added FACTURACION_DEFAULT_PERMS = ['clientes', 'prefactura', 'facturas']
+  * Updated roleOptions with three labels: Administrador / Facturación / Empleado
+  * Added handleRoleChange function — when facturacion is selected, auto-fills default perms
+  * Updated handleSaveUser to send permissions for both user and facturacion
+  * Updated role explanation panel to show 3 roles instead of 2
+  * Permissions section visible for both user and facturacion roles
+- src/components/hualsa/admin-view.tsx:
+  * Updated getRoleBadge with new labels + Facturación (rose, Receipt icon)
+  * Updated role select dropdown: Empleado / Facturación / Administrador / SuperAdmin
+  * When facturacion is selected, auto-fills default perms
+  * Updated handleSave calls to send permissions for both user and facturacion
+  * Updated table cell to show perm summary for both user and facturacion
+  * Permissions section visible for both user and facturacion
+- src/components/hualsa/sidebar.tsx:
+  * Updated permission filter to apply to both 'user' and 'facturacion' roles
+  * Updated getRoleLabel to return "Facturación" for that role
+  * Updated role badge colors (rose-900 for facturacion)
+  * Updated build marker to "ROLES-ADM-EMP-FAC · 2026-07-06e"
+- src/app/page.tsx:
+  * Updated handleNavigate comment to mention facturacion
+  * Updated screen-rendering comment
+
+Verification:
+- Clean build succeeded (Next.js 16.1.3 with Turbopack)
+- New BUILD_ID: OwxHONIUFUO99Ugwc7kjX
+- Server restarted (PID 5078/5116)
+- /api/version returns new BUILD_ID via both port 3000 and port 81 (Caddy)
+- Created test user 'test-fact5@bill.es' with role 'facturacion' and perms ['clientes','prefactura','facturas']
+  * Verified in DB: role='facturacion', permissions='["clientes","prefactura","facturas"]'
+- Logged in as test-fact5@bill.es successfully
+- Test user could access /api/facturas (HTTP 200)
+- Test user cleaned up after verification
+
+Stage Summary:
+- Three roles now available in the user creation/edit form:
+  1. **Administrador** — full access (same as old 'admin')
+  2. **Facturación** — preset: Clientes + Pre-Factura + Facturas (customizable)
+  3. **Empleado** — custom permissions (same as old 'user')
+- When creating a new "Facturación" user, the system auto-selects the 3 default permissions. Admin can adjust if needed.
+- Sidebar correctly shows/hides menu items based on the user's permissions.
+- Badges in user lists display the role name in Spanish.
+- All existing 'admin' and 'user' users continue to work (no migration).
+- Build marker in sidebar footer: "ROLES-ADM-EMP-FAC · 2026-07-06e" — confirms new version is loaded.
