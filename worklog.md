@@ -636,3 +636,21 @@ Stage Summary:
 - Al imprimir una factura aparece un aviso azul con el número y el cliente. El nombre del archivo al "Guardar como PDF" ahora incluye número y cliente.
 - El PDF impreso ya no muestra ni la fecha, ni la hora, ni "about:blank" (cabeceras/pie del navegador desactivadas vía @page margin:0).
 - Archivos modificados: src/app/page.tsx, src/components/hualsa/admin-view.tsx, src/components/hualsa/configuracion-view.tsx, src/components/hualsa/facturas-view.tsx, src/components/hualsa/sidebar.tsx
+
+---
+Task ID: 10
+Agent: Main Agent
+Task: Fix facturacion no entra a Configuración + PDF márgenes y no-wrap
+
+Work Log:
+- Encontrada una fuente desincronizada: src/lib/use-permissions.tsx tenía su propio ALL_PERMISSIONS que NO incluía configuracion.usuarios ni configuracion.campos. Aunque no se usa directamente en los componentes principales, su canAccessConfig solo miraba 'configuracion' y 'configuracion.empresa'. Actualizado para incluir las 3 sub-permisos.
+- Detectado el problema principal: cuando el admin da permiso a un usuario facturacion, la sesión del usuario en el navegador queda stale. El flujo anterior llamaba a refreshUser() si el usuario no podía entrar a config, pero NO navegaba después del refresh — el usuario tenía que hacer clic OTRA vez.
+- auth-context.tsx: añadido refreshAndGetUser() que hace fetch a /api/auth/me y devuelve el user fresco (no solo dispara setUser asincrono).
+- page.tsx: handleNavigate('config') ahora es async. Si canAccessConfig(user.role, user.permissions) es false, llama a refreshAndGetUser() y, si los permisos frescos sí dan acceso, navega directamente a 'config'. Así el usuario entra al primer clic aunque su sesión estuviera stale.
+- facturas-view.tsx PDF: añadido table-layout:fixed, white-space:nowrap + overflow:hidden + text-overflow:ellipsis en cada celda de la tabla de líneas. Columnas redimensionadas: fecha 70px, cantidad 50px, precioUnitario 85px, importe 95px (concepto ocupa el resto). Padding del body subido a 14mm para margen visual adecuado. Fuente tabla 9.5pt, body 10.5pt. Ninguna línea se parte en 2.
+- next build OK. Commit 1d46c53. Push a GitHub → Vercel redeploy.
+
+Stage Summary:
+- Usuario facturacion con configuracion.empresa: ahora entra a Configuración → Empresa al primer clic aunque su sesión estuviera stale (se refresca inmediatamente y se navega).
+- PDF factura: márgenes visuales de 14mm a cada lado, sin cabeceras/pie del navegador (sin fecha/hora/about:blank). Líneas de la tabla no se parten en 2: cada celda usa white-space:nowrap.
+- Archivos modificados: src/app/page.tsx, src/lib/auth-context.tsx, src/lib/use-permissions.tsx, src/components/hualsa/facturas-view.tsx, src/components/hualsa/sidebar.tsx (build marker).
