@@ -221,15 +221,19 @@ export function FacturasView() {
       </tr>`
     }).join('')
 
+    // Título del documento: incluye número y cliente (se ve al guardar como PDF)
+    const docTitle = `Factura ${numero || 'sin-numero'} - ${cli.nombre || 'cliente'}`
+
     const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Factura ${numero}</title>
+<title>${docTitle}</title>
 <style>
   @page { size: A4 portrait; margin: 12mm 15mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  html, body { background: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
   .page { width: 100%; max-width: 210mm; }
   .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; padding-bottom: 18px; border-bottom: 3px solid #2bb24c; }
   .company-info { flex: 1; }
@@ -301,12 +305,20 @@ export function FacturasView() {
   </table>
   <div class="footer">${cfg?.companyFullName || 'EMPRESA'} &mdash; ${cfg?.companyAddress || ''} ${cfg?.companyCity || ''}</div>
 </div>
-<script>window.onload = function() { window.print(); }</script>
+<script>
+  window.onload = function() {
+    // Pequeño retraso para asegurar que las imágenes (logo) carguen antes de imprimir
+    setTimeout(function() { window.print(); }, 300);
+  };
+</script>
 </body>
 </html>`
 
     const printWin = window.open('', '_blank', 'width=900,height=700')
-    if (printWin) { printWin.document.write(html); printWin.document.close() }
+    if (printWin) {
+      printWin.document.write(html)
+      printWin.document.close()
+    }
   }
 
   function handleExportExcel(inv: InvoiceData, cat: CatalogoItem[], cfg: ResolvedConfig | null) {

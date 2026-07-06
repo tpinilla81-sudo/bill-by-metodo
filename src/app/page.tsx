@@ -14,6 +14,7 @@ import { AdminView } from '@/components/hualsa/admin-view'
 import { PlansView } from '@/components/hualsa/plans-view'
 import { ConfigProvider, useConfig } from '@/lib/config'
 import { AuthProvider, useAuth } from '@/lib/auth-context'
+import { canAccessConfig } from '@/lib/permissions'
 
 export type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'prefactura' | 'facturas' | 'backup' | 'config' | 'admin' | 'suscripcion'
 
@@ -162,20 +163,14 @@ function AppContent() {
       }
       return
     }
-    // Config: visible to users with 'configuracion' or 'configuracion.empresa' permission
+    // Config: visible to users with any configuracion.* permission
     if (view === 'config') {
-      const perms = JSON.parse(user.permissions || '[]')
-      const permArr = Array.isArray(perms) ? perms : []
-      // Empty perms = backwards-compat full access
-      if (permArr.length === 0 || permArr.includes('configuracion') || permArr.includes('configuracion.empresa')) {
+      if (canAccessConfig(user.role, user.permissions)) {
         setActiveView(view)
       } else {
         // Si el usuario no tiene permiso, intentar refrescar la sesión primero.
         // Quizá un admin le acaba de dar permisos y la sesión está stale.
-        refreshUser().then(() => {
-          // Re-leer permisos después del refresco
-          // (useAuth actualizará `user` y esto se re-renderizará)
-        })
+        refreshUser()
       }
       return
     }
@@ -217,10 +212,10 @@ function AppContent() {
             <div className="p-3 md:p-6 pt-16 md:pt-6 pb-8">
               {activeView === 'backup' && hasPermission(user.role, user.permissions, 'backup') && <BackupView />}
               {activeView === 'suscripcion' && (user.role === 'admin' || user.role === 'superadmin') && <PlansView tenantId={effectiveTenantId || user.tenantId} />}
-              {activeView === 'config' && (user.role === 'admin' || user.role === 'superadmin' || (() => { const p = JSON.parse(user.permissions || '[]'); const a = Array.isArray(p) ? p : []; return a.length === 0 || a.includes('configuracion') || a.includes('configuracion.empresa'); })()) && <ConfiguracionView tenant={tenant} />}
+              {activeView === 'config' && canAccessConfig(user.role, user.permissions) && <ConfiguracionView tenant={tenant} />}
               {activeView === 'admin' && user.role === 'superadmin' && <AdminView />}
               {/* Debug: si activeView es config pero no se renderizó, mostrar mensaje */}
-              {activeView === 'config' && !(user.role === 'admin' || user.role === 'superadmin' || (() => { const p = JSON.parse(user.permissions || '[]'); const a = Array.isArray(p) ? p : []; return a.length === 0 || a.includes('configuracion') || a.includes('configuracion.empresa'); })()) && (
+              {activeView === 'config' && !canAccessConfig(user.role, user.permissions) && (
                 <div className="p-6 text-center text-amber-700 bg-amber-50 rounded-lg border border-amber-200">
                   <p className="font-semibold mb-2">No tienes permiso para acceder a Configuración.</p>
                   <p className="text-sm text-amber-600">Si acabas de recibir permiso, cierra sesión y vuelve a entrar para que se actualicen tus permisos.</p>

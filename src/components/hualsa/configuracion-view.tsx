@@ -29,6 +29,7 @@ import type { CatalogoItem, Cliente } from '@/lib/hualsa-utils'
 import { useTenantFetch } from '@/lib/use-tenant-fetch'
 import { useAuth } from '@/lib/auth-context'
 import { triggerBackup } from '@/lib/trigger-backup'
+import { canSeeConfigTab } from '@/lib/permissions'
 
 // ─── UsersManager: CRUD for users with permissions ────────────
 interface UserItem {
@@ -701,23 +702,11 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
 
-  // Permission checks for tab visibility
+  // Permission checks for tab visibility — use shared helpers
   const isAdminUser = user?.role === 'admin' || user?.role === 'superadmin'
-  const userPerms: string[] = (() => {
-    try {
-      const v = JSON.parse(user?.permissions || '[]')
-      return Array.isArray(v) ? v.filter((x: unknown) => typeof x === 'string') : []
-    } catch { return [] }
-  })()
-  const hasNoSpecificPerms = userPerms.length === 0 // backwards-compat: empty = all
-  function userHas(perm: string): boolean {
-    if (isAdminUser) return true
-    if (hasNoSpecificPerms) return true
-    return userPerms.includes(perm)
-  }
-  const canSeeEmpresa = isAdminUser || userHas('configuracion') || userHas('configuracion.empresa')
-  const canSeeUsuarios = isAdminUser // only admins can manage users
-  const canSeeCampos = isAdminUser // only admins can manage fields
+  const canSeeEmpresa = canSeeConfigTab(user?.role, user?.permissions, 'empresa')
+  const canSeeUsuarios = canSeeConfigTab(user?.role, user?.permissions, 'usuarios')
+  const canSeeCampos = canSeeConfigTab(user?.role, user?.permissions, 'campos')
   // Default tab — first one the user is allowed to see
   const defaultTab = canSeeEmpresa ? 'empresa' : canSeeUsuarios ? 'usuarios' : 'campos'
 
@@ -812,30 +801,38 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
   async function handleSave() {
     setSaving(true)
     try {
-      // Si el usuario solo tiene permiso de empresa, enviar SOLO los campos de empresa.
-      // Si enviamos todos, el backend los rechazará (403) o los ignorará.
-      const isEmpresaOnly = !isAdminUser && userPerms.includes('configuracion.empresa') && !userPerms.includes('configuracion')
+      // Build the partial — always include company fields (visible to anyone with any config perm)
+      const partial: Partial<AppConfig> = {
+        companyName, companyFullName, companyAddress, companyCity, companyProvince, companyCif,
+      }
+      if (logoBase64 === 'REMOVE') { partial.logo = '' }
+      else if (logoBase64) { partial.logo = logoBase64 }
 
-      const partial: Partial<AppConfig> = isEmpresaOnly
-        ? {
-            companyName, companyFullName, companyAddress, companyCity, companyProvince, companyCif,
-            ...(logoBase64 === 'REMOVE' ? { logo: '' } : logoBase64 ? { logo: logoBase64 } : {}),
-          }
-        : {
-            companyName, companyFullName, companyAddress, companyCity, companyProvince, companyCif,
-            currency, defaultIva: Number(defaultIva) || 21, appName,
-            sectionEntrada, sectionRegistros, sectionClientes, sectionCatalogo, sectionFacturas, sectionPreFactura, sectionBackup,
-            transferMode, transferTime,
-            labelEntrada: JSON.stringify(labelsEntrada), labelCatalogo: JSON.stringify(labelsCatalogo),
-            labelRegistros: JSON.stringify(labelsRegistros), labelFacturas: JSON.stringify(labelsFacturas),
-            labelClientes: JSON.stringify(labelsClientes),
-            fieldsEntrada: JSON.stringify(fieldsEntrada), fieldsClientes: JSON.stringify(fieldsClientes),
-            fieldsCatalogo: JSON.stringify(fieldsCatalogo), fieldsRegistros: JSON.stringify(fieldsRegistros),
-            fieldsFacturas: JSON.stringify(fieldsFacturas),
-          }
-
-      if (!isEmpresaOnly) {
-        if (logoBase64 === 'REMOVE') { partial.logo = '' } else if (logoBase64) { partial.logo = logoBase64 }
+      // Solo añadir campos avanzados si el usuario tiene permiso de config completo o admin
+      const canEditFullConfig = isAdminUser || canSeeConfigTab(user?.role, user?.permissions, 'campos')
+      if (canEditFullConfig) {
+        partial.currency = currency
+        partial.defaultIva = Number(defaultIva) || 21
+        partial.appName = appName
+        partial.sectionEntrada = sectionEntrada
+        partial.sectionRegistros = sectionRegistros
+        partial.sectionClientes = sectionClientes
+        partial.sectionCatalogo = sectionCatalogo
+        partial.sectionFacturas = sectionFacturas
+        partial.sectionPreFactura = sectionPreFactura
+        partial.sectionBackup = sectionBackup
+        partial.transferMode = transferMode
+        partial.transferTime = transferTime
+        partial.labelEntrada = JSON.stringify(labelsEntrada)
+        partial.labelCatalogo = JSON.stringify(labelsCatalogo)
+        partial.labelRegistros = JSON.stringify(labelsRegistros)
+        partial.labelFacturas = JSON.stringify(labelsFacturas)
+        partial.labelClientes = JSON.stringify(labelsClientes)
+        partial.fieldsEntrada = JSON.stringify(fieldsEntrada)
+        partial.fieldsClientes = JSON.stringify(fieldsClientes)
+        partial.fieldsCatalogo = JSON.stringify(fieldsCatalogo)
+        partial.fieldsRegistros = JSON.stringify(fieldsRegistros)
+        partial.fieldsFacturas = JSON.stringify(fieldsFacturas)
       }
 
       await update(partial)

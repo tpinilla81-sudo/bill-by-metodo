@@ -14,6 +14,8 @@ export const SCREEN_PERMISSIONS = [
   'backup',
   'configuracion',
   'configuracion.empresa',
+  'configuracion.usuarios',
+  'configuracion.campos',
 ] as const
 
 export type ScreenPermission = typeof SCREEN_PERMISSIONS[number]
@@ -31,6 +33,8 @@ export const SCREEN_OPTIONS: Array<{ key: string; label: string; parent?: string
   { key: 'backup', label: 'Seguridad (Backup)' },
   { key: 'configuracion', label: 'Configuración' },
   { key: 'configuracion.empresa', label: '  ↳ Empresa (datos y logo)', parent: 'configuracion' },
+  { key: 'configuracion.usuarios', label: '  ↳ Usuarios', parent: 'configuracion' },
+  { key: 'configuracion.campos', label: '  ↳ Campos personalizados', parent: 'configuracion' },
 ]
 
 export function parsePermissions(raw: string | undefined | null): string[] {
@@ -66,9 +70,10 @@ export function hasSubPermission(
 }
 
 /**
- * Check if user can access the Configuración screen.
- * True if: admin/superadmin, OR has 'configuracion', OR has 'configuracion.empresa'.
- * (configuracion.empresa implies access to the screen, but only the Empresa tab is shown.)
+ * Check if user can access the Configuración screen at all.
+ * True if: admin/superadmin, OR has 'configuracion', OR has any 'configuracion.*' sub-permission.
+ * (Sub-permissions like configuracion.empresa imply access to the screen,
+ * but only the granted tabs are shown inside.)
  */
 export function canAccessConfig(
   userRole: string | undefined | null,
@@ -77,5 +82,33 @@ export function canAccessConfig(
   if (userRole === 'admin' || userRole === 'superadmin') return true
   const perms = parsePermissions(userPermissions)
   if (perms.length === 0) return true // backwards-compat
-  return perms.includes('configuracion') || perms.includes('configuracion.empresa')
+  return (
+    perms.includes('configuracion') ||
+    perms.includes('configuracion.empresa') ||
+    perms.includes('configuracion.usuarios') ||
+    perms.includes('configuracion.campos')
+  )
+}
+
+/**
+ * Check if user can see a specific tab within Configuración.
+ * - admin/superadmin: all tabs
+ * - users with 'configuracion' (full): all tabs
+ * - users with only 'configuracion.empresa': only Empresa tab
+ * - users with only 'configuracion.usuarios': only Usuarios tab
+ * - users with only 'configuracion.campos': only Campos tab
+ */
+export function canSeeConfigTab(
+  userRole: string | undefined | null,
+  userPermissions: string | undefined | null,
+  tab: 'empresa' | 'usuarios' | 'campos',
+): boolean {
+  if (userRole === 'admin' || userRole === 'superadmin') return true
+  const perms = parsePermissions(userPermissions)
+  if (perms.length === 0) return true // backwards-compat
+  if (perms.includes('configuracion')) return true // full config = all tabs
+  if (tab === 'empresa') return perms.includes('configuracion.empresa')
+  if (tab === 'usuarios') return perms.includes('configuracion.usuarios')
+  if (tab === 'campos') return perms.includes('configuracion.campos')
+  return false
 }

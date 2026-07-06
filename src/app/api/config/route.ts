@@ -74,8 +74,12 @@ export async function PUT(req: Request) {
     const isAdmin = authUser.role === 'admin' || authUser.role === 'superadmin'
     const hasFullConfig = isAdmin || userPerms.includes('configuracion')
     const hasEmpresaOnly = userPerms.includes('configuracion.empresa')
+    const hasCamposOnly = userPerms.includes('configuracion.campos')
+    // configuracion.usuarios no permite editar config — solo gestionar usuarios (vía /api/users)
 
-    if (!hasFullConfig && !hasEmpresaOnly) {
+    // Puede guardar config si tiene admin, configuracion, configuracion.empresa, o configuracion.campos
+    const canSaveConfig = hasFullConfig || hasEmpresaOnly || hasCamposOnly
+    if (!canSaveConfig) {
       return NextResponse.json({ error: 'No tienes permisos para modificar la configuración' }, { status: 403 })
     }
 
@@ -98,8 +102,7 @@ export async function PUT(req: Request) {
       'companyName', 'companyFullName', 'companyAddress', 'companyCity', 'companyProvince',
       'companyCif', 'logo',
     ]
-    const allFields = [
-      ...empresaFields,
+    const camposFields = [
       'currency', 'defaultIva', 'appName', 'appVersion',
       'labelEntrada', 'labelCatalogo', 'labelRegistros', 'labelFacturas', 'labelClientes',
       'sectionEntrada', 'sectionRegistros', 'sectionClientes', 'sectionCatalogo',
@@ -107,9 +110,17 @@ export async function PUT(req: Request) {
       'transferMode', 'transferTime',
       'fieldsEntrada', 'fieldsClientes', 'fieldsCatalogo', 'fieldsRegistros', 'fieldsFacturas',
     ]
+    const allFields = [...empresaFields, ...camposFields]
 
-    // If user only has empresa permission, restrict to empresa fields
-    const allowedFields = hasFullConfig ? allFields : empresaFields
+    // Build the allowed fields list based on what the user can edit
+    const allowedFields: string[] = []
+    if (hasFullConfig) {
+      allowedFields.push(...allFields)
+    } else {
+      // Partial access — only the granted sub-permissions
+      if (hasEmpresaOnly) allowedFields.push(...empresaFields)
+      if (hasCamposOnly) allowedFields.push(...camposFields)
+    }
 
     const updateData: Record<string, unknown> = {}
     for (const field of allowedFields) {

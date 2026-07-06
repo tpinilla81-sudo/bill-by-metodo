@@ -4,6 +4,7 @@ import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings,
 import { Button } from '@/components/ui/button'
 import { useConfig } from '@/lib/config'
 import { useAuth, type TenantOption } from '@/lib/auth-context'
+import { canAccessConfig } from '@/lib/permissions'
 import type { View } from '@/app/page'
 
 interface TenantInfo {
@@ -168,10 +169,10 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
 
               // Permission-based filtering for regular users (empleado or facturacion)
               if ((user?.role === 'user' || user?.role === 'facturacion') && item.permissionKey) {
-                // Special case for configuracion: also visible if user has configuracion.empresa
+                // Special case for configuracion: visible if user has any configuracion.* sub-permission
                 if (item.key === 'config') {
                   if (hasNoPermissions) return true // backwards-compat: empty perms = full access
-                  return userPermissions.includes('configuracion') || userPermissions.includes('configuracion.empresa')
+                  return canAccessConfig(user?.role, user?.permissions)
                 }
                 // If permissions array is empty, show all (backwards compat)
                 if (hasNoPermissions) return true
