@@ -134,6 +134,7 @@ model Factura {
   total         Float    @default(0)
   modo          String   @default("dia")  // "dia" | "mes"
   registroIds   String   @default("[]")   // JSON: Registro[] ids linked
+  impresa       Boolean  @default(false)  // true when invoice has been printed
   createdBy     String   @default("")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

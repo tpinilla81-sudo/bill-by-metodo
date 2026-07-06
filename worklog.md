@@ -166,3 +166,37 @@ Stage Summary:
 - This means user's browser CANNOT serve stale createMany code anymore.
 - User just needs to refresh ONCE more (regular F5 should now work, no need for Ctrl+Shift+R).
 - If error persists after this, it's NOT a cache issue — ask user to share the exact network response from DevTools.
+
+---
+Task ID: 12
+Agent: Main Agent
+Task: EN FACTURAS — poder borrarlas del listado, y si se imprime que salga impresa pero también poder quitar el tick
+
+Work Log:
+- Added `impresa Boolean @default(false)` field to Factura model in prisma/schema.prisma
+- Ran `prisma db push --accept-data-loss` to sync schema to SQLite
+- Updated /api/facturas/[id] PUT to accept `impresa: boolean` field
+- Updated src/components/hualsa/facturas-view.tsx:
+  * Added `impresa: boolean` to FacturaRow interface
+  * Added new `toggleImpresa(f, newValue?)` function that PUTs to /api/facturas/[id] with { impresa: next }
+  * Modified `handlePrintInvoice` to be `async` and auto-mark factura as `impresa: true` when printing (if not already)
+  * Added new column "Impresa" in the listing table with a clickable green tick button (toggle on/off)
+  * Added delete button (trash icon) directly in the listing row (visible to admin/superadmin) — no need to open modal to delete
+  * Added green "✔ Impresa" badge in the detail modal header when factura.impresa is true
+  * Added "Quitar tick impresa" button in modal footer (only visible when impresa=true) so user can unmark the printed status
+  * Updated summary bar to show "Impresas: N" count
+- Build succeeded (23 routes)
+- Server restarted (PID 21562, HTTP 200)
+- Verified end-to-end via API:
+  * GET returns impresa field ✓
+  * PUT { impresa: true } sets it ✓
+  * PUT { impresa: false } clears it (quitar tick) ✓
+  * DELETE works ✓
+
+Stage Summary:
+- User can now delete facturas directly from the listing (trash icon, no need to open modal)
+- When a factura is printed (Imprimir PDF button), it auto-gets a green tick in the listing's "Impresa" column
+- Tick is interactive: click to toggle on/off directly from the listing
+- In the modal: green "✔ Impresa" badge shows status, and a "Quitar tick impresa" button lets user remove the mark
+- DB schema persisted: impresa column with default false; existing facturas (if any) default to false
+- User should hard-refresh browser (Ctrl+Shift+R) to load fresh JS bundle with new UI

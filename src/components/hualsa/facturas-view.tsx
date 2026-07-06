@@ -29,6 +29,7 @@ interface FacturaRow {
   total: number
   modo: string
   registroIds: string
+  impresa: boolean
   createdAt: string
 }
 
@@ -141,7 +142,38 @@ export function FacturasView() {
     }
   }
 
-  function handlePrintInvoice(inv: InvoiceData, cat: CatalogoItem[], cfg: ResolvedConfig | null) {
+  async function toggleImpresa(f: FacturaRow, newValue?: boolean) {
+    const next = typeof newValue === 'boolean' ? newValue : !f.impresa
+    try {
+      const res = await fetch(`/api/facturas/${f.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ impresa: next })
+      })
+      if (!res.ok) { alert('Error actualizando estado impresa'); return }
+      setFacturas(prev => prev.map(x => x.id === f.id ? { ...x, impresa: next } : x))
+      setSelected(prev => prev && prev.id === f.id ? { ...prev, impresa: next } : prev)
+    } catch (err) {
+      console.error(err)
+      alert('Error inesperado')
+    }
+  }
+
+  async function handlePrintInvoice(inv: InvoiceData, cat: CatalogoItem[], cfg: ResolvedConfig | null) {
+    // Mark factura as printed in DB (and locally) so the tick shows up in the listing
+    if (selected && !selected.impresa) {
+      try {
+        await fetch(`/api/facturas/${selected.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ impresa: true })
+        })
+        setFacturas(prev => prev.map(x => x.id === selected.id ? { ...x, impresa: true } : x))
+        setSelected(prev => prev ? { ...prev, impresa: true } : prev)
+      } catch (err) {
+        console.error('No se pudo marcar como impresa:', err)
+      }
+    }
     const LL = cfg?.labelsFacturas || DEFAULT_LABELS_FACTURAS
     const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total } = inv
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
@@ -327,6 +359,7 @@ export function FacturasView() {
         <div className="flex flex-wrap gap-4 bg-white rounded-lg px-4 py-2.5 shadow-sm text-sm font-bold border items-center">
           <span>Total facturas:<b className="text-[#005bb5] ml-1">{facturas.length}</b></span>
           <span>Suma total:<b className="text-[#005bb5] ml-1">{fmtCurrency(facturas.reduce((s, f) => s + f.total, 0))}</b></span>
+          <span>Impresas:<b className="text-green-600 ml-1">{facturas.filter(f => f.impresa).length}</b></span>
           <span className="text-xs text-gray-500 ml-auto">Sin número: {facturas.filter(f => !f.numero).length}</span>
         </div>
       </div>
@@ -342,6 +375,7 @@ export function FacturasView() {
                 <th className="p-2 text-right font-semibold border-b bg-rose-50">Base</th>
                 <th className="p-2 text-right font-semibold border-b bg-rose-50">IVA</th>
                 <th className="p-2 text-right font-semibold border-b bg-rose-50">Total</th>
+                <th className="p-2 text-center font-semibold border-b bg-rose-50">Impresa</th>
                 <th className="p-2 text-center font-semibold border-b bg-rose-50">Acciones</th>
               </tr>
             </thead>
@@ -357,14 +391,32 @@ export function FacturasView() {
                   <td className="p-2 text-right">{fmtCurrency(f.ivaImp)}</td>
                   <td className="p-2 text-right font-bold">{fmtCurrency(f.total)}</td>
                   <td className="p-2 text-center">
-                    <Button size="sm" variant="ghost" onClick={() => openFactura(f)} title="Ver / editar / imprimir">
-                      <Eye className="h-4 w-4" />
-                    </Button>
+                    <button
+                      onClick={() => toggleImpresa(f)}
+                      title={f.impresa ? 'Marcada como impresa — click para quitar el tick' : 'No impresa — click para marcar'}
+                      className={`inline-flex items-center justify-center w-7 h-7 rounded border-2 transition-colors ${f.impresa ? 'bg-green-500 border-green-600 text-white hover:bg-green-600' : 'bg-white border-gray-300 text-transparent hover:border-green-400 hover:bg-green-50'}`}
+                    >
+                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                        <path fillRule="evenodd" d="M16.704 5.29a1 1 0 0 1 0 1.42l-7.5 7.5a1 1 0 0 1-1.42 0l-3.5-3.5a1 1 0 1 1 1.42-1.42l2.79 2.79 6.79-6.79a1 1 0 0 1 1.42 0Z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  </td>
+                  <td className="p-2 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => openFactura(f)} title="Ver / editar / imprimir" className="h-8 w-8 p-0">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      {(user?.role === 'admin' || user?.role === 'superadmin') && (
+                        <Button size="sm" variant="ghost" onClick={() => deleteFactura(f)} title="Eliminar factura" className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay facturas creadas todavía. Crea pre-facturas desde la pestaña anterior.</td></tr>
+                <tr><td colSpan={8} className="p-6 text-center text-gray-400">No hay facturas creadas todavía. Crea pre-facturas desde la pestaña anterior.</td></tr>
               )}
             </tbody>
           </table>
@@ -388,6 +440,11 @@ export function FacturasView() {
                 {!selected.numero && (
                   <span className="text-[10px] font-bold uppercase bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full animate-pulse">
                     ⚠ Pendiente
+                  </span>
+                )}
+                {selected.impresa && (
+                  <span className="text-[10px] font-bold uppercase bg-green-500 text-white px-2 py-0.5 rounded-full">
+                    ✔ Impresa
                   </span>
                 )}
                 {!editingNumero && canEditNumero && (
@@ -429,6 +486,12 @@ export function FacturasView() {
             {selected && (user?.role === 'admin' || user?.role === 'superadmin') && (
               <Button variant="outline" onClick={() => deleteFactura(selected)} className="text-red-600 border-red-300 hover:bg-red-50">
                 <Trash2 className="h-4 w-4 mr-1" /> Eliminar
+              </Button>
+            )}
+            {selected && selected.impresa && (
+              <Button variant="outline" onClick={() => toggleImpresa(selected, false)} className="text-amber-700 border-amber-300 hover:bg-amber-50" title="Quitar el tick de impresa">
+                <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 mr-1"><path fillRule="evenodd" d="M16.704 5.29a1 1 0 0 1 0 1.42l-7.5 7.5a1 1 0 0 1-1.42 0l-3.5-3.5a1 1 0 1 1 1.42-1.42l2.79 2.79 6.79-6.79a1 1 0 0 1 1.42 0Z" clipRule="evenodd" /></svg>
+                Quitar tick impresa
               </Button>
             )}
             <Button variant="outline" onClick={() => invoiceData && handlePrintInvoice(invoiceData, catalogo, config)}>

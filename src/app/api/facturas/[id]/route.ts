@@ -35,6 +35,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (typeof body.fecha === 'string' && body.fecha) allowed.fecha = body.fecha
     if (typeof body.clienteId === 'string') allowed.clienteId = body.clienteId
     if (typeof body.clienteNombre === 'string') allowed.clienteNombre = body.clienteNombre
+    if (typeof body.impresa === 'boolean') allowed.impresa = body.impresa
 
     const existing = await db.factura.findFirst({ where: { id, tenantId: tid } })
     if (!existing) return NextResponse.json({ error: 'No encontrada' }, { status: 404 })
