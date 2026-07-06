@@ -609,3 +609,30 @@ Stage Summary:
 - Mecanismo: si el navegador sirve HTML stale, el script inline detecta que el BUILD_ID del HTML
   no coincide con el del servidor y redirige a ?v=NUEVO → URL nueva = HTML nuevo = JS nuevo
 - Esto es equivalente a lo que hace Vercel internamente cuando deployas
+
+---
+Task ID: 9
+Agent: Main Agent
+Task: Permisos granulares Configuración (Empresa/Usuarios/Campos) + PDF limpio + aviso impresión factura
+
+Work Log:
+- Detectado el problema: en admin-view.tsx y configuracion-view.tsx, los SCREEN_OPTIONS locales NO incluían los sub-permisos de configuracion (configuracion.empresa / configuracion.usuarios / configuracion.campos). Por eso no aparecían las 3 casillas en el formulario de permisos de usuario.
+- Actualizado SCREEN_OPTIONS en admin-view.tsx: añadidas las 3 entradas con parent='configuracion'.
+- Actualizado SCREEN_OPTIONS en configuracion-view.tsx (UsersManager): misma actualización + nota azul explicativa.
+- Modificado el render de los checkboxes: los hijos de 'configuracion' son seleccionables incluso si el padre no está marcado (sub-permiso implica acceso a la pantalla y a esa pestaña).
+- Actualizado SCREEN_PERMISSIONS en page.tsx y sidebar.tsx para que incluyan configuracion.usuarios y configuracion.campos (antes solo estaba configuracion.empresa). Así los permisos no se descartan al parsearlos.
+- permissions.ts ya tenía los helpers canAccessConfig y canSeeConfigTab listos.
+- /api/config/route.ts ya diferenciaba empresaFields vs camposFields según el permiso del usuario.
+- facturas-view.tsx: añadido estado `printNotice` y aviso flotante azul "Imprimiendo Factura N - Cliente X" (desaparece a los 5s). También se refuerza `printWin.document.title = docTitle` después de abrir el popup, para que el "Guardar como PDF" del navegador sugiera el nombre correcto.
+- facturas-view.tsx PDF limpio: `@page { size: A4 portrait; margin: 0 }` + `body { padding: 12mm 15mm }`. Esto elimina las cabeceras/pie por defecto del navegador, que muestran la fecha, la hora y la URL 'about:blank' (que el usuario transcribía como "ablaut black").
+- facturas-view.tsx PDF: la cabecera de la tabla ya no es negra (#1a1a1a + texto blanco). Ahora es gris claro (#f0f0f0) con texto oscuro.
+- Build marker del sidebar actualizado: 'CONFIG-3TABS · 2026-07-07a' (texto verde en el pie).
+- next build OK. Commit 5b32356. Push a GitHub (origin/main) → Vercel redeploy.
+
+Stage Summary:
+- Ya aparecen las 3 casillas Empresa / Usuarios / Campos en Permisos de usuario (tanto en Admin → Usuarios como en Configuración → Usuarios).
+- Marcar solo "Empresa" (sin marcar el padre "Configuración") da acceso a la pantalla Configuración mostrando solo la pestaña Empresa.
+- Marcar el padre "Configuración" sin sub-permisos da acceso a las 3 pestañas (comportamiento heredado).
+- Al imprimir una factura aparece un aviso azul con el número y el cliente. El nombre del archivo al "Guardar como PDF" ahora incluye número y cliente.
+- El PDF impreso ya no muestra ni la fecha, ni la hora, ni "about:blank" (cabeceras/pie del navegador desactivadas vía @page margin:0).
+- Archivos modificados: src/app/page.tsx, src/components/hualsa/admin-view.tsx, src/components/hualsa/configuracion-view.tsx, src/components/hualsa/facturas-view.tsx, src/components/hualsa/sidebar.tsx
