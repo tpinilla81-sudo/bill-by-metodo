@@ -231,3 +231,53 @@ Stage Summary:
 - The 4 lists (permissions.ts, admin-view.tsx, configuracion-view.tsx, use-permissions.tsx) are now synchronized on the same key names
 - Existing users with old-style permissions (entrada.transferir, etc.) will have those filtered out on next parse — effectively losing them. Recommend re-checking the boxes after refresh.
 - User should hard-refresh browser (Ctrl+Shift+R) to load fresh JS bundle
+
+---
+Task ID: 14
+Agent: Main Agent
+Task: Para que se pueda guardar el usuario y contraseña y no engamos que meter cada vez que entramos
+
+Work Log:
+- User asked if "remember me" can be done in the app or it's a device config
+- Confirmed it can be done in the app — implemented in-app "Recuérdame en este dispositivo" feature
+
+Changes Applied:
+1. src/lib/auth.ts:
+   - Replaced single SESSION_DURATION_MS with three constants:
+     * SESSION_DURATION_DEFAULT_MS = 7 days
+     * SESSION_DURATION_REMEMBER_MS = 90 days
+     * SESSION_DURATION_SESSION_MS = 1 day
+   - Added RememberMode type = 'remember' | 'session' | 'default'
+   - Updated createSession(user, remember?) to accept optional remember mode
+   - Updated setSessionCookie(token, remember?) to set dynamic maxAge
+2. src/app/api/auth/login/route.ts:
+   - Accept `remember` field in request body (true | false | undefined)
+   - Map to rememberMode: true → 'remember' (90d), false → 'session' (1d), undefined → default (7d)
+   - Pass rememberMode to createSession + setSessionCookie
+3. src/app/login/page.tsx (full rewrite):
+   - Added Checkbox "Recuérdame en este dispositivo" (default checked)
+   - On mount: loads saved creds from localStorage key 'bill-remember-creds' and AUTO-LOGS IN silently
+   - On successful login with remember checked: saves email+password (plain JSON) to localStorage
+   - On successful login with remember unchecked: clears localStorage
+   - On failed login with remember checked: clears localStorage (so we don't retry bad creds)
+   - Added "Olvidar" button (top-right of checkbox row) to manually clear saved creds
+   - Added eye icon to toggle password visibility
+   - Footer text shows current session duration (90 days vs 1 day) based on checkbox state
+   - Added autoComplete hints for email and password fields
+
+Build & Restart:
+- next build succeeded (23 routes)
+- Server restarted (PID 25377, HTTP 200)
+- Verified via curl: 3 distinct Max-Age values returned correctly:
+  * remember=true  → Max-Age=7776000  (90 days ✓)
+  * remember=false → Max-Age=86400    (1 day ✓)
+  * (no remember)  → Max-Age=604800   (7 days ✓)
+
+Stage Summary:
+- User can now check "Recuérdame en este dispositivo" on the login screen
+- Next visit: credentials are pre-filled AND auto-login happens silently (no clicks needed)
+- Session lasts 90 days when remembered, 1 day when not, 7 days default
+- Browser localStorage holds the email+password (NOT the server-side cookie)
+- "Olvidar" button clears local credentials immediately
+- User should hard-refresh browser (Ctrl+Shift+R) to load the new login page
+- SECURITY NOTE: localStorage stores password as plain text. Acceptable for a small business internal tool, but if user wants stronger security we could switch to storing only the email + relying on long-lived session cookie (no password persistence). Asked user if they prefer this alternative.

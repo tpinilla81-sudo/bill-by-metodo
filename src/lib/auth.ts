@@ -3,7 +3,10 @@ import { cookies } from 'next/headers'
 
 const SESSION_SECRET = process.env.SESSION_SECRET || 'bill-secret-key-change-in-production-2024'
 const SESSION_COOKIE_NAME = 'bill-session'
-const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+// Default session durations
+const SESSION_DURATION_DEFAULT_MS = 7 * 24 * 60 * 60 * 1000 // 7 days (default, "remember me" not specified)
+const SESSION_DURATION_REMEMBER_MS = 90 * 24 * 60 * 60 * 1000 // 90 days when "remember me" is checked
+const SESSION_DURATION_SESSION_MS = 24 * 60 * 60 * 1000 // 1 day when "remember me" is NOT checked
 
 export interface SessionUser {
   id: string
@@ -47,10 +50,19 @@ async function hmacVerify(data: string, signature: string): Promise<boolean> {
 }
 
 // ─── Session create/verify ───────────────────────────────────
-export async function createSession(user: SessionUser): Promise<string> {
+export type RememberMode = 'remember' | 'session' | 'default'
+
+function durationFor(mode?: RememberMode): number {
+  if (mode === 'remember') return SESSION_DURATION_REMEMBER_MS
+  if (mode === 'session') return SESSION_DURATION_SESSION_MS
+  return SESSION_DURATION_DEFAULT_MS
+}
+
+export async function createSession(user: SessionUser, remember?: RememberMode): Promise<string> {
+  const durationMs = durationFor(remember)
   const sessionData: SessionData = {
     ...user,
-    exp: Date.now() + SESSION_DURATION_MS,
+    exp: Date.now() + durationMs,
   }
   const payload = Buffer.from(JSON.stringify(sessionData)).toString('base64url')
   const signature = await hmacSign(payload)
@@ -85,14 +97,15 @@ export async function verifySession(token: string): Promise<SessionUser | null> 
 }
 
 // ─── Cookie helpers (server-side only) ───────────────────────
-export async function setSessionCookie(token: string) {
+export async function setSessionCookie(token: string, remember?: RememberMode) {
   const cookieStore = await cookies()
+  const maxAgeSec = durationFor(remember) / 1000
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: SESSION_DURATION_MS / 1000,
+    maxAge: maxAgeSec,
   })
 }
 

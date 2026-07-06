@@ -4,11 +4,17 @@ import { verifyPassword, hashPassword, createSession, setSessionCookie } from '@
 
 export async function POST(request: Request) {
   try {
-    const { email, password } = await request.json()
+    const { email, password, remember } = await request.json()
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email y contraseña son obligatorios' }, { status: 400 })
     }
+
+    // remember mode: 'remember' (90 days) | 'session' (1 day) | undefined (7 days default)
+    const rememberMode: 'remember' | 'session' | undefined =
+      remember === true ? 'remember' :
+      remember === false ? 'session' :
+      undefined
 
     // Auto-seed: if no users exist, create the system tenant + superadmin user
     // The system tenant is NOT a real company — it's just the platform admin account.
@@ -60,7 +66,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Credenciales inválidas' }, { status: 401 })
     }
 
-    // Create session
+    // Create session (with optional remember-me duration)
     const token = await createSession({
       id: user.id,
       email: user.email,
@@ -68,9 +74,9 @@ export async function POST(request: Request) {
       role: user.role,
       tenantId: user.tenantId,
       permissions: user.permissions || '',
-    })
+    }, rememberMode)
 
-    await setSessionCookie(token)
+    await setSessionCookie(token, rememberMode)
 
     return NextResponse.json({
       user: {

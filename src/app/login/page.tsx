@@ -1,17 +1,93 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { LogIn, AlertCircle, Loader2 } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { LogIn, AlertCircle, Loader2, Eye, EyeOff, UserX } from 'lucide-react'
+
+// localStorage keys for "remember me" feature
+const LS_KEY = 'bill-remember-creds'
+
+interface SavedCreds {
+  email: string
+  password: string
+  savedAt: number
+}
+
+function loadSavedCreds(): SavedCreds | null {
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (typeof parsed.email === 'string' && typeof parsed.password === 'string') {
+      return parsed
+    }
+  } catch {}
+  return null
+}
+
+function saveCreds(email: string, password: string) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({ email, password, savedAt: Date.now() }))
+  } catch {}
+}
+
+function clearSavedCreds() {
+  try {
+    localStorage.removeItem(LS_KEY)
+  } catch {}
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(true)
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [autoLoginAttempted, setAutoLoginAttempted] = useState(false)
+  const autoLoginRef = useRef(false)
+
+  // On mount: try to load saved credentials and auto-login
+  useEffect(() => {
+    if (autoLoginRef.current) return
+    autoLoginRef.current = true
+
+    const saved = loadSavedCreds()
+    if (saved && saved.email && saved.password) {
+      setEmail(saved.email)
+      setPassword(saved.password)
+      setRemember(true)
+      // Auto-submit login silently
+      void autoLogin(saved.email, saved.password)
+    }
+  }, [])
+
+  async function autoLogin(em: string, pw: string) {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: em, password: pw, remember: true }),
+      })
+      if (res.ok) {
+        window.location.href = '/'
+        return
+      }
+      // If auto-login fails, leave the fields pre-filled but show nothing scary
+      // (the user can press the button manually)
+    } catch {
+      // ignore — leave fields filled
+    } finally {
+      setLoading(false)
+      setAutoLoginAttempted(true)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -22,14 +98,23 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, remember }),
       })
 
       const data = await res.json()
 
       if (!res.ok) {
         setError(data.error || 'Error al iniciar sesión')
+        // If credentials are wrong, clear any saved creds so we don't keep retrying bad ones
+        if (remember) clearSavedCreds()
         return
+      }
+
+      // If "remember" is checked, persist credentials locally for next time
+      if (remember) {
+        saveCreds(email, password)
+      } else {
+        clearSavedCreds()
       }
 
       // Redirect to home on success
@@ -40,6 +125,16 @@ export default function LoginPage() {
       setLoading(false)
     }
   }
+
+  function handleForgetDevice() {
+    clearSavedCreds()
+    setEmail('')
+    setPassword('')
+    setRemember(false)
+    setError('')
+  }
+
+  const hasSavedCreds = typeof window !== 'undefined' && !!localStorage.getItem(LS_KEY)
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0a1628] via-[#0d2137] to-[#0a1628] px-4">
@@ -88,6 +183,7 @@ export default function LoginPage() {
                 required
                 className="h-11 text-base"
                 disabled={loading}
+                autoComplete="email"
               />
             </div>
 
@@ -95,16 +191,49 @@ export default function LoginPage() {
               <Label htmlFor="password" className="text-sm font-semibold text-gray-600 uppercase tracking-wide">
                 Contraseña
               </Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                className="h-11 text-base"
-                disabled={loading}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  className="h-11 text-base pr-11"
+                  disabled={loading}
+                  autoComplete={remember ? 'current-password' : 'off'}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <Checkbox
+                  checked={remember}
+                  onCheckedChange={(v) => setRemember(v === true)}
+                  disabled={loading}
+                />
+                <span className="text-sm text-gray-600">Recuérdame en este dispositivo</span>
+              </label>
+              {hasSavedCreds && (
+                <button
+                  type="button"
+                  onClick={handleForgetDevice}
+                  className="text-xs text-gray-400 hover:text-red-500 flex items-center gap-1"
+                  title="Borra las credenciales guardadas en este navegador"
+                  disabled={loading}
+                >
+                  <UserX className="h-3 w-3" /> Olvidar
+                </button>
+              )}
             </div>
 
             <Button
@@ -121,7 +250,9 @@ export default function LoginPage() {
             </Button>
 
             <p className="text-center text-xs text-gray-400 mt-4">
-              Acceso exclusivo para usuarios autorizados
+              {remember
+                ? 'Sesión de 90 días. No recomendado en equipos compartidos.'
+                : 'Sesión de 1 día. Más seguro en equipos compartidos.'}
             </p>
           </form>
         </CardContent>
