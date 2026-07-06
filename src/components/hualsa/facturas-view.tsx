@@ -70,6 +70,27 @@ export function FacturasView() {
     fetch('/api/catalogo').then(r => r.json()).then(setCatalogo).catch(() => {})
   }, [loadFacturas])
 
+  // Refrescar facturas cuando la pestaña recupera el foco.
+  // Así, si el usuario A marca un tick de impresa, el usuario B lo verá
+  // al volver a la pestaña — el estado `impresa` es global (persistido en BD).
+  useEffect(() => {
+    function onVisibility() {
+      if (document.visibilityState === 'visible') {
+        loadFacturas()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    // También refrescar periódicamente cada 30s mientras la pestaña está abierta,
+    // para que los ticks puestos por otros usuarios aparezcan sin interacción.
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') loadFacturas()
+    }, 30 * 1000)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      clearInterval(interval)
+    }
+  }, [loadFacturas])
+
   const filtered = facturas.filter(f => {
     if (!search) return true
     const q = search.toLowerCase()
@@ -390,41 +411,46 @@ export function FacturasView() {
                   <td className="p-2 text-right">{fmtCurrency(f.ivaImp)}</td>
                   <td className="p-2 text-right font-bold">{fmtCurrency(f.total)}</td>
                   <td className="p-2 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      {/* Tick impresa — click para alternar */}
-                      <button
-                        onClick={() => toggleImpresa(f)}
-                        title={f.impresa ? 'Impresa ✓ — click para quitar el tick' : 'No impresa — click para marcar como impresa'}
-                        aria-label={f.impresa ? 'Quitar tick de impresa' : 'Marcar como impresa'}
-                        className={`inline-flex items-center justify-center w-8 h-8 rounded-md border-2 transition-colors ${
-                          f.impresa
-                            ? 'bg-green-500 border-green-600 text-white hover:bg-green-600'
-                            : 'bg-white border-gray-300 text-transparent hover:border-green-400 hover:bg-green-50'
-                        }`}
-                      >
-                        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                          <path fillRule="evenodd" d="M16.704 5.29a1 1 0 0 1 0 1.42l-7.5 7.5a1 1 0 0 1-1.42 0l-3.5-3.5a1 1 0 1 1 1.42-1.42l2.79 2.79 6.79-6.79a1 1 0 0 1 1.42 0Z" clipRule="evenodd" />
-                        </svg>
-                      </button>
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className={`text-[9px] font-bold uppercase tracking-wide ${f.impresa ? 'text-green-600' : 'text-gray-300'}`}>
+                        Impreso
+                      </span>
+                      <div className="flex items-center justify-center gap-1">
+                        {/* Tick impresa — click para alternar. Global: persistido en BD */}
+                        <button
+                          onClick={() => toggleImpresa(f)}
+                          title={f.impresa ? 'Impresa ✓ — click para quitar el tick' : 'No impresa — click para marcar como impresa'}
+                          aria-label={f.impresa ? 'Quitar tick de impresa' : 'Marcar como impresa'}
+                          className={`inline-flex items-center justify-center w-8 h-8 rounded-md border-2 transition-colors ${
+                            f.impresa
+                              ? 'bg-green-500 border-green-600 text-white hover:bg-green-600'
+                              : 'bg-white border-gray-300 text-transparent hover:border-green-400 hover:bg-green-50'
+                          }`}
+                        >
+                          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                            <path fillRule="evenodd" d="M16.704 5.29a1 1 0 0 1 0 1.42l-7.5 7.5a1 1 0 0 1-1.42 0l-3.5-3.5a1 1 0 1 1 1.42-1.42l2.79 2.79 6.79-6.79a1 1 0 0 1 1.42 0Z" clipRule="evenodd" />
+                          </svg>
+                        </button>
 
-                      {/* Ver / Imprimir */}
-                      <Button size="sm" variant="ghost" onClick={() => openFactura(f)} title="Ver / Imprimir" className="h-8 w-8 p-0 text-gray-600 hover:text-gray-900 hover:bg-gray-100">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-
-                      {/* Editar (número de factura) — visible para admin o si tiene permiso */}
-                      {(canEditNumero || user?.role === 'admin' || user?.role === 'superadmin') && (
-                        <Button size="sm" variant="ghost" onClick={() => openFactura(f, true)} title="Editar factura" className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
-                          <Edit3 className="h-4 w-4" />
+                        {/* Ver / Imprimir */}
+                        <Button size="sm" variant="ghost" onClick={() => openFactura(f)} title="Ver / Imprimir" className="h-8 w-8 p-0 text-gray-600 hover:text-gray-900 hover:bg-gray-100">
+                          <Eye className="h-4 w-4" />
                         </Button>
-                      )}
 
-                      {/* Eliminar — visible para admin/superadmin */}
-                      {(user?.role === 'admin' || user?.role === 'superadmin') && (
-                        <Button size="sm" variant="ghost" onClick={() => deleteFactura(f)} title="Eliminar factura" className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
+                        {/* Editar (número de factura) — visible para admin o si tiene permiso */}
+                        {(canEditNumero || user?.role === 'admin' || user?.role === 'superadmin') && (
+                          <Button size="sm" variant="ghost" onClick={() => openFactura(f, true)} title="Editar factura" className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                            <Edit3 className="h-4 w-4" />
+                          </Button>
+                        )}
+
+                        {/* Eliminar — visible para admin/superadmin */}
+                        {(user?.role === 'admin' || user?.role === 'superadmin') && (
+                          <Button size="sm" variant="ghost" onClick={() => deleteFactura(f)} title="Eliminar factura" className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
