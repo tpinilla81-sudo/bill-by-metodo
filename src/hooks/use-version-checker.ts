@@ -1,20 +1,18 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * useVersionChecker
  *
- * Polls /api/version every 2 minutes. If the build ID changes (i.e. a new
- * deploy happened), it forces a hard reload (bypassing cache) so the user
- * always sees the latest version without having to manually clear cache.
- *
- * Works on all browsers including iOS Safari, where aggressive caching
- * can otherwise keep serving stale JS chunks even after no-cache headers.
+ * Polls /api/version. If the build ID changes (i.e. a new deploy happened),
+ * it forces a hard reload (bypassing cache) so the user always sees the
+ * latest version without having to manually clear cache.
  *
  * Strategy:
- * - On mount: fetch /api/version, store buildId in localStorage
- * - Every 2 minutes: fetch /api/version, compare with stored buildId
+ * - On mount: fetch /api/version immediately, store buildId in localStorage
+ * - If localStorage had a different buildId from a previous session → force reload
+ * - Every 60 seconds: fetch /api/version, compare with stored buildId
  * - If different: window.location.reload() — the page reloads fresh
  * - Also when the tab regains focus (visibilitychange): check immediately
  *
@@ -22,16 +20,18 @@ import { useEffect, useRef } from 'react'
  */
 export function useVersionChecker() {
   const initialBuildIdRef = useRef<string | null>(null)
+  const [updateAvailable, setUpdateAvailable] = useState(false)
 
   useEffect(() => {
-    let cancelled = false
     let interval: ReturnType<typeof setInterval> | null = null
 
     async function checkVersion() {
       try {
-        const res = await fetch('/api/version', {
+        // Cache-busting query string — never use a cached response
+        const ts = Date.now()
+        const res = await fetch(`/api/version?t=${ts}`, {
           cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache' },
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
         })
         if (!res.ok) return
         const data = await res.json()
@@ -49,6 +49,7 @@ export function useVersionChecker() {
           // deploy happened while the tab was closed → force reload.
           if (storedBuildId && storedBuildId !== newBuildId) {
             localStorage.setItem(storedKey, newBuildId)
+            // Hard reload, bypassing cache
             window.location.reload()
             return
           }
@@ -69,11 +70,12 @@ export function useVersionChecker() {
       }
     }
 
-    // Initial check after a short delay (so we don't block initial render)
-    const initialTimer = setTimeout(checkVersion, 2000)
+    // Initial check IMMEDIATELY (no delay) — important for catching deploys
+    // that happened while the tab was closed
+    checkVersion()
 
-    // Poll every 2 minutes
-    interval = setInterval(checkVersion, 2 * 60 * 1000)
+    // Poll every 60 seconds (more aggressive than 2 min — better UX for clients)
+    interval = setInterval(checkVersion, 60 * 1000)
 
     // Also check when tab regains focus (user comes back to the app)
     function onVisibilityChange() {
@@ -84,10 +86,10 @@ export function useVersionChecker() {
     document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
-      cancelled = true
-      if (initialTimer) clearTimeout(initialTimer)
       if (interval) clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [])
+
+  return { updateAvailable }
 }

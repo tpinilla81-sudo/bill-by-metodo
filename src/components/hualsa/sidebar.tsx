@@ -41,7 +41,7 @@ interface SidebarProps {
 }
 
 // All available screen permission keys (including sub-permissions)
-const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup'] as const
+const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa'] as const
 
 // Parse permissions from JSON string to array
 function parsePermissions(permissionsStr: string): string[] {
@@ -74,7 +74,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
     { key: 'facturas', label: config?.sectionFacturas || 'FACTURAS', icon: <Receipt className="h-4 w-4" />, color: 'text-rose-400', permissionKey: 'facturas' },
     { key: 'backup', label: config?.sectionBackup || 'SEGURIDAD', icon: <Shield className="h-4 w-4" />, color: 'text-cyan-400', permissionKey: 'backup' },
     { key: 'suscripcion', label: 'SUSCRIPCIÓN', icon: <CreditCard className="h-4 w-4" />, color: 'text-emerald-400', adminOnly: true, superadminOnly: false },
-    { key: 'config', label: 'CONFIGURACIÓN', icon: <Settings className="h-4 w-4" />, color: 'text-gray-400', adminOnly: true },
+    { key: 'config', label: 'CONFIGURACIÓN', icon: <Settings className="h-4 w-4" />, color: 'text-gray-400', permissionKey: 'configuracion' },
     { key: 'admin', label: 'ADMIN', icon: <Crown className="h-4 w-4" />, color: 'text-amber-300', superadminOnly: true },
   ]
 
@@ -159,7 +159,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
               // Superadmin-only items
               if (item.superadminOnly && !isSuperadmin) return false
 
-              // Admin-only items (config, suscripcion)
+              // Admin-only items (suscripcion only — config is now permission-based)
               if (item.adminOnly && !isAdmin) return false
 
               // Suscripción: only for admin (not superadmin)
@@ -167,11 +167,19 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
 
               // Permission-based filtering for regular users
               if (user?.role === 'user' && item.permissionKey) {
+                // Special case for configuracion: also visible if user has configuracion.empresa
+                if (item.key === 'config') {
+                  if (hasNoPermissions) return true // backwards-compat: empty perms = full access
+                  return userPermissions.includes('configuracion') || userPermissions.includes('configuracion.empresa')
+                }
                 // If permissions array is empty, show all (backwards compat)
                 if (hasNoPermissions) return true
                 // Otherwise only show if the screen is in their permissions
                 return userPermissions.includes(item.permissionKey)
               }
+
+              // Admin users: config is always visible (they have full access)
+              if (isAdmin && item.key === 'config') return true
 
               return true
             })
@@ -219,7 +227,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
         {/* Safe area padding for iPhone bottom bar */}
         <div className="flex-shrink-0 p-2 text-center text-[10px] text-gray-600 pb-[env(safe-area-inset-bottom,8px)]">
           {displayName}
-          <div className="mt-1 text-[9px] text-gray-700 font-mono">build: PREFAC-TICK-EDIT-DEL · 2026-07-06c</div>
+          <div className="mt-1 text-[9px] text-gray-700 font-mono">build: CONFIG-EMP-PERM · 2026-07-06d</div>
         </div>
       </aside>
     </>

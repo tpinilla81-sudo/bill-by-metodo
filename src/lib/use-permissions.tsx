@@ -15,6 +15,8 @@ const ALL_PERMISSIONS = [
   'facturas',
   'facturas.editarNumero',
   'backup',
+  'configuracion',
+  'configuracion.empresa',
 ] as const
 
 // Parse permissions from JSON string to array
@@ -44,6 +46,8 @@ export interface PermissionHelpers {
   // Convenience methods for specific actions
   canTransfer: boolean       // entrada.pasarRegistros
   canEditFacturaNumero: boolean // facturas.editarNumero
+  canAccessConfig: boolean   // configuracion (any sub-permission)
+  canConfigEmpresa: boolean  // configuracion.empresa
 
   // The parsed permissions array
   permissions: string[]
@@ -80,6 +84,8 @@ export function usePermissions(): PermissionHelpers {
     canView,
     canTransfer: has('entrada.pasarRegistros'),
     canEditFacturaNumero: has('facturas.editarNumero'),
+    canAccessConfig: has('configuracion') || has('configuracion.empresa'),
+    canConfigEmpresa: has('configuracion.empresa'),
     permissions,
     hasNoSpecificPermissions,
   }

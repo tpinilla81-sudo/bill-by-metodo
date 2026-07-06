@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
   },
   reactStrictMode: true,
   poweredByHeader: false,
+  // Explicitly tell Turbopack where the project root is.
+  // Without this, Next.js 16 with Turbopack can fail with
+  // "couldn't find the Next.js package" on some setups.
+  turbopack: {
+    root: __dirname,
+  },
   async headers() {
     return [
       {

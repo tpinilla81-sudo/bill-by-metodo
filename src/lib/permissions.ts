@@ -10,7 +10,10 @@ export const SCREEN_PERMISSIONS = [
   'catalogo',
   'prefactura',
   'facturas',
+  'facturas.editarNumero',
   'backup',
+  'configuracion',
+  'configuracion.empresa',
 ] as const
 
 export type ScreenPermission = typeof SCREEN_PERMISSIONS[number]
@@ -26,6 +29,8 @@ export const SCREEN_OPTIONS: Array<{ key: string; label: string; parent?: string
   { key: 'facturas', label: 'Facturas (confirmadas)' },
   { key: 'facturas.editarNumero', label: '  ↳ Editar Nº de Factura', parent: 'facturas' },
   { key: 'backup', label: 'Seguridad (Backup)' },
+  { key: 'configuracion', label: 'Configuración' },
+  { key: 'configuracion.empresa', label: '  ↳ Empresa (datos y logo)', parent: 'configuracion' },
 ]
 
 export function parsePermissions(raw: string | undefined | null): string[] {

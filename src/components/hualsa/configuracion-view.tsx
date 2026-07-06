@@ -74,6 +74,8 @@ function UsersManager() {
     { key: 'facturas', label: 'Facturas (confirmadas)' },
     { key: 'facturas.editarNumero', label: '  ↳ Editar Nº de Factura', parent: 'facturas' },
     { key: 'backup', label: 'Seguridad (Backup)' },
+    { key: 'configuracion', label: 'Configuración' },
+    { key: 'configuracion.empresa', label: '  ↳ Empresa (datos y logo)', parent: 'configuracion' },
   ] as const
 
   function parsePermissions(permsStr: string): string[] {
@@ -665,9 +667,30 @@ interface TenantInfo {
 
 export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
   const { raw, config, update, loading } = useConfig()
+  const { user } = useAuth()
   const [saving, setSaving] = useState(false)
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
+
+  // Permission checks for tab visibility
+  const isAdminUser = user?.role === 'admin' || user?.role === 'superadmin'
+  const userPerms: string[] = (() => {
+    try {
+      const v = JSON.parse(user?.permissions || '[]')
+      return Array.isArray(v) ? v.filter((x: unknown) => typeof x === 'string') : []
+    } catch { return [] }
+  })()
+  const hasNoSpecificPerms = userPerms.length === 0 // backwards-compat: empty = all
+  function userHas(perm: string): boolean {
+    if (isAdminUser) return true
+    if (hasNoSpecificPerms) return true
+    return userPerms.includes(perm)
+  }
+  const canSeeEmpresa = isAdminUser || userHas('configuracion') || userHas('configuracion.empresa')
+  const canSeeUsuarios = isAdminUser // only admins can manage users
+  const canSeeCampos = isAdminUser // only admins can manage fields
+  // Default tab — first one the user is allowed to see
+  const defaultTab = canSeeEmpresa ? 'empresa' : canSeeUsuarios ? 'usuarios' : 'campos'
 
   // Local state for editing (initialized from config)
   const [companyName, setCompanyName] = useState('')
@@ -799,18 +822,19 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
           <h2 className="text-lg font-bold text-gray-700">Configuración</h2>
         </div>
         <Button onClick={handleSave} disabled={saving} className="bg-[#2bb24c] hover:bg-[#23963e] text-white">
-          <Save className="h-4 w-4 mr-1" />{saving ? 'Guardando...' : 'GUARDAR TODO'}
+          <Save className="h-4 w-4 mr-1" />{saving ? 'Guardando...' : isAdminUser ? 'GUARDAR TODO' : 'GUARDAR'}
         </Button>
       </div>
 
-      <Tabs defaultValue="empresa" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-md">
-          <TabsTrigger value="empresa"><Building2 className="h-4 w-4 mr-1.5" /> Empresa</TabsTrigger>
-          <TabsTrigger value="usuarios"><Users className="h-4 w-4 mr-1.5" /> Usuarios</TabsTrigger>
-          <TabsTrigger value="campos"><LayoutList className="h-4 w-4 mr-1.5" /> Campos</TabsTrigger>
+      <Tabs defaultValue={defaultTab} className="w-full">
+        <TabsList className={`grid w-full max-w-md ${canSeeUsuarios && canSeeCampos ? 'grid-cols-3' : canSeeEmpresa ? 'grid-cols-1' : canSeeUsuarios ? 'grid-cols-2' : 'grid-cols-2'}`}>
+          {canSeeEmpresa && <TabsTrigger value="empresa"><Building2 className="h-4 w-4 mr-1.5" /> Empresa</TabsTrigger>}
+          {canSeeUsuarios && <TabsTrigger value="usuarios"><Users className="h-4 w-4 mr-1.5" /> Usuarios</TabsTrigger>}
+          {canSeeCampos && <TabsTrigger value="campos"><LayoutList className="h-4 w-4 mr-1.5" /> Campos</TabsTrigger>}
         </TabsList>
 
         {/* ─── EMPRESA TAB ─────────────────────────────── */}
+        {canSeeEmpresa && (
         <TabsContent value="empresa" className="space-y-4 mt-4">
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><ImageIcon className="h-4 w-4" /> Logotipo</CardTitle></CardHeader>
@@ -878,13 +902,17 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             </CardContent>
           </Card>
         </TabsContent>
+        )}
 
         {/* ─── USUARIOS TAB ────────────────────────────── */}
+        {canSeeUsuarios && (
         <TabsContent value="usuarios" className="space-y-4 mt-4">
           <UsersManager />
         </TabsContent>
+        )}
 
         {/* ─── CAMPOS TAB (Full CRUD for fields) ────────── */}
+        {canSeeCampos && (
         <TabsContent value="campos" className="space-y-4 mt-4">
           <p className="text-sm text-gray-500">
             Gestiona los campos de cada sección. Puedes añadir nuevos campos personalizados, editar los existentes, ocultarlos o eliminarlos.
@@ -936,6 +964,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             onUpdate={handleFieldsUpdate}
           />
         </TabsContent>
+        )}
 
 
       </Tabs>

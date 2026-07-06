@@ -142,7 +142,17 @@ function AppContent() {
       }
       return
     }
-    // config and admin are handled by sidebar visibility
+    // Config: visible to users with 'configuracion' or 'configuracion.empresa' permission
+    if (view === 'config') {
+      const perms = JSON.parse(user.permissions || '[]')
+      const permArr = Array.isArray(perms) ? perms : []
+      // Empty perms = backwards-compat full access
+      if (permArr.length === 0 || permArr.includes('configuracion') || permArr.includes('configuracion.empresa')) {
+        setActiveView(view)
+      }
+      return
+    }
+    // admin is superadmin-only — handled by sidebar visibility
     setActiveView(view)
   }
 
@@ -180,7 +190,7 @@ function AppContent() {
             <div className="p-3 md:p-6 pt-16 md:pt-6 pb-8">
               {activeView === 'backup' && hasPermission(user.role, user.permissions, 'backup') && <BackupView />}
               {activeView === 'suscripcion' && (user.role === 'admin' || user.role === 'superadmin') && <PlansView tenantId={effectiveTenantId || user.tenantId} />}
-              {activeView === 'config' && (user.role === 'admin' || user.role === 'superadmin') && <ConfiguracionView tenant={tenant} />}
+              {activeView === 'config' && (user.role === 'admin' || user.role === 'superadmin' || (() => { const p = JSON.parse(user.permissions || '[]'); const a = Array.isArray(p) ? p : []; return a.length === 0 || a.includes('configuracion') || a.includes('configuracion.empresa'); })()) && <ConfiguracionView tenant={tenant} />}
               {activeView === 'admin' && user.role === 'superadmin' && <AdminView />}
             </div>
           </div>

@@ -393,3 +393,49 @@ Stage Summary:
 - No manual cache clearing needed
 - No disruptive UI — they just see the new version appear
 - The first time a customer loads after this deploy, they will get the auto-reload (since localStorage will have the OLD buildId from before, which won't match the new one). This is a ONE-TIME event.
+
+---
+Task ID: 18
+Agent: Main Agent
+Task: "pues no veo las mejoras. ademas quiero dar permisos en configuracion pero solo empresa, y en clientes"
+
+User wants:
+1. Cache issue still happening — they don't see improvements
+2. Want to grant a user permissions in Configuración but ONLY the "Empresa" tab (and Clientes, which already exists)
+
+Work Log:
+- Investigated state: server was not running, no .next build existed
+- Confirmed version checker files exist (api/version/route.ts, hooks/use-version-checker.ts, components/version-checker.tsx) and are wired into layout.tsx
+- Made version checker more aggressive:
+  * Removed the 2-second initial delay — now checks IMMEDIATELY on mount
+  * Reduced polling interval from 2 minutes to 60 seconds
+  * Added cache-busting query string (?t=timestamp) to /api/version fetch
+- Added "Configuración" + "Configuración.empresa" as new permission keys:
+  * src/lib/permissions.ts: added 'configuracion' and 'configuracion.empresa' to SCREEN_PERMISSIONS + SCREEN_OPTIONS
+  * src/lib/use-permissions.tsx: added same keys to ALL_PERMISSIONS, added canAccessConfig and canConfigEmpresa helpers
+  * src/components/hualsa/configuracion-view.tsx: added same keys to SCREEN_OPTIONS (so admins can grant them)
+  * src/components/hualsa/configuracion-view.tsx: ConfiguracionView now hides "Usuarios" and "Campos" tabs for non-admin users (only "Empresa" tab visible)
+  * src/components/hualsa/configuracion-view.tsx: Dynamic default tab based on permissions
+- Updated sidebar.tsx:
+  * Added 'configuracion' and 'configuracion.empresa' to SCREEN_PERMISSIONS
+  * Removed adminOnly flag from CONFIGURACIÓN item — now permission-based
+  * Added special-case logic: regular users see CONFIGURACIÓN if they have 'configuracion' OR 'configuracion.empresa' permission
+  * Admins always see CONFIGURACIÓN (unchanged behavior)
+  * Updated build marker to "CONFIG-EMP-PERM · 2026-07-06d"
+- Updated page.tsx:
+  * handleNavigate: regular users with 'configuracion' or 'configuracion.empresa' can navigate to 'config' view
+  * Config view rendering: same permission check
+- Fixed Next.js 16 Turbopack build error by adding `turbopack: { root: __dirname }` to next.config.ts
+- Clean rebuild succeeded
+- New BUILD_ID: _K-7OBZOOmMrlnYouH_zf
+- Server started (PID 3631)
+- Verified /api/version returns new BUILD_ID on both port 3000 and port 81 (via Caddy)
+- Verified HTML response has correct no-cache headers (Cache-Control: no-store, no-cache, must-revalidate, max-age=0)
+
+Stage Summary:
+- Permission system now supports granting a regular user access to ONLY the "Empresa" tab in Configuración
+- To grant this permission: go to Configuración → Usuarios → edit user → check "Configuración" (parent) → check "Empresa (datos y logo)" sub-item → uncheck everything else → save
+- The user will then see only "EMPRESA" and "CLIENTES" in their sidebar (plus whatever else they're granted)
+- Inside Configuración, they will only see the "Empresa" tab — "Usuarios" and "Campos" tabs are hidden
+- Cache-busting system is now more aggressive: 60s polling + immediate check on mount + cache-busting query string
+- When the user reloads their browser, they will get the new BUILD_ID, which differs from the one in their localStorage → triggers auto-reload → fresh HTML → fresh JS chunks → new features visible
