@@ -64,6 +64,9 @@ function UsersManager() {
   const isSuperadmin = currentUser?.role === 'superadmin'
 
   // Screen permissions available for regular users
+  // Configuración: parent grants screen access; sub-permissions grant each tab (empresa / usuarios / campos).
+  //   - If you check ONLY "Configuración" → user sees all 3 tabs.
+  //   - If you check ONLY "Empresa" (without parent) → user sees only Empresa tab.
   const SCREEN_OPTIONS = [
     { key: 'entrada', label: 'Entrada' },
     { key: 'entrada.pasarRegistros', label: '  ↳ Pasar a Registros', parent: 'entrada' },
@@ -77,6 +80,8 @@ function UsersManager() {
     { key: 'backup', label: 'Seguridad (Backup)' },
     { key: 'configuracion', label: 'Configuración' },
     { key: 'configuracion.empresa', label: '  ↳ Empresa (datos y logo)', parent: 'configuracion' },
+    { key: 'configuracion.usuarios', label: '  ↳ Usuarios', parent: 'configuracion' },
+    { key: 'configuracion.campos', label: '  ↳ Campos personalizados', parent: 'configuracion' },
   ] as const
 
   function parsePermissions(permsStr: string): string[] {
@@ -308,17 +313,23 @@ function UsersManager() {
                     ? 'Hemos pre-seleccionado los permisos típicos para Facturación. Puedes ajustarlos si lo necesitas.'
                     : 'Selecciona las pantallas a las que este usuario tendrá acceso. Si no seleccionas ninguna, tendrá acceso a todo.'}
                 </p>
+                <p className="text-[11px] text-blue-600 mb-3 bg-blue-50 border border-blue-200 rounded px-2 py-1.5">
+                  <b>Configuración:</b> Marca "Configuración" para dar acceso a la pantalla. Luego marca solo las pestañas que quieres permitir: <b>Empresa</b>, <b>Usuarios</b> y/o <b>Campos</b>. Las que no marques no serán visibles para el usuario.
+                </p>
                 <div className="grid grid-cols-1 gap-1.5">
                   {SCREEN_OPTIONS.map(opt => {
                     const parentKey = (opt as any).parent as string | undefined
                     const isChild = !!parentKey
                     const parentChecked = parentKey ? formPermissions.includes(parentKey) : true
+                    // For "configuracion" sub-permissions, allow them to be checked even if parent is not
+                    const isConfigChild = parentKey === 'configuracion'
+                    const childEnabled = isChild && (parentChecked || isConfigChild)
                     return (
-                      <label key={opt.key} className={`flex items-center gap-2 px-3 py-2 rounded-md border bg-white hover:bg-blue-50/50 cursor-pointer transition-colors ${isChild ? 'ml-6 border-dashed' : ''} ${isChild && !parentChecked ? 'opacity-40 pointer-events-none' : ''}`}>
+                      <label key={opt.key} className={`flex items-center gap-2 px-3 py-2 rounded-md border bg-white hover:bg-blue-50/50 cursor-pointer transition-colors ${isChild ? 'ml-6 border-dashed' : ''} ${isChild && !childEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
                         <Checkbox
                           checked={formPermissions.includes(opt.key)}
                           onCheckedChange={() => togglePermission(opt.key)}
-                          disabled={isChild && !parentChecked}
+                          disabled={isChild && !childEnabled}
                         />
                         <span className={`text-sm ${isChild ? 'text-gray-500 italic' : 'text-gray-700'}`}>{opt.label.replace(/^\s*↳\s*/, '↳ ')}</span>
                       </label>

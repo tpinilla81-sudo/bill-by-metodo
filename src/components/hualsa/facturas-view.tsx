@@ -56,6 +56,8 @@ export function FacturasView() {
   const [numeroDraft, setNumeroDraft] = useState('')
   const [catalogo, setCatalogo] = useState<CatalogoItem[]>([])
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null)
+  // Toast que aparece al imprimir/guardar una factura: muestra número + cliente
+  const [printNotice, setPrintNotice] = useState<string | null>(null)
 
   const canEditNumero = hasSubPermission(user?.role, user?.permissions, 'facturas.editarNumero')
 
@@ -224,16 +226,23 @@ export function FacturasView() {
     // Título del documento: incluye número y cliente (se ve al guardar como PDF)
     const docTitle = `Factura ${numero || 'sin-numero'} - ${cli.nombre || 'cliente'}`
 
+    // Mostrar aviso en pantalla con el número y cliente de la factura que se está imprimiendo
+    setPrintNotice(`Imprimiendo ${docTitle}`)
+    setTimeout(() => setPrintNotice(null), 5000)
+
     const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <title>${docTitle}</title>
 <style>
-  @page { size: A4 portrait; margin: 12mm 15mm; }
+  /* margin: 0 en @page para que el navegador NO añada sus cabeceras/pie por defecto
+     (que muestran la fecha, la hora y la URL "about:blank").
+     El padding se aplica en el body para mantener los márgenes visuales deseados. */
+  @page { size: A4 portrait; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { background: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; padding: 12mm 15mm; }
   .page { width: 100%; max-width: 210mm; }
   .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; padding-bottom: 18px; border-bottom: 3px solid #2bb24c; }
   .company-info { flex: 1; }
@@ -248,7 +257,7 @@ export function FacturasView() {
   .client-box b { color: #1a1a1a; }
   .client-label { font-size: 9pt; text-transform: uppercase; color: #888; letter-spacing: 1px; margin-bottom: 4px; }
   table.lines { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10.5pt; }
-  table.lines thead th { background: #1a1a1a; color: #fff; padding: 9px 10px; text-align: left; font-size: 9.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid #1a1a1a; }
+  table.lines thead th { background: #f0f0f0; color: #1a1a1a; padding: 9px 10px; text-align: left; font-size: 9.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid #999; }
   table.lines thead th:nth-child(3), table.lines thead th:nth-child(4), table.lines thead th:nth-child(5) { text-align: right; }
   table.lines tbody tr:nth-child(even) { background: #fafafa; }
   table.lines tbody td { padding: 7px 10px; border: 1px solid #ccc; }
@@ -307,6 +316,9 @@ export function FacturasView() {
 </div>
 <script>
   window.onload = function() {
+    // Asegurar que el título del documento sea el nuestro (algunos navegadores
+    // lo usan como nombre por defecto al "Guardar como PDF").
+    try { document.title = ${JSON.stringify(docTitle)}; } catch (e) {}
     // Pequeño retraso para asegurar que las imágenes (logo) carguen antes de imprimir
     setTimeout(function() { window.print(); }, 300);
   };
@@ -318,6 +330,8 @@ export function FacturasView() {
     if (printWin) {
       printWin.document.write(html)
       printWin.document.close()
+      // Reforzar el título en la ventana emergente (algunos navegadores resetean el <title>)
+      try { printWin.document.title = docTitle } catch (e) {}
     }
   }
 
@@ -365,6 +379,13 @@ export function FacturasView() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
+      {/* Aviso flotante cuando se imprime/guarda una factura: muestra el número + cliente */}
+      {printNotice && (
+        <div className="fixed top-4 right-4 z-50 bg-blue-600 text-white px-4 py-2.5 rounded-lg shadow-lg border border-blue-700 flex items-center gap-2 max-w-md">
+          <Printer className="h-4 w-4 flex-shrink-0" />
+          <span className="text-sm font-medium">{printNotice}</span>
+        </div>
+      )}
       <div className="flex-shrink-0 space-y-3 pb-2">
         <div className="flex items-center gap-2 flex-wrap">
           <Receipt className="h-5 w-5 text-rose-500" />

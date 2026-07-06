@@ -19,7 +19,7 @@ import { canAccessConfig } from '@/lib/permissions'
 export type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'prefactura' | 'facturas' | 'backup' | 'config' | 'admin' | 'suscripcion'
 
 // Screen permission keys (including sub-permissions)
-const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa'] as const
+const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa', 'configuracion.usuarios', 'configuracion.campos'] as const
 
 // Parse permissions from JSON string to array
 function parsePermissions(permissionsStr: string): string[] {

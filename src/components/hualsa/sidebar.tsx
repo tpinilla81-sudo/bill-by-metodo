@@ -42,7 +42,7 @@ interface SidebarProps {
 }
 
 // All available screen permission keys (including sub-permissions)
-const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa'] as const
+const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa', 'configuracion.usuarios', 'configuracion.campos'] as const
 
 // Parse permissions from JSON string to array
 function parsePermissions(permissionsStr: string): string[] {
@@ -232,7 +232,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
         {/* Safe area padding for iPhone bottom bar */}
         <div className="flex-shrink-0 p-2 text-center text-[10px] text-gray-600 pb-[env(safe-area-inset-bottom,8px)]">
           {displayName}
-          <div className="mt-1 text-[9px] text-green-700 font-mono">build: CONFIG-EMPRESA-FIX · 2026-07-06j</div>
+          <div className="mt-1 text-[9px] text-green-700 font-mono">build: CONFIG-3TABS · 2026-07-07a</div>
         </div>
       </aside>
     </>
