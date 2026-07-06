@@ -18,7 +18,7 @@ import { AuthProvider, useAuth } from '@/lib/auth-context'
 export type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'prefactura' | 'facturas' | 'backup' | 'config' | 'admin' | 'suscripcion'
 
 // Screen permission keys (including sub-permissions)
-const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup'] as const
+const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa'] as const
 
 // Parse permissions from JSON string to array
 function parsePermissions(permissionsStr: string): string[] {
@@ -56,7 +56,7 @@ export function hasSubPermission(userRole: string, userPermissions: string, subK
 }
 
 function AppContent() {
-  const { user, loading, login, logout, effectiveTenantId, effectiveTenantName, availableTenants, setEffectiveTenantId } = useAuth()
+  const { user, loading, login, logout, effectiveTenantId, effectiveTenantName, availableTenants, setEffectiveTenantId, refreshUser } = useAuth()
   const [activeView, setActiveView] = useState<View>('entrada')
   const [mobileOpen, setMobileOpen] = useState(false)
   const { config } = useConfig()
@@ -81,6 +81,26 @@ function AppContent() {
       }
     }
   }, [user, loading, activeView])
+
+  // Refrescar la sesión del usuario al recuperar el foco de la pestaña.
+  // Así, si un admin cambió los permisos de este usuario, los verá al volver a la app
+  // sin tener que cerrar y abrir sesión.
+  useEffect(() => {
+    if (!user) return
+    let lastRefresh = Date.now()
+    function onVisibility() {
+      if (document.visibilityState === 'visible') {
+        // Solo refrescar si ha pasado al menos 30s desde el último refresco
+        // para evitar spam de requests
+        if (Date.now() - lastRefresh > 30 * 1000) {
+          lastRefresh = Date.now()
+          refreshUser()
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [user, refreshUser])
 
   // Loading state
   if (loading) {
@@ -149,6 +169,13 @@ function AppContent() {
       // Empty perms = backwards-compat full access
       if (permArr.length === 0 || permArr.includes('configuracion') || permArr.includes('configuracion.empresa')) {
         setActiveView(view)
+      } else {
+        // Si el usuario no tiene permiso, intentar refrescar la sesión primero.
+        // Quizá un admin le acaba de dar permisos y la sesión está stale.
+        refreshUser().then(() => {
+          // Re-leer permisos después del refresco
+          // (useAuth actualizará `user` y esto se re-renderizará)
+        })
       }
       return
     }
