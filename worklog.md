@@ -308,3 +308,37 @@ Stage Summary:
 - Configuración → Usuarios permission list now includes Pre-Factura
 - The clean rebuild + new chunk hashes guarantees the browser will fetch fresh JS this time
 - User MUST do Ctrl+Shift+R (or clear browser cache) once to load the new chunks. After that, the no-cache headers will keep things fresh automatically.
+
+---
+Task ID: 16
+Agent: Main Agent
+Task: Sigue sin salir Pre-Factura en permisos + tick impresa + editar + borrar en facturas
+
+Work Log:
+- User confirmed that NONE of the recent changes (Pre-Factura in permissions, tick impresa, pencil edit, delete in facturas listing) are visible in their browser
+- Root cause confirmed: browser cache. User accesses via Caddy on port 81, which proxies to Next.js on port 3000
+- Verified that:
+  * All source files have the correct code (prefactura in admin-view, configuracion-view, sidebar; toggleImpresa/deleteFactura/Edit3 in facturas-view)
+  * The compiled chunks DO contain all the new code (Pre-Factura, Quitar tick impresa, Editar número de factura)
+  * no-cache headers are being sent (Cache-Control: no-store, no-cache, must-revalidate)
+  * But the browser is still serving the OLD version of the JS chunks
+- The Caddy Etag header ("12i133dokkwcyx") may also be playing a role
+
+Action Taken:
+1. Added a visible version marker in the sidebar footer: "build: PREFAC-TICK-EDIT-DEL · 2026-07-06c"
+   - This will appear at the bottom-left of every page
+   - If the user sees "PREFAC-TICK-EDIT-DEL", they have the NEW code
+   - If they see something else (or nothing), they have the OLD cached code
+2. Performed CLEAN rebuild (rm -rf .next && next build) — generates completely new chunk hashes
+3. New BUILD_ID: fkoMnJp--gjtzCGuk93VI
+4. New main chunk: c8c052615cc9c37d.js (contains ALL new features)
+5. Server restarted (PID 30597, HTTP 200 on both port 3000 and port 81)
+
+Stage Summary:
+- All code is correct in the build
+- The issue is 100% browser-side caching
+- User needs to perform one of these cache-bypass procedures:
+  * Chrome/Edge: Ctrl+Shift+R (Windows/Linux) or Cmd+Shift+R (Mac), or open DevTools (F12) → Network tab → check "Disable cache" → refresh
+  * Alternative: open in Incognito/Private window to verify
+  * Nuclear option: clear all browser cache (Settings → Privacy → Clear browsing data → Cached images and files)
+- The visible version marker "PREFAC-TICK-EDIT-DEL" in the sidebar footer will confirm whether the new bundle is loaded
