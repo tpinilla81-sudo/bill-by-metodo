@@ -64,3 +64,18 @@ export function hasSubPermission(
   if (perms.length === 0) return true
   return perms.includes(subKey)
 }
+
+/**
+ * Check if user can access the Configuración screen.
+ * True if: admin/superadmin, OR has 'configuracion', OR has 'configuracion.empresa'.
+ * (configuracion.empresa implies access to the screen, but only the Empresa tab is shown.)
+ */
+export function canAccessConfig(
+  userRole: string | undefined | null,
+  userPermissions: string | undefined | null,
+): boolean {
+  if (userRole === 'admin' || userRole === 'superadmin') return true
+  const perms = parsePermissions(userPermissions)
+  if (perms.length === 0) return true // backwards-compat
+  return perms.includes('configuracion') || perms.includes('configuracion.empresa')
+}
