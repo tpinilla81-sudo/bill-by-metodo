@@ -42,7 +42,8 @@ export function PreFacturaView() {
   const [openC1, setOpenC1] = useState(false)
   const [openC2, setOpenC2] = useState(false)
 
-  const [fNumero, setFNumero] = useState('')
+  // El número de factura se asigna después, en la pestaña FACTURAS
+  // Aquí en PRE-FACTURA se genera siempre SIN número (en blanco)
   const [fFechaFact, setFFechaFact] = useState(todayISO())
   const [fIva, setFIva] = useState('')
   const [fModo, setFModo] = useState<'dia' | 'mes'>('dia')
@@ -77,9 +78,8 @@ export function PreFacturaView() {
     return () => document.removeEventListener('click', handleClick)
   }, [])
 
-  if (!fNumero && data.seq) {
-    setFNumero(String(data.seq).padStart(4, '0') + '/' + currentYear())
-  }
+  // El número de factura se asigna después, en la pestaña FACTURAS
+  // Aquí en PRE-FACTURA se genera siempre SIN número (en blanco)
   if (!fIva && config) {
     setFIva(String(config.defaultIva))
   }
@@ -215,7 +215,7 @@ export function PreFacturaView() {
     const total = base + ivaImp
     const registroIds = sel.map(r => r.id)
 
-    setInvoiceData({ cli, lineas, iva, numero: fNumero, fechaFact: fFechaFact, modo: fModo, base, ivaImp, total, registroIds })
+    setInvoiceData({ cli, lineas, iva, numero: '', fechaFact: fFechaFact, modo: fModo, base, ivaImp, total, registroIds })
     setModalOpen(true)
   }
 
@@ -253,12 +253,8 @@ export function PreFacturaView() {
         registros: prev.registros.map(r =>
           invoiceData.registroIds.includes(r.id) ? { ...r, facturado: true } : r
         ),
-        seq: prev.seq + 1,
       }))
-      // bump seq client-side too
-      await fetch('/api/factura-seq', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seq: data.seq + 1 }) })
-      setFNumero(String(data.seq + 1).padStart(4, '0') + '/' + currentYear())
-      setCreatedMsg(`Factura creada (Nº ${factura.numero || '(en blanco)'}) — visible en la pestaña FACTURAS`)
+      setCreatedMsg(`✅ Pre-factura creada (sin número) — visible en la pestaña FACTURAS para asignar el Nº`)
       setModalOpen(false)
       triggerBackup()
       setTimeout(() => setCreatedMsg(''), 6000)
@@ -528,10 +524,6 @@ export function PreFacturaView() {
           <CardContent className="p-4">
             <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_auto_auto_auto] gap-3 items-end">
               <div>
-                <Label className="text-xs uppercase font-bold text-slate-500">Nº Factura (opcional)</Label>
-                <Input value={fNumero} onChange={e => setFNumero(e.target.value)} placeholder="auto" />
-              </div>
-              <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">Fecha factura</Label>
                 <Input type="date" value={fFechaFact} onChange={e => setFFechaFact(e.target.value)} />
               </div>
@@ -552,7 +544,7 @@ export function PreFacturaView() {
               <Button variant="outline" onClick={handleAlternos} title="Desmarca días alternos">
                 <ArrowLeftRight className="h-4 w-4 mr-1" /> Alternos
               </Button>
-              <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFClientes([]); setFC1s([]); setFC2s([]); setFNumero('') }}>
+              <Button variant="outline" onClick={() => { setFDesde(''); setFHasta(''); setFMes(''); setFClientes([]); setFC1s([]); setFC2s([]) }}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Limpiar
               </Button>
               <Button onClick={handleGenerar} className="bg-orange-500 hover:bg-orange-600 text-white">

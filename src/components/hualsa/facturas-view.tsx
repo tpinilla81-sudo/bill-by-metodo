@@ -382,17 +382,25 @@ export function FacturasView() {
           </DialogHeader>
 
           {selected && (
-            <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
-              <div className="flex items-center gap-2 mb-1">
+            <div className={`mb-4 p-4 rounded-lg border-2 ${!selected.numero ? 'bg-yellow-50 border-yellow-300' : 'bg-gray-50 border-gray-200'}`}>
+              <div className="flex items-center gap-2 mb-2">
                 <Label className="text-xs uppercase font-bold text-slate-500">Nº de Factura</Label>
+                {!selected.numero && (
+                  <span className="text-[10px] font-bold uppercase bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full animate-pulse">
+                    ⚠ Pendiente
+                  </span>
+                )}
                 {!editingNumero && canEditNumero && (
-                  <Button size="sm" variant="ghost" onClick={() => { setEditingNumero(true); setNumeroDraft(selected.numero || '') }} className="h-6 px-2 text-xs">
-                    <Edit3 className="h-3 w-3 mr-1" /> Editar
+                  <Button size="sm" onClick={() => { setEditingNumero(true); setNumeroDraft(selected.numero || '') }} className={`ml-auto h-7 px-3 text-xs ${!selected.numero ? 'bg-orange-500 hover:bg-orange-600 text-white animate-pulse' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}>
+                    <Edit3 className="h-3 w-3 mr-1" /> {selected.numero ? 'Editar Nº' : 'Asignar Nº'}
                   </Button>
+                )}
+                {!canEditNumero && (
+                  <span className="ml-auto text-[10px] text-gray-400 italic">Sin permiso para editar</span>
                 )}
               </div>
               {!editingNumero ? (
-                <div className={`text-lg font-bold font-mono ${!selected.numero ? 'text-yellow-700 italic' : 'text-gray-800'}`}>
+                <div className={`text-2xl font-bold font-mono ${!selected.numero ? 'text-yellow-700 italic' : 'text-gray-800'}`}>
                   {selected.numero || '(en blanco — pendiente de asignar)'}
                 </div>
               ) : (
@@ -401,7 +409,7 @@ export function FacturasView() {
                     value={numeroDraft}
                     onChange={e => setNumeroDraft(e.target.value)}
                     placeholder="p. ej. 0007/2026"
-                    className="flex-1 font-mono"
+                    className="flex-1 font-mono text-lg"
                     autoFocus
                   />
                   <Button size="sm" onClick={saveNumero} className="bg-green-600 hover:bg-green-700 text-white">
