@@ -575,3 +575,37 @@ Stage Summary:
   * It clears everything and reloads with cache-busting
 - Production clients no longer need to know how to clear cache
 - The admin can simply send them the /force-update URL via WhatsApp/email
+
+---
+Task ID: cache-bust-url
+Agent: main
+Task: Implementar cache-busting basado en URL porque el cliente no ve los cambios en Safari/iOS
+
+Work Log:
+- Diagnosticado: el enfoque anterior (localStorage + window.location.reload()) NO funciona en Safari iOS porque sirve HTML stale incluso tras reload()
+- Reescrito src/app/layout.tsx:
+  * Lee .next/BUILD_ID en cada render (force-dynamic)
+  * Inyecta window.__BUILD_ID__ = "..." como script inline ANTES de cualquier chunk
+  * Script inline hace fetch a /api/version, compara con window.__BUILD_ID__
+  * En mismatch → window.location.replace(pathname + '?v=' + newBuildId + '&t=' + timestamp)
+  * URL diferente = browser TIENE que descargar HTML nuevo (cache miss forzado)
+  * Tercer script limpia ?v= del URL con history.replaceState tras 500ms
+- Reescrito src/hooks/use-version-checker.ts:
+  * Ya no usa localStorage ni reload()
+  * Compara window.__BUILD_ID__ contra /api/version cada 60s y on focus
+  * triggerUpdate() hace location.replace a URL con ?v=
+  * Devuelve { updateAvailable, newBuildId } para el banner
+- Reescrito src/components/version-checker.tsx:
+  * Banner verde visible al pie con botón "Recargar ahora"
+  * Fallback por si location.replace() es bloqueado por bfcache/extensiones
+  * Botón construye URL con ?v= y hace location.replace
+- Actualizado marcador del sidebar: "CACHE-BUST-URL · 2026-07-06f" (en verde para distinguir)
+- Rebuild + reinicio (matado proceso stale PID 6191, nuevo PID 6392)
+
+Stage Summary:
+- BUILD_ID actual: 1zT5VmOTSW6fETw5YLeld
+- HTML servido contiene: window.__BUILD_ID__ = "1zT5VmOTSW6fETw5YLeld" (verificado con curl)
+- /api/version devuelve mismo BUILD_ID vía puerto 3000 y vía Caddy puerto 81
+- Mecanismo: si el navegador sirve HTML stale, el script inline detecta que el BUILD_ID del HTML
+  no coincide con el del servidor y redirige a ?v=NUEVO → URL nueva = HTML nuevo = JS nuevo
+- Esto es equivalente a lo que hace Vercel internamente cuando deployas
