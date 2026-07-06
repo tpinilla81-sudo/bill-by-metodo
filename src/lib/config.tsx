@@ -151,6 +151,7 @@ export interface AppConfig {
   sectionClientes: string
   sectionCatalogo: string
   sectionFacturas: string
+  sectionPreFactura: string
   sectionBackup: string
   transferMode: string
   transferTime: string
@@ -179,6 +180,7 @@ export interface ResolvedConfig {
   sectionClientes: string
   sectionCatalogo: string
   sectionFacturas: string
+  sectionPreFactura: string
   sectionBackup: string
   transferMode: string
   transferTime: string
@@ -238,6 +240,7 @@ export function resolveConfig(raw: AppConfig): ResolvedConfig {
     sectionClientes: raw.sectionClientes || 'CLIENTES',
     sectionCatalogo: raw.sectionCatalogo || 'CATÁLOGO',
     sectionFacturas: raw.sectionFacturas || 'FACTURAS',
+    sectionPreFactura: (raw as any).sectionPreFactura || 'PRE-FACTURA',
     sectionBackup: raw.sectionBackup || 'SEGURIDAD',
     transferMode: raw.transferMode || 'auto',
     transferTime: raw.transferTime || '00:00',

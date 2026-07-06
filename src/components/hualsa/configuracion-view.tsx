@@ -683,6 +683,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
   const [sectionClientes, setSectionClientes] = useState('')
   const [sectionCatalogo, setSectionCatalogo] = useState('')
   const [sectionFacturas, setSectionFacturas] = useState('')
+  const [sectionPreFactura, setSectionPreFactura] = useState('')
   const [sectionBackup, setSectionBackup] = useState('')
 
   const [transferMode, setTransferMode] = useState('auto')
@@ -712,7 +713,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
       setCompanyCity(raw.companyCity); setCompanyProvince(raw.companyProvince); setCompanyCif(raw.companyCif)
       setCurrency(raw.currency); setDefaultIva(String(raw.defaultIva)); setAppName(raw.appName)
       setSectionEntrada(raw.sectionEntrada); setSectionRegistros(raw.sectionRegistros); setSectionClientes(raw.sectionClientes)
-      setSectionCatalogo(raw.sectionCatalogo); setSectionFacturas(raw.sectionFacturas); setSectionBackup(raw.sectionBackup)
+      setSectionCatalogo(raw.sectionCatalogo); setSectionFacturas(raw.sectionFacturas); setSectionPreFactura(raw.sectionPreFactura || 'PRE-FACTURA'); setSectionBackup(raw.sectionBackup)
       setTransferMode(raw.transferMode || 'auto'); setTransferTime(raw.transferTime || '00:00')
       setLabelsEntrada(config.labelsEntrada); setLabelsCatalogo(config.labelsCatalogo)
       setLabelsRegistros(config.labelsRegistros); setLabelsFacturas(config.labelsFacturas); setLabelsClientes(config.labelsClientes)
@@ -760,7 +761,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
       const partial: Partial<AppConfig> = {
         companyName, companyFullName, companyAddress, companyCity, companyProvince, companyCif,
         currency, defaultIva: Number(defaultIva) || 21, appName,
-        sectionEntrada, sectionRegistros, sectionClientes, sectionCatalogo, sectionFacturas, sectionBackup,
+        sectionEntrada, sectionRegistros, sectionClientes, sectionCatalogo, sectionFacturas, sectionPreFactura, sectionBackup,
         transferMode, transferTime,
         labelEntrada: JSON.stringify(labelsEntrada), labelCatalogo: JSON.stringify(labelsCatalogo),
         labelRegistros: JSON.stringify(labelsRegistros), labelFacturas: JSON.stringify(labelsFacturas),
@@ -868,6 +869,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Registros</Label><Input value={sectionRegistros} onChange={e => setSectionRegistros(e.target.value)} /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Clientes</Label><Input value={sectionClientes} onChange={e => setSectionClientes(e.target.value)} /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Catálogo</Label><Input value={sectionCatalogo} onChange={e => setSectionCatalogo(e.target.value)} /></div>
+                <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Pre-Factura</Label><Input value={sectionPreFactura} onChange={e => setSectionPreFactura(e.target.value)} /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Facturas</Label><Input value={sectionFacturas} onChange={e => setSectionFacturas(e.target.value)} /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Seguridad</Label><Input value={sectionBackup} onChange={e => setSectionBackup(e.target.value)} /></div>
               </div>

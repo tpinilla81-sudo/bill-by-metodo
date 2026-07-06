@@ -59,3 +59,14 @@ backups/
 
 # Skills directory
 /skills/tool-results/
+
+# Archivos locales que no deben subirse al repo
+/tool-results/
+/download/promo/
+scripts/promo-*
+scripts/render-*
+server.pid
+server.log
+dev.log
+build.log
+restart.log

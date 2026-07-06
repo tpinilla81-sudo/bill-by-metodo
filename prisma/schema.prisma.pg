@@ -94,6 +94,7 @@ model Tenant {
   registros     Registro[]
   configs       Config[]
   facturaSeqs   FacturaSeq[]
+  facturas      Factura[]
   backups       Backup[]
 }
 
@@ -120,6 +121,31 @@ model FacturaSeq {
   tenant    Tenant   @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId])
+}
+
+model Factura {
+  id            String   @id @default(cuid())
+  tenantId      String
+  numero        String   @default("")
+  fecha         String
+  clienteId     String   @default("")
+  clienteNombre String   @default("")
+  clienteSnap   String   @default("")
+  lineas        String
+  iva           Float    @default(21)
+  base          Float    @default(0)
+  ivaImp        Float    @default(0)
+  total         Float    @default(0)
+  modo          String   @default("dia")
+  registroIds   String   @default("[]")
+  createdBy     String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, fecha])
+  @@index([tenantId, clienteId])
 }
 
 model Backup {
@@ -159,6 +185,7 @@ model Config {
   sectionClientes String   @default("CLIENTES")
   sectionCatalogo String   @default("CATÁLOGO")
   sectionFacturas String   @default("FACTURAS")
+  sectionPreFactura String @default("PRE-FACTURA")
   sectionBackup   String   @default("SEGURIDAD")
   // Transfer settings
   transferMode    String   @default("auto")   // "auto" or "manual"

@@ -62,7 +62,9 @@ const SCREEN_OPTIONS = [
   { key: 'registros', label: 'Registros' },
   { key: 'clientes', label: 'Clientes' },
   { key: 'catalogo', label: 'Catálogo' },
-  { key: 'facturas', label: 'Facturas' },
+  { key: 'prefactura', label: 'Pre-Factura' },
+  { key: 'facturas', label: 'Facturas (confirmadas)' },
+  { key: 'facturas.editarNumero', label: '  ↳ Editar Nº de Factura', parent: 'facturas' },
   { key: 'backup', label: 'Seguridad (Backup)' },
 ] as const
 
@@ -460,7 +462,7 @@ function UsersTab() {
       const next = prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]
       // If unchecking a parent, also remove all child permissions
       if (!next.includes(key)) {
-        const childKeys = SCREEN_OPTIONS.filter(o => (o as any).parent === key).map(o => o.key)
+        const childKeys = (SCREEN_OPTIONS as readonly { key: string; label: string; parent?: string }[]).filter(o => o.parent === key).map(o => o.key)
         return next.filter(p => !childKeys.includes(p))
       }
       return next

@@ -1,6 +1,6 @@
 'use client'
 
-import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown, CreditCard, Building2, ChevronDown } from 'lucide-react'
+import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown, CreditCard, Building2, ChevronDown, ClipboardList } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useConfig } from '@/lib/config'
 import { useAuth, type TenantOption } from '@/lib/auth-context'
@@ -41,7 +41,7 @@ interface SidebarProps {
 }
 
 // All available screen permission keys (including sub-permissions)
-const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
+const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup'] as const
 
 // Parse permissions from JSON string to array
 function parsePermissions(permissionsStr: string): string[] {
@@ -70,6 +70,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
     { key: 'registros', label: config?.sectionRegistros || 'REGISTROS', icon: <Table2 className="h-4 w-4" />, color: 'text-blue-400', permissionKey: 'registros' },
     { key: 'clientes', label: config?.sectionClientes || 'CLIENTES', icon: <Users className="h-4 w-4" />, color: 'text-purple-400', permissionKey: 'clientes' },
     { key: 'catalogo', label: config?.sectionCatalogo || 'CATÁLOGO', icon: <BookOpen className="h-4 w-4" />, color: 'text-amber-400', permissionKey: 'catalogo' },
+    { key: 'prefactura', label: config?.sectionPreFactura || 'PRE-FACTURA', icon: <ClipboardList className="h-4 w-4" />, color: 'text-orange-400', permissionKey: 'prefactura' },
     { key: 'facturas', label: config?.sectionFacturas || 'FACTURAS', icon: <Receipt className="h-4 w-4" />, color: 'text-rose-400', permissionKey: 'facturas' },
     { key: 'backup', label: config?.sectionBackup || 'SEGURIDAD', icon: <Shield className="h-4 w-4" />, color: 'text-cyan-400', permissionKey: 'backup' },
     { key: 'suscripcion', label: 'SUSCRIPCIÓN', icon: <CreditCard className="h-4 w-4" />, color: 'text-emerald-400', adminOnly: true, superadminOnly: false },
