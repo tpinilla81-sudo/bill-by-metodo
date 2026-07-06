@@ -200,3 +200,34 @@ Stage Summary:
 - In the modal: green "✔ Impresa" badge shows status, and a "Quitar tick impresa" button lets user remove the mark
 - DB schema persisted: impresa column with default false; existing facturas (if any) default to false
 - User should hard-refresh browser (Ctrl+Shift+R) to load fresh JS bundle with new UI
+
+---
+Task ID: 13
+Agent: Main Agent
+Task: EN LOS PERMISOS, NO SALEN TODAS LAS HOJAS, NO VEO PREFACTURAS
+
+Work Log:
+- Investigated: found THREE separate copies of SCREEN_OPTIONS / ALL_PERMISSIONS list, all out of sync:
+  1. src/lib/permissions.ts — had prefactura ✓ (but barely used)
+  2. src/components/hualsa/admin-view.tsx — had prefactura ✓ (superadmin panel)
+  3. src/components/hualsa/configuracion-view.tsx — MISSING prefactura AND facturas.editarNumero ❌
+  4. src/lib/use-permissions.tsx — used DIFFERENT key names (entrada.transferir, registros.editar, facturas.generar, etc.) AND missing prefactura ❌
+- Root cause: user is editing user permissions from Configuración → Usuarios (configuracion-view.tsx), which had the OLD shortened list without prefactura
+- Secondary issue: use-permissions.tsx used inconsistent key names that didn't match the keys stored in the DB, so even if a perm was granted, it would be filtered out on parse
+
+Fixes Applied:
+1. src/components/hualsa/configuracion-view.tsx — added `prefactura` (Pre-Factura) and `facturas.editarNumero` (Editar Nº de Factura) to local SCREEN_OPTIONS
+2. src/lib/use-permissions.tsx — rewrote ALL_PERMISSIONS to match permissions.ts exactly (entrada.pasarRegistros, entrada.grilla, prefactura, facturas.editarNumero)
+3. src/lib/use-permissions.tsx — updated PermissionHelpers interface: removed obsolete canEditRegistros/canEditClientes/canEditCatalogo/canGenerateFacturas, kept canTransfer (now maps to entrada.pasarRegistros), added canEditFacturaNumero
+4. Verified NO other code referenced the removed helper properties (grep found 0 matches)
+
+Build & Restart:
+- next build succeeded (23 routes)
+- Server restarted (PID 23740, HTTP 200)
+- Verified client chunks contain "Pre-Factura" and "Editar Nº de Factura" strings
+
+Stage Summary:
+- Configuración → Usuarios now shows ALL 10 permission options including Pre-Factura
+- The 4 lists (permissions.ts, admin-view.tsx, configuracion-view.tsx, use-permissions.tsx) are now synchronized on the same key names
+- Existing users with old-style permissions (entrada.transferir, etc.) will have those filtered out on next parse — effectively losing them. Recommend re-checking the boxes after refresh.
+- User should hard-refresh browser (Ctrl+Shift+R) to load fresh JS bundle

@@ -3,12 +3,17 @@
 import { useAuth } from '@/lib/auth-context'
 
 // All valid permission keys (base + sub-permissions)
+// Must stay in sync with src/lib/permissions.ts SCREEN_PERMISSIONS
 const ALL_PERMISSIONS = [
-  'entrada', 'entrada.transferir',
-  'registros', 'registros.editar',
-  'clientes', 'clientes.editar',
-  'catalogo', 'catalogo.editar',
-  'facturas', 'facturas.generar',
+  'entrada',
+  'entrada.pasarRegistros',
+  'entrada.grilla',
+  'registros',
+  'clientes',
+  'catalogo',
+  'prefactura',
+  'facturas',
+  'facturas.editarNumero',
   'backup',
 ] as const
 
@@ -37,11 +42,8 @@ export interface PermissionHelpers {
   canView: (page: string) => boolean
 
   // Convenience methods for specific actions
-  canTransfer: boolean       // entrada.transferir
-  canEditRegistros: boolean  // registros.editar
-  canEditClientes: boolean   // clientes.editar
-  canEditCatalogo: boolean   // catalogo.editar
-  canGenerateFacturas: boolean // facturas.generar
+  canTransfer: boolean       // entrada.pasarRegistros
+  canEditFacturaNumero: boolean // facturas.editarNumero
 
   // The parsed permissions array
   permissions: string[]
@@ -76,11 +78,8 @@ export function usePermissions(): PermissionHelpers {
     isSuperadmin,
     has,
     canView,
-    canTransfer: has('entrada.transferir'),
-    canEditRegistros: has('registros.editar'),
-    canEditClientes: has('clientes.editar'),
-    canEditCatalogo: has('catalogo.editar'),
-    canGenerateFacturas: has('facturas.generar'),
+    canTransfer: has('entrada.pasarRegistros'),
+    canEditFacturaNumero: has('facturas.editarNumero'),
     permissions,
     hasNoSpecificPermissions,
   }

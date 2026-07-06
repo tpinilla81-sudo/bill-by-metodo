@@ -70,7 +70,9 @@ function UsersManager() {
     { key: 'registros', label: 'Registros' },
     { key: 'clientes', label: 'Clientes' },
     { key: 'catalogo', label: 'Catálogo' },
-    { key: 'facturas', label: 'Facturas' },
+    { key: 'prefactura', label: 'Pre-Factura' },
+    { key: 'facturas', label: 'Facturas (confirmadas)' },
+    { key: 'facturas.editarNumero', label: '  ↳ Editar Nº de Factura', parent: 'facturas' },
     { key: 'backup', label: 'Seguridad (Backup)' },
   ] as const
 
