@@ -219,6 +219,13 @@ function AppContent() {
               {activeView === 'suscripcion' && (user.role === 'admin' || user.role === 'superadmin') && <PlansView tenantId={effectiveTenantId || user.tenantId} />}
               {activeView === 'config' && (user.role === 'admin' || user.role === 'superadmin' || (() => { const p = JSON.parse(user.permissions || '[]'); const a = Array.isArray(p) ? p : []; return a.length === 0 || a.includes('configuracion') || a.includes('configuracion.empresa'); })()) && <ConfiguracionView tenant={tenant} />}
               {activeView === 'admin' && user.role === 'superadmin' && <AdminView />}
+              {/* Debug: si activeView es config pero no se renderizó, mostrar mensaje */}
+              {activeView === 'config' && !(user.role === 'admin' || user.role === 'superadmin' || (() => { const p = JSON.parse(user.permissions || '[]'); const a = Array.isArray(p) ? p : []; return a.length === 0 || a.includes('configuracion') || a.includes('configuracion.empresa'); })()) && (
+                <div className="p-6 text-center text-amber-700 bg-amber-50 rounded-lg border border-amber-200">
+                  <p className="font-semibold mb-2">No tienes permiso para acceder a Configuración.</p>
+                  <p className="text-sm text-amber-600">Si acabas de recibir permiso, cierra sesión y vuelve a entrar para que se actualicen tus permisos.</p>
+                </div>
+              )}
             </div>
           </div>
         )}

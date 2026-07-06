@@ -53,15 +53,29 @@ export async function GET(req: Request) {
 }
 
 // PUT /api/config - Update configuration for the current tenant
-// Only admin or superadmin users can update config
+// - admin/superadmin: can update ALL fields
+// - users with 'configuracion.empresa' permission: can only update company fields
+// - users with 'configuracion' permission: same as admin (full config access)
+// - other users: 403
 export async function PUT(req: Request) {
   try {
-    // Check role: only admin/superadmin can modify config
     const authUser = await getAuthUser()
     if (!authUser) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
-    if (authUser.role !== 'admin' && authUser.role !== 'superadmin') {
+
+    // Parse user permissions
+    let userPerms: string[] = []
+    try {
+      const v = JSON.parse(authUser.permissions || '[]')
+      if (Array.isArray(v)) userPerms = v.filter((x: unknown) => typeof x === 'string')
+    } catch {}
+
+    const isAdmin = authUser.role === 'admin' || authUser.role === 'superadmin'
+    const hasFullConfig = isAdmin || userPerms.includes('configuracion')
+    const hasEmpresaOnly = userPerms.includes('configuracion.empresa')
+
+    if (!hasFullConfig && !hasEmpresaOnly) {
       return NextResponse.json({ error: 'No tienes permisos para modificar la configuración' }, { status: 403 })
     }
 
@@ -79,18 +93,25 @@ export async function PUT(req: Request) {
       config = await db.config.create({ data: { tenantId: tid, ...DEFAULT_CONFIG } })
     }
 
-    // Update with provided fields
-    const updateData: Record<string, unknown> = {}
-    const allowedFields = [
+    // Fields allowed for each permission level
+    const empresaFields = [
       'companyName', 'companyFullName', 'companyAddress', 'companyCity', 'companyProvince',
-      'companyCif', 'logo', 'currency', 'defaultIva', 'appName', 'appVersion',
+      'companyCif', 'logo',
+    ]
+    const allFields = [
+      ...empresaFields,
+      'currency', 'defaultIva', 'appName', 'appVersion',
       'labelEntrada', 'labelCatalogo', 'labelRegistros', 'labelFacturas', 'labelClientes',
       'sectionEntrada', 'sectionRegistros', 'sectionClientes', 'sectionCatalogo',
-      'sectionFacturas', 'sectionBackup',
+      'sectionFacturas', 'sectionPreFactura', 'sectionBackup',
       'transferMode', 'transferTime',
       'fieldsEntrada', 'fieldsClientes', 'fieldsCatalogo', 'fieldsRegistros', 'fieldsFacturas',
     ]
 
+    // If user only has empresa permission, restrict to empresa fields
+    const allowedFields = hasFullConfig ? allFields : empresaFields
+
+    const updateData: Record<string, unknown> = {}
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updateData[field] = body[field]
@@ -102,7 +123,7 @@ export async function PUT(req: Request) {
       data: updateData,
     })
 
-    // Sync company data to Tenant model when admin saves
+    // Sync company data to Tenant model when admin or empresa-user saves
     const tenantIdForSync = await getTenantId(req)
     if (tenantIdForSync) {
       const tenantUpdate: Record<string, unknown> = {}

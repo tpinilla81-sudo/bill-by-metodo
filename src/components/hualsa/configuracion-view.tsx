@@ -812,19 +812,32 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
   async function handleSave() {
     setSaving(true)
     try {
-      const partial: Partial<AppConfig> = {
-        companyName, companyFullName, companyAddress, companyCity, companyProvince, companyCif,
-        currency, defaultIva: Number(defaultIva) || 21, appName,
-        sectionEntrada, sectionRegistros, sectionClientes, sectionCatalogo, sectionFacturas, sectionPreFactura, sectionBackup,
-        transferMode, transferTime,
-        labelEntrada: JSON.stringify(labelsEntrada), labelCatalogo: JSON.stringify(labelsCatalogo),
-        labelRegistros: JSON.stringify(labelsRegistros), labelFacturas: JSON.stringify(labelsFacturas),
-        labelClientes: JSON.stringify(labelsClientes),
-        fieldsEntrada: JSON.stringify(fieldsEntrada), fieldsClientes: JSON.stringify(fieldsClientes),
-        fieldsCatalogo: JSON.stringify(fieldsCatalogo), fieldsRegistros: JSON.stringify(fieldsRegistros),
-        fieldsFacturas: JSON.stringify(fieldsFacturas),
+      // Si el usuario solo tiene permiso de empresa, enviar SOLO los campos de empresa.
+      // Si enviamos todos, el backend los rechazará (403) o los ignorará.
+      const isEmpresaOnly = !isAdminUser && userPerms.includes('configuracion.empresa') && !userPerms.includes('configuracion')
+
+      const partial: Partial<AppConfig> = isEmpresaOnly
+        ? {
+            companyName, companyFullName, companyAddress, companyCity, companyProvince, companyCif,
+            ...(logoBase64 === 'REMOVE' ? { logo: '' } : logoBase64 ? { logo: logoBase64 } : {}),
+          }
+        : {
+            companyName, companyFullName, companyAddress, companyCity, companyProvince, companyCif,
+            currency, defaultIva: Number(defaultIva) || 21, appName,
+            sectionEntrada, sectionRegistros, sectionClientes, sectionCatalogo, sectionFacturas, sectionPreFactura, sectionBackup,
+            transferMode, transferTime,
+            labelEntrada: JSON.stringify(labelsEntrada), labelCatalogo: JSON.stringify(labelsCatalogo),
+            labelRegistros: JSON.stringify(labelsRegistros), labelFacturas: JSON.stringify(labelsFacturas),
+            labelClientes: JSON.stringify(labelsClientes),
+            fieldsEntrada: JSON.stringify(fieldsEntrada), fieldsClientes: JSON.stringify(fieldsClientes),
+            fieldsCatalogo: JSON.stringify(fieldsCatalogo), fieldsRegistros: JSON.stringify(fieldsRegistros),
+            fieldsFacturas: JSON.stringify(fieldsFacturas),
+          }
+
+      if (!isEmpresaOnly) {
+        if (logoBase64 === 'REMOVE') { partial.logo = '' } else if (logoBase64) { partial.logo = logoBase64 }
       }
-      if (logoBase64 === 'REMOVE') { partial.logo = '' } else if (logoBase64) { partial.logo = logoBase64 }
+
       await update(partial)
       triggerBackup()
       showStatus('ok', 'Configuración guardada ✓')
