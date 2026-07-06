@@ -342,3 +342,54 @@ Stage Summary:
   * Alternative: open in Incognito/Private window to verify
   * Nuclear option: clear all browser cache (Settings → Privacy → Clear browsing data → Cached images and files)
 - The visible version marker "PREFAC-TICK-EDIT-DEL" in the sidebar footer will confirm whether the new bundle is loaded
+
+---
+Task ID: 17
+Agent: Main Agent
+Task: "y en el cliente que está en producción? debería cambiar, para eso creamos el token"
+
+Work Log:
+- User correctly pointed out that production customers shouldn't have to manually clear cache
+- Implemented the standard production auto-update pattern (used by Gmail, Notion, Slack web, etc.)
+
+Architecture:
+- /api/version endpoint returns current BUILD_ID (read from .next/BUILD_ID)
+  * Always returns no-cache headers so the client always gets the latest
+- useVersionChecker hook (src/hooks/use-version-checker.ts):
+  * On mount: fetches /api/version, stores buildId in localStorage
+  * If localStorage had a different buildId from a previous session → force reload (a deploy happened while the tab was closed)
+  * Every 2 minutes: re-fetch /api/version, compare with initial buildId
+  * If different → window.location.reload() (auto-reload, bypasses cache)
+  * Also triggers immediately when tab regains focus (visibilitychange event)
+- <VersionChecker /> component wraps the hook (src/components/version-checker.tsx)
+- Layout.tsx renders <VersionChecker /> once in the root layout, so it runs on every page
+
+Removed:
+- Aggressive no-cache meta tags from layout.tsx (were causing problems with legitimate static chunk caching)
+- The dynamic='force-dynamic' / revalidate=0 / fetchCache='force-no-store' exports that were breaking build optimizations
+
+Why this works:
+- Chunks are content-hashed by Next.js — their filename changes when content changes
+- The HTML references specific chunk filenames
+- When a new build is deployed:
+  1. New chunks have new filenames on the server
+  2. Old chunks no longer exist on the server
+  3. /api/version returns the new BUILD_ID
+  4. Client's useVersionChecker detects the change
+  5. Forces window.location.reload() — browser fetches fresh HTML
+  6. Fresh HTML references new chunk filenames
+  7. Browser fetches new chunks (because it never saw them before)
+- Customers never have to manually clear cache. After at most 2 minutes (or when they come back to the tab), they get the new version automatically.
+
+Build & Restart:
+- next build succeeded
+- Server restarted (PID 884, HTTP 200)
+- /api/version verified working: returns current BUILD_ID "hEHp78PkbmFHJpTQqBGzS"
+- Verified via both port 3000 (direct) and port 81 (via Caddy)
+- Tested the auto-detection: manually changed BUILD_ID, /api/version immediately reflected the new value
+
+Stage Summary:
+- Production customers will now automatically get new deploys within 2 minutes (or instantly when they switch back to the tab)
+- No manual cache clearing needed
+- No disruptive UI — they just see the new version appear
+- The first time a customer loads after this deploy, they will get the auto-reload (since localStorage will have the OLD buildId from before, which won't match the new one). This is a ONE-TIME event.

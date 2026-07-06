@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { VersionChecker } from "@/components/version-checker";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,11 +35,6 @@ export const metadata: Metadata = {
   },
 };
 
-// Force browsers (especially iOS Safari) to never cache the HTML
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-export const fetchCache = 'force-no-store'
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -47,11 +43,7 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
-        {/* Anti-cache meta tags — critical for iOS Safari */}
-        <meta httpEquiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
-        <meta httpEquiv="Pragma" content="no-cache" />
-        <meta httpEquiv="Expires" content="0" />
-        {/* iOS Safari specific: prevents storing in app cache */}
+        {/* iOS Safari meta tags */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black" />
         <meta name="format-detection" content="telephone=no" />
@@ -59,6 +51,8 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
+        {/* Version checker — auto-reloads when a new build is deployed */}
+        <VersionChecker />
         {children}
         <Toaster />
       </body>
