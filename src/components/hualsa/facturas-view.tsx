@@ -375,13 +375,12 @@ export function FacturasView() {
                 <th className="p-2 text-right font-semibold border-b bg-rose-50">Base</th>
                 <th className="p-2 text-right font-semibold border-b bg-rose-50">IVA</th>
                 <th className="p-2 text-right font-semibold border-b bg-rose-50">Total</th>
-                <th className="p-2 text-center font-semibold border-b bg-rose-50">Impresa</th>
                 <th className="p-2 text-center font-semibold border-b bg-rose-50">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(f => (
-                <tr key={f.id} className={`border-b ${!f.numero ? 'bg-yellow-50/40' : ''}`}>
+                <tr key={f.id} className={`border-b ${!f.numero ? 'bg-yellow-50/40' : ''} ${f.impresa ? 'bg-green-50/40' : ''}`}>
                   <td className="p-2 font-mono">
                     {f.numero || <span className="text-yellow-700 italic">(en blanco)</span>}
                   </td>
@@ -391,26 +390,36 @@ export function FacturasView() {
                   <td className="p-2 text-right">{fmtCurrency(f.ivaImp)}</td>
                   <td className="p-2 text-right font-bold">{fmtCurrency(f.total)}</td>
                   <td className="p-2 text-center">
-                    <button
-                      onClick={() => toggleImpresa(f)}
-                      title={f.impresa ? 'Marcada como impresa — click para quitar el tick' : 'No impresa — click para marcar'}
-                      className={`inline-flex items-center justify-center w-7 h-7 rounded border-2 transition-colors ${f.impresa ? 'bg-green-500 border-green-600 text-white hover:bg-green-600' : 'bg-white border-gray-300 text-transparent hover:border-green-400 hover:bg-green-50'}`}
-                    >
-                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                        <path fillRule="evenodd" d="M16.704 5.29a1 1 0 0 1 0 1.42l-7.5 7.5a1 1 0 0 1-1.42 0l-3.5-3.5a1 1 0 1 1 1.42-1.42l2.79 2.79 6.79-6.79a1 1 0 0 1 1.42 0Z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                  </td>
-                  <td className="p-2 text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => openFactura(f)} title="Ver / imprimir" className="h-8 w-8 p-0">
+                      {/* Tick impresa — click para alternar */}
+                      <button
+                        onClick={() => toggleImpresa(f)}
+                        title={f.impresa ? 'Impresa ✓ — click para quitar el tick' : 'No impresa — click para marcar como impresa'}
+                        aria-label={f.impresa ? 'Quitar tick de impresa' : 'Marcar como impresa'}
+                        className={`inline-flex items-center justify-center w-8 h-8 rounded-md border-2 transition-colors ${
+                          f.impresa
+                            ? 'bg-green-500 border-green-600 text-white hover:bg-green-600'
+                            : 'bg-white border-gray-300 text-transparent hover:border-green-400 hover:bg-green-50'
+                        }`}
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                          <path fillRule="evenodd" d="M16.704 5.29a1 1 0 0 1 0 1.42l-7.5 7.5a1 1 0 0 1-1.42 0l-3.5-3.5a1 1 0 1 1 1.42-1.42l2.79 2.79 6.79-6.79a1 1 0 0 1 1.42 0Z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+
+                      {/* Ver / Imprimir */}
+                      <Button size="sm" variant="ghost" onClick={() => openFactura(f)} title="Ver / Imprimir" className="h-8 w-8 p-0 text-gray-600 hover:text-gray-900 hover:bg-gray-100">
                         <Eye className="h-4 w-4" />
                       </Button>
-                      {canEditNumero && (
-                        <Button size="sm" variant="ghost" onClick={() => openFactura(f, true)} title="Editar número de factura" className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+
+                      {/* Editar (número de factura) — visible para admin o si tiene permiso */}
+                      {(canEditNumero || user?.role === 'admin' || user?.role === 'superadmin') && (
+                        <Button size="sm" variant="ghost" onClick={() => openFactura(f, true)} title="Editar factura" className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
                           <Edit3 className="h-4 w-4" />
                         </Button>
                       )}
+
+                      {/* Eliminar — visible para admin/superadmin */}
                       {(user?.role === 'admin' || user?.role === 'superadmin') && (
                         <Button size="sm" variant="ghost" onClick={() => deleteFactura(f)} title="Eliminar factura" className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
                           <Trash2 className="h-4 w-4" />
@@ -421,7 +430,7 @@ export function FacturasView() {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={8} className="p-6 text-center text-gray-400">No hay facturas creadas todavía. Crea pre-facturas desde la pestaña anterior.</td></tr>
+                <tr><td colSpan={7} className="p-6 text-center text-gray-400">No hay facturas creadas todavía. Crea pre-facturas desde la pestaña anterior.</td></tr>
               )}
             </tbody>
           </table>
