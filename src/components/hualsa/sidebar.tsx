@@ -232,7 +232,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
         {/* Safe area padding for iPhone bottom bar */}
         <div className="flex-shrink-0 p-2 text-center text-[10px] text-gray-600 pb-[env(safe-area-inset-bottom,8px)]">
           {displayName}
-          <div className="mt-1 text-[9px] text-green-700 font-mono">build: CONFIG-3TABS · 2026-07-07b</div>
+          <div className="mt-1 text-[9px] text-green-700 font-mono">build: PDF-MARGINS · 2026-07-07c</div>
         </div>
       </aside>
     </>

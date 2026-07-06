@@ -223,11 +223,15 @@ export function FacturasView() {
       </tr>`
     }).join('')
 
-    // Título del documento: incluye número y cliente (se ve al guardar como PDF)
-    const docTitle = `Factura ${numero || 'sin-numero'} - ${cli.nombre || 'cliente'}`
+    // Título del documento (nombre de archivo al guardar como PDF):
+    // directamente "número-cliente" (sin prefijo "Factura") para que al guardar
+    // el archivo se llame p.ej. "1234-Cliente X.pdf".
+    const docTitle = `${numero || 'sin-numero'}-${cli.nombre || 'cliente'}`
+    // Texto mostrado en el aviso flotante (este sí lleva "Factura" para que se entienda).
+    const displayNotice = `Imprimiendo Factura ${numero || 'sin-numero'} - ${cli.nombre || 'cliente'}`
 
     // Mostrar aviso en pantalla con el número y cliente de la factura que se está imprimiendo
-    setPrintNotice(`Imprimiendo ${docTitle}`)
+    setPrintNotice(displayNotice)
     setTimeout(() => setPrintNotice(null), 5000)
 
     const html = `<!DOCTYPE html>
@@ -238,11 +242,13 @@ export function FacturasView() {
 <style>
   /* margin: 0 en @page para que el navegador NO añada sus cabeceras/pie por defecto
      (que muestran la fecha, la hora y la URL "about:blank").
-     El padding se aplica en el body para mantener los márgenes visuales deseados. */
+     El padding se aplica en el body para mantener los márgenes visuales deseados.
+     Top/Bottom mayores (22mm) para que la factura respire arriba y abajo;
+     Left/Right de 14mm para aprovechar el ancho de la hoja A4. */
   @page { size: A4 portrait; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { background: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 10.5pt; line-height: 1.35; padding: 14mm 14mm; }
+  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 10.5pt; line-height: 1.35; padding: 22mm 14mm; }
   .page { width: 100%; max-width: 210mm; }
   .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; padding-bottom: 16px; border-bottom: 3px solid #2bb24c; }
   .company-info { flex: 1; min-width: 0; }
