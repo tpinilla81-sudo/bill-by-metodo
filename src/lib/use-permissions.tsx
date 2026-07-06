@@ -17,6 +17,8 @@ const ALL_PERMISSIONS = [
   'backup',
   'configuracion',
   'configuracion.empresa',
+  'configuracion.usuarios',
+  'configuracion.campos',
 ] as const
 
 // Parse permissions from JSON string to array
@@ -88,7 +90,7 @@ export function usePermissions(): PermissionHelpers {
     canView,
     canTransfer: has('entrada.pasarRegistros'),
     canEditFacturaNumero: has('facturas.editarNumero'),
-    canAccessConfig: has('configuracion') || has('configuracion.empresa'),
+    canAccessConfig: has('configuracion') || has('configuracion.empresa') || has('configuracion.usuarios') || has('configuracion.campos'),
     canConfigEmpresa: has('configuracion.empresa'),
     permissions,
     hasNoSpecificPermissions,

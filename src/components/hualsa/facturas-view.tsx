@@ -215,11 +215,11 @@ export function FacturasView() {
     const lineasHtml = lineas.map(r => {
       const p = r.precioUnitario > 0 ? r.precioUnitario : pu(r.c1, r.c2, r.clienteId)
       return `<tr>
-        <td style="padding:7px 10px;border:1px solid #bbb;">${fechaLbl(r.fecha)}</td>
-        <td style="padding:7px 10px;border:1px solid #bbb;">${r.c1}${r.c2 ? ' - ' + r.c2 : ''}${r.obs ? ' (' + r.obs + ')' : ''}</td>
-        <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${r.cant}</td>
-        <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${p.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-        <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${(p * r.cant).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;white-space:nowrap;">${fechaLbl(r.fecha)}</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.c1}${r.c2 ? ' - ' + r.c2 : ''}${r.obs ? ' (' + r.obs + ')' : ''}</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;text-align:right;white-space:nowrap;">${r.cant}</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;text-align:right;white-space:nowrap;">${p.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;text-align:right;white-space:nowrap;">${(p * r.cant).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
       </tr>`
     }).join('')
 
@@ -242,33 +242,35 @@ export function FacturasView() {
   @page { size: A4 portrait; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { background: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; padding: 12mm 15mm; }
+  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 10.5pt; line-height: 1.35; padding: 14mm 14mm; }
   .page { width: 100%; max-width: 210mm; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; padding-bottom: 18px; border-bottom: 3px solid #2bb24c; }
-  .company-info { flex: 1; }
-  .company-name { font-size: 18pt; font-weight: 800; color: #1a1a1a; margin-bottom: 4px; }
-  .company-detail { font-size: 10pt; color: #444; line-height: 1.5; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; padding-bottom: 16px; border-bottom: 3px solid #2bb24c; }
+  .company-info { flex: 1; min-width: 0; }
+  .company-name { font-size: 17pt; font-weight: 800; color: #1a1a1a; margin-bottom: 4px; }
+  .company-detail { font-size: 9.5pt; color: #444; line-height: 1.45; }
   .company-detail b { color: #1a1a1a; }
-  .logo-area { margin-left: 20px; }
-  .logo-area img { max-width: 240px; max-height: 100px; object-fit: contain; }
-  .factura-badge { display: inline-block; margin-top: 12px; padding: 8px 16px; border: 2px solid #1a1a1a; background: #f5f5f5; font-size: 11pt; line-height: 1.6; }
-  .factura-badge b { font-size: 11pt; }
-  .client-box { border: 2px solid #1a1a1a; padding: 14px 18px; margin-bottom: 24px; background: #f9f9f9; font-size: 11pt; line-height: 1.6; }
+  .logo-area { margin-left: 20px; flex-shrink: 0; }
+  .logo-area img { max-width: 220px; max-height: 90px; object-fit: contain; }
+  .factura-badge { display: inline-block; margin-top: 10px; padding: 6px 14px; border: 2px solid #1a1a1a; background: #f5f5f5; font-size: 10.5pt; line-height: 1.5; }
+  .factura-badge b { font-size: 10.5pt; }
+  .client-box { border: 2px solid #1a1a1a; padding: 12px 16px; margin-bottom: 22px; background: #f9f9f9; font-size: 10.5pt; line-height: 1.55; }
   .client-box b { color: #1a1a1a; }
-  .client-label { font-size: 9pt; text-transform: uppercase; color: #888; letter-spacing: 1px; margin-bottom: 4px; }
-  table.lines { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10.5pt; }
-  table.lines thead th { background: #f0f0f0; color: #1a1a1a; padding: 9px 10px; text-align: left; font-size: 9.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid #999; }
+  .client-label { font-size: 8.5pt; text-transform: uppercase; color: #888; letter-spacing: 1px; margin-bottom: 4px; }
+  /* table-layout: fixed + width columns → el contenido no se reparte libremente.
+     Cada celda lleva white-space:nowrap para NO partir en 2 líneas. */
+  table.lines { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 9.5pt; table-layout: fixed; }
+  table.lines thead th { background: #f0f0f0; color: #1a1a1a; padding: 7px 6px; text-align: left; font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   table.lines thead th:nth-child(3), table.lines thead th:nth-child(4), table.lines thead th:nth-child(5) { text-align: right; }
   table.lines tbody tr:nth-child(even) { background: #fafafa; }
-  table.lines tbody td { padding: 7px 10px; border: 1px solid #ccc; }
+  table.lines tbody td { padding: 5px 6px; border: 1px solid #ccc; overflow: hidden; text-overflow: ellipsis; }
   table.lines tbody td:nth-child(3), table.lines tbody td:nth-child(4), table.lines tbody td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; }
-  .totals { margin-left: auto; border-collapse: collapse; font-size: 11pt; }
-  .totals td { padding: 8px 14px; border: 1px solid #1a1a1a; }
-  .totals .label { background: #e8e8e8; font-weight: 700; text-align: right; min-width: 170px; }
-  .totals .value { text-align: right; min-width: 140px; font-variant-numeric: tabular-nums; }
-  .totals .total-row { background: #2bb24c; color: #fff; font-weight: 800; font-size: 13pt; }
+  .totals { margin-left: auto; border-collapse: collapse; font-size: 10.5pt; }
+  .totals td { padding: 7px 12px; border: 1px solid #1a1a1a; }
+  .totals .label { background: #e8e8e8; font-weight: 700; text-align: right; min-width: 160px; }
+  .totals .value { text-align: right; min-width: 130px; font-variant-numeric: tabular-nums; }
+  .totals .total-row { background: #2bb24c; color: #fff; font-weight: 800; font-size: 12pt; }
   .totals .total-row td { border-color: #2bb24c; }
-  .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #ddd; font-size: 8.5pt; color: #999; text-align: center; }
+  .footer { margin-top: 36px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 8.5pt; color: #999; text-align: center; }
 </style>
 </head>
 <body>
@@ -298,11 +300,11 @@ export function FacturasView() {
   <table class="lines">
     <thead>
       <tr>
-        <th style="width:90px;">${LL.fecha}</th>
+        <th style="width:70px;">${LL.fecha}</th>
         <th>${LL.concepto}</th>
-        <th style="width:70px;">${LL.cantidad}</th>
-        <th style="width:120px;">${LL.precioUnitario}</th>
-        <th style="width:120px;">${LL.importe}</th>
+        <th style="width:50px;">${LL.cantidad}</th>
+        <th style="width:85px;">${LL.precioUnitario}</th>
+        <th style="width:95px;">${LL.importe}</th>
       </tr>
     </thead>
     <tbody>${lineasHtml}</tbody>

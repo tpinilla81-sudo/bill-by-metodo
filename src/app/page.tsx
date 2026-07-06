@@ -57,7 +57,7 @@ export function hasSubPermission(userRole: string, userPermissions: string, subK
 }
 
 function AppContent() {
-  const { user, loading, login, logout, effectiveTenantId, effectiveTenantName, availableTenants, setEffectiveTenantId, refreshUser } = useAuth()
+  const { user, loading, login, logout, effectiveTenantId, effectiveTenantName, availableTenants, setEffectiveTenantId, refreshUser, refreshAndGetUser } = useAuth()
   const [activeView, setActiveView] = useState<View>('entrada')
   const [mobileOpen, setMobileOpen] = useState(false)
   const { config } = useConfig()
@@ -150,7 +150,7 @@ function AppContent() {
   }
 
   // Handle navigation with permission check
-  function handleNavigate(view: View) {
+  async function handleNavigate(view: View) {
     // Admin/superadmin can always navigate
     if (user.role === 'admin' || user.role === 'superadmin') {
       setActiveView(view)
@@ -168,9 +168,15 @@ function AppContent() {
       if (canAccessConfig(user.role, user.permissions)) {
         setActiveView(view)
       } else {
-        // Si el usuario no tiene permiso, intentar refrescar la sesión primero.
-        // Quizá un admin le acaba de dar permisos y la sesión está stale.
-        refreshUser()
+        // Sesión stale: el admin puede haber acabado de dar permiso a este usuario.
+        // Llamamos a /api/auth/me directamente para leer los perms frescos y, si ahora
+        // sí tiene acceso, navegamos. Si no, mostramos el mensaje de sin-permiso.
+        const fresh = await refreshAndGetUser()
+        if (fresh && canAccessConfig(fresh.role, fresh.permissions)) {
+          setActiveView(view)
+        }
+        // Si tampoco con los perms frescos tiene acceso, no hacemos nada
+        // (el usuario verá el mensaje de "sin acceso" cuando intente navegar).
       }
       return
     }

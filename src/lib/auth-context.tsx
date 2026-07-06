@@ -30,6 +30,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<string | null>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
+  refreshAndGetUser: () => Promise<AuthUser | null>
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -42,6 +43,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => 'Not initialized',
   logout: async () => {},
   refreshUser: async () => {},
+  refreshAndGetUser: async () => null,
 })
 
 // ─── Global fetch interceptor: auto-adds x-tenant-id header ────
@@ -181,8 +183,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchUser()
   }, [fetchUser])
 
+  // Expose a variant that returns the fresh user, so callers can check
+  // updated permissions immediately after a save.
+  const refreshAndGetUser = useCallback(async (): Promise<AuthUser | null> => {
+    await fetchUser()
+    // fetchUser is async and setUser is called inside; we need to read
+    // the latest from the API directly because setUser is batched.
+    try {
+      const res = await fetch('/api/auth/me')
+      if (res.ok) {
+        const data = await res.json()
+        return data.user as AuthUser
+      }
+    } catch {}
+    return null
+  }, [])
+
   return (
-    <AuthContext.Provider value={{ user, effectiveTenantId, effectiveTenantName, availableTenants, setEffectiveTenantId, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, effectiveTenantId, effectiveTenantName, availableTenants, setEffectiveTenantId, loading, login, logout, refreshUser, refreshAndGetUser }}>
       {children}
     </AuthContext.Provider>
   )
