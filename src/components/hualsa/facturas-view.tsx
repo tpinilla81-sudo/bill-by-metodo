@@ -58,8 +58,14 @@ export function FacturasView() {
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null)
   // Toast que aparece al imprimir/guardar una factura: muestra número + cliente
   const [printNotice, setPrintNotice] = useState<string | null>(null)
+  // Modo edición de líneas (precios/cantidades) — solo en el paso de factura.
+  const [editingLineas, setEditingLineas] = useState(false)
+  const [lineasDraft, setLineasDraft] = useState<LineaFactura[]>([])
+  const [savingLineas, setSavingLineas] = useState(false)
 
   const canEditNumero = hasSubPermission(user?.role, user?.permissions, 'facturas.editarNumero')
+  // Mismo permiso para editar líneas (cambios de última hora en precios/cantidades)
+  const canEditLineas = canEditNumero
 
   const loadFacturas = useCallback(async () => {
     const res = await fetch('/api/facturas')
@@ -146,6 +152,84 @@ export function FacturasView() {
     } catch (err) {
       console.error(err)
       alert('Error inesperado')
+    }
+  }
+
+  // ===== Edición de líneas (precios/cantidades) en el último paso de factura =====
+  // El cálculo es automático al cambiar cantidad o precio: importe = cant × precio,
+  // base = Σ importes, ivaImp = base × iva%, total = base + ivaImp.
+  function startEditLineas() {
+    if (!invoiceData) return
+    // Copia profunda de las líneas para editar sin tocar el original hasta guardar
+    setLineasDraft(invoiceData.lineas.map(l => ({ ...l })))
+    setEditingLineas(true)
+  }
+
+  function cancelEditLineas() {
+    setEditingLineas(false)
+    setLineasDraft([])
+  }
+
+  // Recalcular totales a partir de un array de líneas
+  function recalcular(lineas: LineaFactura[], iva: number) {
+    let base = 0
+    for (const l of lineas) {
+      const p = l.precioUnitario > 0 ? l.precioUnitario : 0
+      base += p * (Number(l.cant) || 0)
+    }
+    const ivaImp = base * (iva / 100)
+    const total = base + ivaImp
+    return { base, ivaImp, total }
+  }
+
+  function updateLinea(idx: number, field: 'cant' | 'precioUnitario', value: string) {
+    setLineasDraft(prev => {
+      const next = prev.map((l, i) => {
+        if (i !== idx) return l
+        if (field === 'cant') {
+          // entero o decimal positivo
+          const n = parseFloat(value.replace(',', '.'))
+          return { ...l, cant: isNaN(n) || n < 0 ? 0 : n }
+        } else {
+          const n = parseFloat(value.replace(',', '.'))
+          return { ...l, precioUnitario: isNaN(n) || n < 0 ? 0 : n }
+        }
+      })
+      return next
+    })
+  }
+
+  async function saveLineas() {
+    if (!selected || !invoiceData) return
+    setSavingLineas(true)
+    try {
+      const { base, ivaImp, total } = recalcular(lineasDraft, invoiceData.iva)
+      const res = await fetch(`/api/facturas/${selected.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lineas: JSON.stringify(lineasDraft),
+          base,
+          ivaImp,
+          total,
+        })
+      })
+      if (!res.ok) {
+        alert('Error guardando líneas')
+        setSavingLineas(false)
+        return
+      }
+      // Actualizar estado local
+      setFacturas(prev => prev.map(f => f.id === selected.id ? { ...f, lineas: JSON.stringify(lineasDraft), base, ivaImp, total } : f))
+      setSelected(prev => prev ? { ...prev, lineas: JSON.stringify(lineasDraft), base, ivaImp, total } : prev)
+      setInvoiceData(prev => prev ? { ...prev, lineas: lineasDraft.map(l => ({ ...l })), base, ivaImp, total } : prev)
+      setEditingLineas(false)
+      setLineasDraft([])
+    } catch (err) {
+      console.error(err)
+      alert('Error inesperado')
+    } finally {
+      setSavingLineas(false)
     }
   }
 
@@ -268,13 +352,14 @@ export function FacturasView() {
   .meta-bar .num { font-weight: 700; color: #000; }
   .meta-bar .fecha { color: #333; }
 
-  /* ====== TABLA DE LÍNEAS ====== */
-  table.lines { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 9pt; }
-  table.lines thead th { background: #f0f0f0; color: #333; padding: 6px 6px; text-align: left; font-size: 8.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #bbb; white-space: nowrap; }
+  /* ====== TABLA DE LÍNEAS ======
+     table-layout: fixed + width columns → el contenido no se reparte libremente.
+     Cada celda lleva white-space:nowrap para NO partir en 2 líneas. */
+  table.lines { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 9.5pt; table-layout: fixed; }
+  table.lines thead th { background: #f0f0f0; color: #1a1a1a; padding: 7px 6px; text-align: left; font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   table.lines thead th:nth-child(3), table.lines thead th:nth-child(4), table.lines thead th:nth-child(5) { text-align: right; }
-  table.lines tbody td { padding: 5px 6px; border: 1px solid #bbb; font-size: 9pt; color: #000; vertical-align: top; }
-  table.lines tbody td:nth-child(1) { white-space: nowrap; }
-  table.lines tbody td:nth-child(3), table.lines tbody td:nth-child(4), table.lines tbody td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.lines tbody td { padding: 5px 6px; border: 1px solid #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.lines tbody td:nth-child(3), table.lines tbody td:nth-child(4), table.lines tbody td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; }
 
   /* ====== TOTALES ====== */
   .totals-wrap { display: flex; justify-content: flex-end; margin-bottom: 14px; }
@@ -525,7 +610,7 @@ export function FacturasView() {
       </div>
 
       {/* Detail Modal */}
-      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) { setSelected(null); setInvoiceData(null); setEditingNumero(false) } }}>
+      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) { setSelected(null); setInvoiceData(null); setEditingNumero(false); setEditingLineas(false); setLineasDraft([]) } }}>
         <DialogContent className="max-w-[900px] max-h-[95vh] overflow-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -581,7 +666,35 @@ export function FacturasView() {
             </div>
           )}
 
-          {invoiceData && <InvoicePreview data={invoiceData} catalogo={catalogo} config={config} />}
+          {invoiceData && (
+            <InvoicePreview
+              data={invoiceData}
+              catalogo={catalogo}
+              config={config}
+              editing={editingLineas}
+              lineasDraft={lineasDraft}
+              onUpdateLinea={updateLinea}
+            />
+          )}
+
+          {/* Botones de edición de líneas — solo si tiene permiso facturas.editarNumero */}
+          {invoiceData && canEditLineas && !editingLineas && (
+            <div className="mt-2 flex justify-center">
+              <Button variant="outline" size="sm" onClick={startEditLineas} className="text-blue-700 border-blue-300 hover:bg-blue-50">
+                <Edit3 className="h-3.5 w-3.5 mr-1" /> Editar precios / cantidades
+              </Button>
+            </div>
+          )}
+          {editingLineas && (
+            <div className="mt-2 flex justify-center gap-2">
+              <Button size="sm" onClick={saveLineas} disabled={savingLineas} className="bg-green-600 hover:bg-green-700 text-white">
+                <Save className="h-3.5 w-3.5 mr-1" /> {savingLineas ? 'Guardando…' : 'Guardar cambios'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={cancelEditLineas} disabled={savingLineas}>
+                Cancelar
+              </Button>
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-3 justify-end mt-4">
             {selected && (user?.role === 'admin' || user?.role === 'superadmin') && (
@@ -608,10 +721,13 @@ export function FacturasView() {
   )
 }
 
-function InvoicePreview({ data, catalogo, config }: {
+function InvoicePreview({ data, catalogo, config, editing, lineasDraft, onUpdateLinea }: {
   data: InvoiceData
   catalogo: CatalogoItem[]
   config: ResolvedConfig | null
+  editing?: boolean
+  lineasDraft?: LineaFactura[]
+  onUpdateLinea?: (idx: number, field: 'cant' | 'precioUnitario', value: string) => void
 }) {
   const L = config?.labelsFacturas || DEFAULT_LABELS_FACTURAS
   const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total } = data
@@ -624,51 +740,96 @@ function InvoicePreview({ data, catalogo, config }: {
     return it ? Number(it.final) || 0 : 0
   }
 
+  // En modo edición: las líneas visibles son el draft; los totales se recalculan.
+  const visibleLineas = editing && lineasDraft ? lineasDraft : lineas
+  let calcBase = 0
+  for (const r of visibleLineas) {
+    const p = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+    calcBase += p * (Number(r.cant) || 0)
+  }
+  const calcIvaImp = editing ? calcBase * (iva / 100) : ivaImp
+  const calcTotal = editing ? calcBase + calcIvaImp : total
+  const showBase = editing ? calcBase : base
+
   return (
     <div className="font-[family-name:var(--font-geist-sans)] text-black text-[11pt] leading-[1.35]">
+      {/* ===== CABECERA (empresa + logo a la izquierda, cliente a la derecha) ===== */}
       <div className="flex justify-between items-start gap-4 mb-4">
-        <div className="text-[10.5pt] leading-[1.4]">
-          <h2 className="text-[14pt] font-extrabold text-black mb-1">{config?.companyFullName || 'EMPRESA'}</h2>
-          {config?.companyAddress && <>{config.companyAddress}<br /></>}
-          {config?.companyCity && <>{config.companyCity}</>}
-          {config?.companyProvince && <> {config.companyProvince}</>}
-          {(config?.companyCity || config?.companyProvince) && <br />}
-          {config?.companyCif && <><b>CIF:</b> {config.companyCif}<br /></>}
-          <div className="mt-2 border border-black p-2 text-[10.5pt] w-fit">
-            <b>{L.numero}:</b> {numero || '(en blanco)'}<br />
-            <b>{L.fecha}:</b> {fmtDate(fechaFact)}
+        <div className="flex-1 min-w-0">
+          {config?.logo ? (
+            <div className="mb-2">
+              <img src={config.logo.startsWith('data:') ? config.logo : `data:image/png;base64,${config.logo}`} alt="Logo" style={{ maxWidth: '220px', maxHeight: '60px', height: 'auto', objectFit: 'contain' }} />
+            </div>
+          ) : null}
+          <h2 className="text-[14pt] font-bold text-black mb-1 leading-tight">{config?.companyFullName || config?.companyName || 'EMPRESA'}</h2>
+          <div className="text-[9.5pt] text-gray-700 leading-[1.4]">
+            {config?.companyAddress && <>{config.companyAddress}<br /></>}
+            {(config?.companyCity || config?.companyProvince) && <>{config?.companyCity}{config?.companyProvince ? ' ' + config.companyProvince : ''}<br /></>}
+            {config?.companyCif && <><b>CIF:</b> {config.companyCif}</>}
           </div>
         </div>
-        {config?.logo ? (
-          <img src={config.logo.startsWith('data:') ? config.logo : `data:image/png;base64,${config.logo}`} alt="Logo" style={{ maxWidth: '230px', height: 'auto', objectFit: 'contain' }} />
-        ) : null}
+        {/* Caja datos del cliente (derecha) */}
+        <div className="border border-gray-500 p-3 text-[9.5pt] leading-[1.5] bg-white min-w-[220px] max-w-[260px]">
+          <div className="text-[8pt] font-bold text-gray-600 uppercase tracking-wide mb-1 pb-1 border-b border-gray-300">Datos del cliente</div>
+          <b>{cli.nombre}</b><br />
+          {cli.cif && <><b>NIF:</b> {cli.cif}<br /></>}
+          {cli.dir && <>{cli.dir}<br /></>}
+          {(cli.cp || cli.ciudad || cli.prov) && <>{cli.cp ? cli.cp + ' ' : ''}{cli.ciudad}{cli.prov ? ' (' + cli.prov + ')' : ''}</>}
+        </div>
       </div>
-      <div className="border border-black p-3 mb-4 text-[11pt] bg-gray-50">
-        <b>{L.cliente}:</b> {cli.nombre}<br />
-        {cli.cif && <><b>CIF:</b> {cli.cif}<br /></>}
-        {cli.dir}{cli.dir && <br />}
-        {cli.cp} {cli.ciudad} {cli.prov}
+
+      {/* ===== BANDA Nº FACTURA + FECHA ===== */}
+      <div className="flex justify-between items-center mb-4 px-3 py-2 bg-gray-100 border border-gray-300 text-[10pt]">
+        <span className="font-bold text-black">Nº FACTURA: {numero || '(en blanco)'}</span>
+        <span className="text-gray-700"><b>{L.fecha}:</b> {fmtDate(fechaFact)}</span>
       </div>
-      <table className="w-full border-collapse text-[10.5pt] mb-3">
+
+      {/* ===== TABLA DE LÍNEAS ===== */}
+      <table className="w-full border-collapse text-[10.5pt] mb-3 table-fixed">
         <thead>
           <tr>
             <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[90px]">{L.fecha}</th>
             <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt]">{L.concepto}</th>
-            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[60px]">{L.cantidad}</th>
+            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[70px]">{L.cantidad}</th>
             <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[110px]">{L.precioUnitario}</th>
             <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[110px]">{L.importe}</th>
           </tr>
         </thead>
         <tbody>
-          {lineas.map((r, i) => {
+          {visibleLineas.map((r, i) => {
             const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+            const importe = pu * (Number(r.cant) || 0)
             return (
               <tr key={i}>
-                <td className="p-2 border border-gray-400">{fechaLbl(r.fecha)}</td>
-                <td className="p-2 border border-gray-400">{r.c1}{r.c2 ? ' - ' + r.c2 : ''}{r.obs ? ` (${r.obs})` : ''}</td>
-                <td className="p-2 border border-gray-400 text-right">{r.cant}</td>
-                <td className="p-2 border border-gray-400 text-right">{pu.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-                <td className="p-2 border border-gray-400 text-right">{(pu * r.cant).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+                <td className="p-2 border border-gray-400 whitespace-nowrap overflow-hidden text-ellipsis">{fechaLbl(r.fecha)}</td>
+                <td className="p-2 border border-gray-400 whitespace-nowrap overflow-hidden text-ellipsis">{r.c1}{r.c2 ? ' - ' + r.c2 : ''}{r.obs ? ` (${r.obs})` : ''}</td>
+                <td className="p-1 border border-gray-400 text-right">
+                  {editing ? (
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={String(r.cant)}
+                      onChange={(e) => onUpdateLinea?.(i, 'cant', e.target.value)}
+                      className="w-full text-right border border-blue-400 rounded px-1 py-0.5 text-[10pt] focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    />
+                  ) : (
+                    <span>{r.cant}</span>
+                  )}
+                </td>
+                <td className="p-1 border border-gray-400 text-right">
+                  {editing ? (
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={pu.toLocaleString('es-ES', { minimumFractionDigits: 2, useGrouping: false })}
+                      onChange={(e) => onUpdateLinea?.(i, 'precioUnitario', e.target.value)}
+                      className="w-full text-right border border-blue-400 rounded px-1 py-0.5 text-[10pt] focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    />
+                  ) : (
+                    <span>{pu.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</span>
+                  )}
+                </td>
+                <td className="p-2 border border-gray-400 text-right tabular-nums">{importe.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
               </tr>
             )
           })}
@@ -678,18 +839,23 @@ function InvoicePreview({ data, catalogo, config }: {
         <tbody>
           <tr>
             <td className="p-2 border border-black bg-gray-200 font-bold text-right min-w-[160px]">{L.baseImponible}</td>
-            <td className="p-2 border border-black text-right min-w-[140px]">{fmtCurrency(base)}</td>
+            <td className="p-2 border border-black text-right min-w-[140px] tabular-nums">{fmtCurrency(showBase)}</td>
           </tr>
           <tr>
             <td className="p-2 border border-black bg-gray-200 font-bold text-right">IVA {iva}%</td>
-            <td className="p-2 border border-black text-right">{fmtCurrency(ivaImp)}</td>
+            <td className="p-2 border border-black text-right tabular-nums">{fmtCurrency(calcIvaImp)}</td>
           </tr>
           <tr className="bg-[#2bb24c] text-white font-extrabold text-[12pt]">
             <td className="p-2 border border-black text-right">{L.totalFactura}</td>
-            <td className="p-2 border border-black text-right">{fmtCurrency(total)}</td>
+            <td className="p-2 border border-black text-right tabular-nums">{fmtCurrency(calcTotal)}</td>
           </tr>
         </tbody>
       </table>
+      {editing && (
+        <div className="mt-2 text-[10pt] text-blue-700 italic text-center">
+          Editando precios/cantidades — los totales se recalculan automáticamente al cambiar un valor.
+        </div>
+      )}
     </div>
   )
 }

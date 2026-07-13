@@ -36,6 +36,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (typeof body.clienteId === 'string') allowed.clienteId = body.clienteId
     if (typeof body.clienteNombre === 'string') allowed.clienteNombre = body.clienteNombre
     if (typeof body.impresa === 'boolean') allowed.impresa = body.impresa
+    // Edición de líneas (precios/cantidades) en el último paso de factura.
+    // Recibe lineas (JSON string) + totales recalculados en el frontend.
+    if (typeof body.lineas === 'string') allowed.lineas = body.lineas
+    if (typeof body.base === 'number' && isFinite(body.base)) allowed.base = body.base
+    if (typeof body.ivaImp === 'number' && isFinite(body.ivaImp)) allowed.ivaImp = body.ivaImp
+    if (typeof body.total === 'number' && isFinite(body.total)) allowed.total = body.total
 
     const existing = await db.factura.findFirst({ where: { id, tenantId: tid } })
     if (!existing) return NextResponse.json({ error: 'No encontrada' }, { status: 404 })
