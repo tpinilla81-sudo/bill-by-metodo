@@ -329,106 +329,89 @@ export function FacturasView() {
   @page { size: A4 portrait; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { background: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  body { font-family: Arial, 'Helvetica', sans-serif; color: #000; font-size: 10pt; line-height: 1.4; padding: 18mm 14mm; }
-  .page { width: 100%; max-width: 182mm; margin: 0 auto; }
+  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 10.5pt; line-height: 1.35; padding: 22mm 14mm; }
+  .page { width: 100%; max-width: 210mm; }
 
   /* ====== CABECERA ====== */
-  /* Izquierda: logo + datos empresa. Derecha: caja de datos del cliente. */
-  .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
-  .header-left { flex: 1; min-width: 0; }
-  .logo-block { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  .logo-block img { max-height: 50px; max-width: 220px; object-fit: contain; }
-  .company-name { font-size: 14pt; font-weight: 700; color: #000; line-height: 1.2; }
-  .company-detail { font-size: 9pt; color: #333; line-height: 1.45; }
-  .company-detail b { color: #000; }
+  /* Izquierda: nombre empresa + datos + caja nº factura/fecha. Derecha: logo grande. */
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; padding-bottom: 16px; border-bottom: 3px solid #2bb24c; }
+  .company-info { flex: 1; min-width: 0; }
+  .company-name { font-size: 17pt; font-weight: 800; color: #1a1a1a; margin-bottom: 4px; }
+  .company-detail { font-size: 9.5pt; color: #444; line-height: 1.45; }
+  .company-detail b { color: #1a1a1a; }
+  .logo-area { margin-left: 20px; flex-shrink: 0; }
+  .logo-area img { max-width: 320px; max-height: 140px; object-fit: contain; }
+  .factura-badge { display: inline-block; margin-top: 10px; padding: 6px 14px; border: 2px solid #1a1a1a; background: #f5f5f5; font-size: 10.5pt; line-height: 1.5; }
+  .factura-badge b { font-size: 10.5pt; }
 
-  /* Caja datos del cliente (derecha) */
-  .client-box { border: 1px solid #999; padding: 8px 12px; background: #fff; font-size: 9pt; line-height: 1.5; min-width: 200px; max-width: 230px; }
-  .client-box .label { font-size: 8pt; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #ddd; }
-  .client-box b { color: #000; }
-
-  /* ====== BANDA Nº FACTURA + FECHA ====== */
-  .meta-bar { display: flex; justify-content: space-between; align-items: center; margin: 6px 0 14px 0; padding: 8px 12px; background: #f0f0f0; border: 1px solid #ccc; font-size: 10pt; }
-  .meta-bar .num { font-weight: 700; color: #000; }
-  .meta-bar .fecha { color: #333; }
+  /* ====== CLIENTE ====== */
+  .client-label { font-size: 8.5pt; text-transform: uppercase; color: #888; letter-spacing: 1px; margin-bottom: 4px; }
+  .client-box { border: 2px solid #1a1a1a; padding: 12px 16px; margin-bottom: 22px; background: #f9f9f9; font-size: 10.5pt; line-height: 1.55; }
+  .client-box b { color: #1a1a1a; }
 
   /* ====== TABLA DE LÍNEAS ======
      table-layout: fixed + width columns → el contenido no se reparte libremente.
      Cada celda lleva white-space:nowrap para NO partir en 2 líneas. */
-  table.lines { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 9.5pt; table-layout: fixed; }
+  table.lines { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 9.5pt; table-layout: fixed; }
   table.lines thead th { background: #f0f0f0; color: #1a1a1a; padding: 7px 6px; text-align: left; font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   table.lines thead th:nth-child(3), table.lines thead th:nth-child(4), table.lines thead th:nth-child(5) { text-align: right; }
   table.lines tbody td { padding: 5px 6px; border: 1px solid #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   table.lines tbody td:nth-child(3), table.lines tbody td:nth-child(4), table.lines tbody td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; }
 
   /* ====== TOTALES ====== */
-  .totals-wrap { display: flex; justify-content: flex-end; margin-bottom: 14px; }
-  table.totals { border-collapse: collapse; font-size: 9.5pt; min-width: 280px; }
-  table.totals td { padding: 6px 12px; border: 1px solid #999; }
-  table.totals .label { background: #f0f0f0; font-weight: 700; text-align: right; color: #000; }
-  table.totals .value { text-align: right; min-width: 110px; font-variant-numeric: tabular-nums; color: #000; }
-  table.totals .total-row { background: #006633; color: #fff; font-weight: 700; font-size: 11pt; }
-  table.totals .total-row td { border-color: #006633; color: #fff; }
+  .totals { margin-left: auto; border-collapse: collapse; font-size: 10.5pt; }
+  .totals td { padding: 7px 12px; border: 1px solid #1a1a1a; }
+  .totals .label { background: #e8e8e8; font-weight: 700; text-align: right; min-width: 160px; }
+  .totals .value { text-align: right; min-width: 130px; font-variant-numeric: tabular-nums; }
+  .totals .total-row { background: #2bb24c; color: #fff; font-weight: 800; font-size: 12pt; }
+  .totals .total-row td { border-color: #2bb24c; }
 
   /* ====== PIE ====== */
-  .footer { margin-top: 28px; padding-top: 8px; border-top: 1px solid #ccc; font-size: 8pt; color: #666; text-align: center; }
+  .footer { margin-top: 36px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 8.5pt; color: #999; text-align: center; }
 </style>
 </head>
 <body>
 <div class="page">
-
-  <!-- ===== CABECERA ===== -->
   <div class="header">
-    <div class="header-left">
-      ${logoSrc ? '<div class="logo-block"><img src="' + logoSrc + '" alt="Logo"></div>' : ''}
-      <div class="company-name">${cfg?.companyFullName || cfg?.companyName || 'EMPRESA'}</div>
+    <div class="company-info">
+      <div class="company-name">${cfg?.companyFullName || 'EMPRESA'}</div>
       <div class="company-detail">
         ${cfg?.companyAddress ? cfg.companyAddress + '<br>' : ''}
-        ${(cfg?.companyCity || cfg?.companyProvince) ? (cfg.companyCity || '') + (cfg.companyProvince ? ' ' + cfg.companyProvince : '') + '<br>' : ''}
+        ${cfg?.companyCity ? cfg.companyCity : ''}${cfg?.companyProvince ? ' ' + cfg.companyProvince : ''}${(cfg?.companyCity || cfg?.companyProvince) ? '<br>' : ''}
         ${cfg?.companyCif ? '<b>CIF:</b> ' + cfg.companyCif : ''}
       </div>
+      <div class="factura-badge">
+        <b>${LL.numero}:</b> ${numero || '(en blanco)'}<br>
+        <b>${LL.fecha}:</b> ${fmtDate(fechaFact)}
+      </div>
     </div>
-    <div class="client-box">
-      <div class="label">DATOS DEL CLIENTE</div>
-      <b>${cli.nombre || ''}</b><br>
-      ${cli.cif ? '<b>NIF:</b> ' + cli.cif + '<br>' : ''}
-      ${cli.dir ? cli.dir + '<br>' : ''}
-      ${(cli.cp || cli.ciudad || cli.prov) ? (cli.cp ? cli.cp + ' ' : '') + (cli.ciudad || '') + (cli.prov ? ' (' + cli.prov + ')' : '') : ''}
-    </div>
+    ${logoSrc ? '<div class="logo-area"><img src="' + logoSrc + '" alt="Logo"></div>' : ''}
   </div>
-
-  <!-- ===== BANDA Nº FACTURA + FECHA ===== -->
-  <div class="meta-bar">
-    <span class="num">Nº FACTURA: ${numero || '(en blanco)'}</span>
-    <span class="fecha"><b>${LL.fecha}:</b> ${fmtDate(fechaFact)}</span>
+  <div class="client-label">DATOS DEL CLIENTE</div>
+  <div class="client-box">
+    <b>${LL.cliente}:</b> ${cli.nombre}<br>
+    ${cli.cif ? '<b>CIF:</b> ' + cli.cif + '<br>' : ''}
+    ${cli.dir ? cli.dir + '<br>' : ''}
+    ${cli.cp || cli.ciudad || cli.prov ? (cli.cp ? cli.cp + ' ' : '') + (cli.ciudad || '') + (cli.prov ? ' (' + cli.prov + ')' : '') : ''}
   </div>
-
-  <!-- ===== TABLA DE LÍNEAS ===== -->
   <table class="lines">
     <thead>
       <tr>
         <th style="width:70px;">${LL.fecha}</th>
         <th>${LL.concepto}</th>
-        <th style="width:55px;">${LL.cantidad}</th>
-        <th style="width:90px;">${LL.precioUnitario}</th>
+        <th style="width:50px;">${LL.cantidad}</th>
+        <th style="width:85px;">${LL.precioUnitario}</th>
         <th style="width:95px;">${LL.importe}</th>
       </tr>
     </thead>
     <tbody>${lineasHtml}</tbody>
   </table>
-
-  <!-- ===== TOTALES ===== -->
-  <div class="totals-wrap">
-    <table class="totals">
-      <tr><td class="label">${LL.baseImponible}</td><td class="value">${fmtCurrency(base)}</td></tr>
-      <tr><td class="label">IVA ${iva}%</td><td class="value">${fmtCurrency(ivaImp)}</td></tr>
-      <tr class="total-row"><td>${LL.totalFactura}</td><td>${fmtCurrency(total)}</td></tr>
-    </table>
-  </div>
-
-  <!-- ===== PIE ===== -->
+  <table class="totals">
+    <tr><td class="label">${LL.baseImponible}</td><td class="value">${fmtCurrency(base)}</td></tr>
+    <tr><td class="label">IVA ${iva}%</td><td class="value">${fmtCurrency(ivaImp)}</td></tr>
+    <tr class="total-row"><td>${LL.totalFactura}</td><td>${fmtCurrency(total)}</td></tr>
+  </table>
   <div class="footer">${cfg?.companyFullName || 'EMPRESA'} &mdash; ${cfg?.companyAddress || ''} ${cfg?.companyCity || ''}</div>
-
 </div>
 <script>
   window.onload = function() {
@@ -753,35 +736,29 @@ function InvoicePreview({ data, catalogo, config, editing, lineasDraft, onUpdate
 
   return (
     <div className="font-[family-name:var(--font-geist-sans)] text-black text-[11pt] leading-[1.35]">
-      {/* ===== CABECERA (empresa + logo a la izquierda, cliente a la derecha) ===== */}
+      {/* ===== CABECERA (empresa a la izquierda, logo a la derecha) ===== */}
       <div className="flex justify-between items-start gap-4 mb-4">
-        <div className="flex-1 min-w-0">
-          {config?.logo ? (
-            <div className="mb-2">
-              <img src={config.logo.startsWith('data:') ? config.logo : `data:image/png;base64,${config.logo}`} alt="Logo" style={{ maxWidth: '220px', maxHeight: '60px', height: 'auto', objectFit: 'contain' }} />
-            </div>
-          ) : null}
-          <h2 className="text-[14pt] font-bold text-black mb-1 leading-tight">{config?.companyFullName || config?.companyName || 'EMPRESA'}</h2>
-          <div className="text-[9.5pt] text-gray-700 leading-[1.4]">
-            {config?.companyAddress && <>{config.companyAddress}<br /></>}
-            {(config?.companyCity || config?.companyProvince) && <>{config?.companyCity}{config?.companyProvince ? ' ' + config.companyProvince : ''}<br /></>}
-            {config?.companyCif && <><b>CIF:</b> {config.companyCif}</>}
+        <div className="text-[10.5pt] leading-[1.4]">
+          <h2 className="text-[14pt] font-extrabold text-black mb-1">{config?.companyFullName || 'EMPRESA'}</h2>
+          {config?.companyAddress && <>{config.companyAddress}<br /></>}
+          {config?.companyCity && <>{config.companyCity}</>}
+          {config?.companyProvince && <> {config.companyProvince}</>}
+          {(config?.companyCity || config?.companyProvince) && <br />}
+          {config?.companyCif && <><b>CIF:</b> {config.companyCif}<br /></>}
+          <div className="mt-2 border border-black p-2 text-[10.5pt] w-fit">
+            <b>{L.numero}:</b> {numero || '(en blanco)'}<br />
+            <b>{L.fecha}:</b> {fmtDate(fechaFact)}
           </div>
         </div>
-        {/* Caja datos del cliente (derecha) */}
-        <div className="border border-gray-500 p-3 text-[9.5pt] leading-[1.5] bg-white min-w-[220px] max-w-[260px]">
-          <div className="text-[8pt] font-bold text-gray-600 uppercase tracking-wide mb-1 pb-1 border-b border-gray-300">Datos del cliente</div>
-          <b>{cli.nombre}</b><br />
-          {cli.cif && <><b>NIF:</b> {cli.cif}<br /></>}
-          {cli.dir && <>{cli.dir}<br /></>}
-          {(cli.cp || cli.ciudad || cli.prov) && <>{cli.cp ? cli.cp + ' ' : ''}{cli.ciudad}{cli.prov ? ' (' + cli.prov + ')' : ''}</>}
-        </div>
+        {config?.logo ? (
+          <img src={config.logo.startsWith('data:') ? config.logo : `data:image/png;base64,${config.logo}`} alt="Logo" style={{ maxWidth: '320px', maxHeight: '140px', height: 'auto', objectFit: 'contain' }} />
+        ) : null}
       </div>
-
-      {/* ===== BANDA Nº FACTURA + FECHA ===== */}
-      <div className="flex justify-between items-center mb-4 px-3 py-2 bg-gray-100 border border-gray-300 text-[10pt]">
-        <span className="font-bold text-black">Nº FACTURA: {numero || '(en blanco)'}</span>
-        <span className="text-gray-700"><b>{L.fecha}:</b> {fmtDate(fechaFact)}</span>
+      <div className="border border-black p-3 mb-4 text-[11pt] bg-gray-50">
+        <b>{L.cliente}:</b> {cli.nombre}<br />
+        {cli.cif && <><b>CIF:</b> {cli.cif}<br /></>}
+        {cli.dir}{cli.dir && <br />}
+        {cli.cp} {cli.ciudad} {cli.prov}
       </div>
 
       {/* ===== TABLA DE LÍNEAS ===== */}
