@@ -8,7 +8,13 @@ export async function GET(req: Request) {
     if (typeof tid !== 'string') return tid
 
     const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, orderBy: [{ c1: 'asc' }, { c2: 'asc' }] })
-    return NextResponse.json(catalogo)
+    // Cabeceras anti-caché: el catálogo puede cambiar entre pestañas y la entrada
+    // debe ver los items recién creados sin necesidad de recargar la página.
+    const res = NextResponse.json(catalogo)
+    res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+    res.headers.set('Pragma', 'no-cache')
+    res.headers.set('Expires', '0')
+    return res
   } catch (err) {
     console.error('Catalogo GET error:', err)
     return NextResponse.json({ error: 'Error cargando catálogo' }, { status: 500 })

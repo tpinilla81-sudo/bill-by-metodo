@@ -24,8 +24,12 @@ function useEntradaData() {
 
   const loadData = useCallback(async () => {
     setLoading(true)
+    // cache: 'no-store' para que el navegador NO use la respuesta cacheada y
+    // siempre pida el catálogo actualizado al servidor (ítems nuevos, edits, etc.)
     const [rRes, cRes, catRes] = await Promise.all([
-      fetch('/api/registros?filter=entrada'), fetch('/api/clientes'), fetch('/api/catalogo')
+      fetch('/api/registros?filter=entrada', { cache: 'no-store' }),
+      fetch('/api/clientes', { cache: 'no-store' }),
+      fetch('/api/catalogo', { cache: 'no-store' })
     ])
     setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json() })
     setLoading(false)
@@ -152,6 +156,27 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   useEffect(() => { loadData() }, [loadData])
+
+  // Refrescar datos cuando la pestaña recupera el foco.
+  // Así, si el usuario añade un item en Catálogo y vuelve a Entrada, lo verá sin
+  // tener que recargar la página. Igual patrón que en facturas-view.
+  useEffect(() => {
+    function onVisibility() {
+      if (document.visibilityState === 'visible') {
+        loadData()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    // Refresco periódico cada 30s por si otro usuario añade items al catálogo
+    // desde otra sesión (multi-tenant: dentro del mismo tenant).
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') loadData()
+    }, 30 * 1000)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      clearInterval(interval)
+    }
+  }, [loadData])
 
   const { clientes } = data
 
