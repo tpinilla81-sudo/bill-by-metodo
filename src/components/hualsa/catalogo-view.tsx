@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Pencil, Trash2, Save, RotateCcw, Filter, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, ChevronDown, Settings2, BookOpen } from 'lucide-react'
+import { Pencil, Trash2, Save, RotateCcw, Filter, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, ChevronDown, Settings2, BookOpen, Merge } from 'lucide-react'
 import { fmtCurrency, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_CATALOGO, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
@@ -15,6 +15,79 @@ import { triggerBackup } from '@/lib/trigger-backup'
 interface CatalogoViewData {
   catalogo: CatalogoItem[]
   clientes: Cliente[]
+}
+
+// ─── ComboInput: input con autocompletado a partir de sugerencias ───
+// Igual patrón que en entrada-view.tsx. Permite escribir un valor nuevo o
+// elegir uno ya existente. Así evitamos "VIAJE NAVE" vs "VIAJE  NAVE" vs
+// "Viaje Nave" que causan duplicados no detectados.
+function ComboInput({
+  value,
+  onChange,
+  suggestions,
+  placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  suggestions: string[]
+  placeholder?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(-1)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  const filtered = value
+    ? suggestions.filter(s => s.toLowerCase().includes(value.toLowerCase()))
+    : suggestions
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) { setOpen(false) }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!open || filtered.length === 0) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(h => Math.min(h + 1, filtered.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => Math.max(h - 1, 0)) }
+    else if (e.key === 'Enter' && highlight >= 0) { e.preventDefault(); onChange(filtered[highlight]); setOpen(false); setHighlight(-1) }
+    else if (e.key === 'Escape') { setOpen(false) }
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <Input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); setHighlight(-1) }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className="h-9 text-sm"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[200px] overflow-auto">
+          {filtered.map((s, i) => (
+            <button
+              key={s}
+              type="button"
+              className={`w-full text-left px-3 py-2 text-sm transition-colors ${i === highlight ? 'bg-[#005bb5] text-white' : 'hover:bg-gray-50'} ${s.toLowerCase() === value.toLowerCase() ? 'font-bold' : ''}`}
+              onMouseDown={e => { e.preventDefault(); onChange(s); setOpen(false) }}
+              onMouseEnter={() => setHighlight(i)}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Normaliza una cadena para comparar (trim + colapsar espacios + lowercase)
+function normStr(s: string): string {
+  return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
 }
 
 export function CatalogoView() {
@@ -58,8 +131,20 @@ export function CatalogoView() {
 
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
+  // Unify modal
+  const [unifyModalOpen, setUnifyModalOpen] = useState(false)
+  const [unifying, setUnifying] = useState(false)
+  const [unifyResult, setUnifyResult] = useState<{ totalBefore: number; totalAfter: number; duplicatesRemoved: number } | null>(null)
+
+  // Duplicate detection on form
+  const [dupWarning, setDupWarning] = useState<CatalogoItem | null>(null)
+  const [checkingDup, setCheckingDup] = useState(false)
+
   const loadData = useCallback(async () => {
-    const [catRes, cRes] = await Promise.all([fetch('/api/catalogo'), fetch('/api/clientes')])
+    const [catRes, cRes] = await Promise.all([
+      fetch('/api/catalogo', { cache: 'no-store' }),
+      fetch('/api/clientes', { cache: 'no-store' })
+    ])
     setData({ catalogo: await catRes.json(), clientes: await cRes.json() })
   }, [])
 
@@ -76,25 +161,90 @@ export function CatalogoView() {
     return (c * (1 + i / 100)).toFixed(2)
   }, [coste, inc])
 
+  // Sugerencias para autocompletado C1 y C2 (valores únicos ya existentes)
+  const c1Suggestions = useMemo(() => {
+    return [...new Set(data.catalogo.map(x => x.c1))].sort((a, b) => a.localeCompare(b, 'es'))
+  }, [data.catalogo])
+
+  const c2Suggestions = useMemo(() => {
+    // Si ya hay un C1 seleccionado, sugerir C2s que existan para ese C1 (case-insensitive)
+    if (c1) {
+      const c1n = normStr(c1)
+      return [...new Set(
+        data.catalogo.filter(x => normStr(x.c1) === c1n).map(x => x.c2)
+      )].sort((a, b) => a.localeCompare(b, 'es'))
+    }
+    return [...new Set(data.catalogo.map(x => x.c2))].sort((a, b) => a.localeCompare(b, 'es'))
+  }, [data.catalogo, c1])
+
   function showStatus(type: 'ok' | 'err', text: string) {
     setStatusMsg({ type, text }); setTimeout(() => setStatusMsg(null), 4000)
   }
 
   function resetForm() {
     setEditingId(null); setClienteId(''); setC1(''); setC2(''); setCoste(''); setInc('0'); setFinalVal(''); setCustomValues({})
+    setDupWarning(null)
   }
 
   function setCustomValue(key: string, value: string) {
     setCustomValues(prev => ({ ...prev, [key]: value }))
   }
 
+  // Comprobación en vivo de duplicado mientras se rellena el form
+  useEffect(() => {
+    if (!c1 || !c2) { setDupWarning(null); return }
+    setCheckingDup(true)
+    const effCli = (clienteId === '__none__' || !clienteId) ? '' : clienteId
+    // Búsqueda local inmediata (sin esperar al servidor) para feedback rápido
+    const c1n = normStr(c1)
+    const c2n = normStr(c2)
+    const clin = normStr(effCli)
+    const found = data.catalogo.find(x =>
+      normStr(x.c1) === c1n &&
+      normStr(x.c2) === c2n &&
+      normStr(x.clienteId || '') === clin &&
+      x.id !== editingId
+    )
+    setDupWarning(found || null)
+    setCheckingDup(false)
+  }, [c1, c2, clienteId, editingId, data.catalogo])
+
   async function handleSave() {
     if (!c1 || !c2) { showStatus('err', 'Grupo (C1) y Servicio (C2) son obligatorios'); return }
+    // Normalizar antes de guardar (trim + colapsar espacios dobles)
+    const c1Norm = String(c1).trim().replace(/\s+/g, ' ')
+    const c2Norm = String(c2).trim().replace(/\s+/g, ' ')
     const finalPrice = finalVal || computedFinal
     const effectiveClienteId = (clienteId === '__none__' || !clienteId) ? '' : clienteId
     const customDataStr = serializeCustomData(customValues)
-    const body = { clienteId: effectiveClienteId, c1, c2, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(finalPrice) || 0, customData: customDataStr }
-    if (editingId) {
+    const body = { clienteId: effectiveClienteId, c1: c1Norm, c2: c2Norm, coste: Number(coste) || 0, inc: Number(inc) || 0, final: Number(finalPrice) || 0, customData: customDataStr }
+
+    // Detección de duplicado: si existe otro item con misma combinación (case-insensitive,
+    // trim, colapsar espacios), preguntar al usuario antes de sobrescribir.
+    if (dupWarning) {
+      const cliName = dupWarning.clienteId
+        ? (data.clientes.find(c => c.id === dupWarning.clienteId)?.nombre || '?')
+        : '— General —'
+      const ok = confirm(
+        `Ya existe un artículo con:\n` +
+        `  Grupo: ${dupWarning.c1}\n` +
+        `  Servicio: ${dupWarning.c2}\n` +
+        `  Cliente: ${cliName}\n` +
+        `  Precio actual: ${fmtCurrency(dupWarning.final)}\n\n` +
+        `¿Quieres SOBREESCRIBIRLO con los nuevos datos (${fmtCurrency(Number(finalPrice) || 0)})?`
+      )
+      if (!ok) {
+        showStatus('err', 'Operación cancelada — ya existe ese artículo')
+        return
+      }
+      // Sobrescribir el duplicado existente en vez de crear uno nuevo
+      await fetch('/api/catalogo', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: dupWarning.id, ...body })
+      })
+      showStatus('ok', 'Artículo existente sobrescrito ✓')
+    } else if (editingId) {
       await fetch('/api/catalogo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...body }) })
       showStatus('ok', 'Artículo actualizado ✓')
     } else {
@@ -102,6 +252,33 @@ export function CatalogoView() {
       showStatus('ok', 'Artículo guardado ✓')
     }
     resetForm(); triggerBackup(); loadData()
+  }
+
+  // Unificar catálogo: fusiona duplicados (case-insensitive + trimmed)
+  async function handleUnify() {
+    if (!confirm(
+      '¿Unificar el catálogo?\n\n' +
+      'Se fusionarán los artículos duplicados (mismo cliente + grupo + servicio, ' +
+      'ignorando mayúsculas y espacios extra).\n\n' +
+      'De cada grupo de duplicados se quedará el PRIMERO que se creó y se borrarán ' +
+      'el resto. Los espacios extra en C1/C2 se normalizarán.\n\n' +
+      'Recomendado: haz un backup antes.'
+    )) return
+    setUnifying(true)
+    setUnifyResult(null)
+    try {
+      const res = await fetch('/api/catalogo/unify', { method: 'POST' })
+      if (!res.ok) { alert('Error unificando catálogo'); setUnifying(false); return }
+      const r = await res.json()
+      setUnifyResult({ totalBefore: r.totalBefore, totalAfter: r.totalAfter, duplicatesRemoved: r.duplicatesRemoved })
+      showStatus('ok', `Unificado: ${r.duplicatesRemoved} duplicados eliminados`)
+      triggerBackup(); loadData()
+    } catch (err) {
+      console.error(err)
+      alert('Error inesperado')
+    } finally {
+      setUnifying(false)
+    }
   }
 
   function handleEdit(x: CatalogoItem) {
@@ -255,6 +432,13 @@ export function CatalogoView() {
           <button onClick={() => setShowExcelTools(!showExcelTools)} className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${showExcelTools ? 'bg-blue-50 text-[#005bb5] border-blue-200' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-blue-50 hover:text-[#005bb5]'}`}>
             <FileSpreadsheet className="h-3 w-3" /> Transferir tabla
           </button>
+          <button
+            onClick={() => setUnifyModalOpen(true)}
+            className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100 transition-colors"
+            title="Fusionar artículos duplicados (mismo cliente + grupo + servicio, ignorando mayúsculas y espacios extra)"
+          >
+            <Merge className="h-3 w-3" /> Unificar
+          </button>
         </div>
 
         {/* Form — always visible */}
@@ -270,8 +454,18 @@ export function CatalogoView() {
                   </Select>
                 </div>
               )}
-              {isVisible('c1') && <div><Label className="text-xs uppercase font-bold text-slate-500">Grupo ({getLabel('c1')})</Label><Input value={c1} onChange={e => setC1(e.target.value)} /></div>}
-              {isVisible('c2') && <div><Label className="text-xs uppercase font-bold text-slate-500">Servicio ({getLabel('c2')})</Label><Input value={c2} onChange={e => setC2(e.target.value)} /></div>}
+              {isVisible('c1') && (
+                <div>
+                  <Label className="text-xs uppercase font-bold text-slate-500">Grupo ({getLabel('c1')})</Label>
+                  <ComboInput value={c1} onChange={v => setC1(v)} suggestions={c1Suggestions} placeholder="Escribe o elige..." />
+                </div>
+              )}
+              {isVisible('c2') && (
+                <div>
+                  <Label className="text-xs uppercase font-bold text-slate-500">Servicio ({getLabel('c2')})</Label>
+                  <ComboInput value={c2} onChange={v => setC2(v)} suggestions={c2Suggestions} placeholder="Escribe o elige..." />
+                </div>
+              )}
               {isVisible('coste') && <div><Label className="text-xs uppercase font-bold text-slate-500">{getLabel('coste')} ({config?.currency || '€'})</Label><Input type="number" step="0.01" value={coste} onChange={e => { setCoste(e.target.value); setFinalVal('') }} /></div>}
               {isVisible('incremento') && <div><Label className="text-xs uppercase font-bold text-slate-500">{getLabel('incremento')} %</Label><Input type="number" step="0.01" value={inc} onChange={e => { setInc(e.target.value); setFinalVal('') }} /></div>}
               {isVisible('precioCliente') && <div><Label className="text-xs uppercase font-bold text-slate-500">Precio Final</Label><Input type="number" step="0.01" value={finalVal || computedFinal} readOnly className="bg-gray-50" /></div>}
@@ -283,6 +477,16 @@ export function CatalogoView() {
             {visibleFields.some(f => f.isCustom) && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
                 {visibleFields.filter(f => f.isCustom).map(renderCustomFieldInput)}
+              </div>
+            )}
+            {/* Aviso de duplicado detectado en vivo */}
+            {dupWarning && (
+              <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-800 text-xs">
+                <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <b>Ya existe un artículo con ese Grupo + Servicio + Cliente.</b><br />
+                  Precio actual: <b>{fmtCurrency(dupWarning.final)}</b>. Al pulsar GUARDAR te preguntará si quieres <b>sobrescribirlo</b>.
+                </div>
               </div>
             )}
           </CardContent>
@@ -382,6 +586,69 @@ export function CatalogoView() {
             <Button variant="outline" onClick={() => setImportModalOpen(false)} className="flex-1 h-12 rounded-xl">Cancelar</Button>
             <Button onClick={handleImportConfirm} className="flex-1 h-12 rounded-xl bg-[#2bb24c] hover:bg-[#23963e] text-white font-bold" disabled={importing || importPreview.filter(r => r.c1 && r.c2).length === 0}>{importing ? <span className="animate-pulse">Importando...</span> : <>IMPORTAR {importPreview.filter(r => r.c1 && r.c2).length} FILAS</>}</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Unify Modal ─── */}
+      <Dialog open={unifyModalOpen} onOpenChange={setUnifyModalOpen}>
+        <DialogContent className="max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Merge className="h-5 w-5 text-orange-500" /> Unificar catálogo
+            </DialogTitle>
+          </DialogHeader>
+          {!unifyResult ? (
+            <>
+              <div className="text-sm text-gray-700 space-y-3">
+                <p>Vas a fusionar los artículos duplicados. Se consideran duplicados los que tienen:</p>
+                <ul className="list-disc pl-5 space-y-1 text-xs">
+                  <li>Mismo <b>Cliente</b> (o ambos generales)</li>
+                  <li>Mismo <b>Grupo (C1)</b> — ignorando mayúsculas y espacios extra</li>
+                  <li>Mismo <b>Servicio (C2)</b> — ignorando mayúsculas y espacios extra</li>
+                </ul>
+                <p className="text-xs text-gray-600">
+                  De cada grupo de duplicados se quedará el <b>PRIMERO que se creó</b> y se borrarán el resto.
+                  Los espacios extra en C1/C2 también se normalizarán en los artículos que sobrevivan.
+                </p>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                  <b>Recomendado:</b> haz un <b>backup</b> antes de unificar, por si necesitas revertir.
+                </div>
+              </div>
+              <div className="flex gap-3 mt-4">
+                <Button variant="outline" onClick={() => setUnifyModalOpen(false)} className="flex-1">Cancelar</Button>
+                <Button onClick={handleUnify} disabled={unifying} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white">
+                  {unifying ? <span className="animate-pulse">Unificando…</span> : <><Merge className="h-4 w-4 mr-1" /> Unificar ahora</>}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-sm text-gray-700 space-y-3">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                  <CheckCircle className="h-10 w-10 text-green-500 mx-auto mb-2" />
+                  <p className="font-bold text-green-800">Catálogo unificado ✓</p>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-gray-50 rounded-lg p-2">
+                    <div className="text-[10px] text-gray-500 uppercase">Antes</div>
+                    <div className="text-xl font-bold">{unifyResult.totalBefore}</div>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-2">
+                    <div className="text-[10px] text-red-500 uppercase">Eliminados</div>
+                    <div className="text-xl font-bold text-red-600">{unifyResult.duplicatesRemoved}</div>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-2">
+                    <div className="text-[10px] text-green-500 uppercase">Ahora</div>
+                    <div className="text-xl font-bold text-green-700">{unifyResult.totalAfter}</div>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 text-center">
+                  Se ha creado un backup automático antes de la unificación.
+                </p>
+              </div>
+              <Button onClick={() => { setUnifyModalOpen(false); setUnifyResult(null) }} className="w-full mt-4">Cerrar</Button>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

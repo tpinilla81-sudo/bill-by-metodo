@@ -236,6 +236,12 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   }, [transferMode, transferTime, userCanTransfer])
 
   // Cascading filters based on catalog + selections
+  // Normalizamos C1/C2 (trim + colapsar espacios + lowercase) para que
+  // "Viaje Nave" en el catálogo coincida con "VIAJE  NAVE" escrito en entrada.
+  function normStr(s: string): string {
+    return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
+  }
+
   // C1 options: if client field is visible and a client is selected, filter by client
   // If client field is hidden, show ALL (auto-detect will resolve later)
   const c1Options = [...new Set(
@@ -244,19 +250,24 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       .map(x => x.c1)
   )].sort()
 
-  // C2 options filtered by selected client + C1
-  const c2Options = [...new Set(
-    data.catalogo
-      .filter(x => (!clienteVisible || !clienteId || !x.clienteId || x.clienteId === clienteId) && (!c1 || x.c1 === c1))
-      .map(x => x.c2)
-  )].sort()
+  // C2 options filtered by selected client + C1 (normalizado para evitar mismatch por espacios/mayús)
+  const c1n = normStr(c1)
+  const c2Options = c1
+    ? [...new Set(
+        data.catalogo
+          .filter(x => (!clienteVisible || !clienteId || !x.clienteId || x.clienteId === clienteId) && normStr(x.c1) === c1n)
+          .map(x => x.c2)
+      )].sort()
+    : [...new Set(data.catalogo.map(x => x.c2))].sort()
 
   const allC2Options = [...new Set(data.catalogo.map(x => x.c2))].sort()
 
   // Auto-detect client from catalog when field is hidden and c1+c2 are selected
   const detectedCliente = useMemo(() => {
     if (clienteVisible || clienteId || !c1 || !c2) return null
-    const item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2 && x.clienteId)
+    const c1n2 = normStr(c1)
+    const c2n2 = normStr(c2)
+    const item = data.catalogo.find(x => normStr(x.c1) === c1n2 && normStr(x.c2) === c2n2 && x.clienteId)
     if (!item) return null
     const cli = data.clientes.find(c => c.id === item.clienteId)
     return cli ? { id: cli.id, nombre: cli.nombre } : null
@@ -265,14 +276,15 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   // Auto-price: works with or without client selected
   const autoPrice = useMemo(() => {
     if (!c1 || !c2) return null
+    const c1n2 = normStr(c1)
+    const c2n2 = normStr(c2)
     if (clienteId) {
-      let item = data.catalogo.find(x => x.clienteId === clienteId && x.c1 === c1 && x.c2 === c2)
-      if (!item) item = data.catalogo.find(x => !x.clienteId && x.c1 === c1 && x.c2 === c2)
-      if (!item) item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
+      let item = data.catalogo.find(x => x.clienteId === clienteId && normStr(x.c1) === c1n2 && normStr(x.c2) === c2n2)
+      if (!item) item = data.catalogo.find(x => !x.clienteId && normStr(x.c1) === c1n2 && normStr(x.c2) === c2n2)
+      if (!item) item = data.catalogo.find(x => normStr(x.c1) === c1n2 && normStr(x.c2) === c2n2)
       return item ? Number(item.final) || 0 : null
     } else {
-      let item = data.catalogo.find(x => x.c1 === c1 && x.c2 === c2)
-      if (!item) item = data.catalogo.find(x => x.c1.toLowerCase() === c1.toLowerCase() && x.c2.toLowerCase() === c2.toLowerCase())
+      const item = data.catalogo.find(x => normStr(x.c1) === c1n2 && normStr(x.c2) === c2n2)
       return item ? Number(item.final) || 0 : null
     }
   }, [data.catalogo, clienteId, c1, c2])
