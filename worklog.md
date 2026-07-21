@@ -704,3 +704,49 @@ Stage Summary:
   de mayúsculas/espacios.
 - Unificar catálogo: ya NO destructivo. Solo normaliza C1/C2 y lista duplicados.
 - Recuperación: restaurar último backup automático para recuperar catálogos borrados.
+
+---
+Task ID: 22
+Agent: Main Agent
+Task: "creo qeu tambien tendras qeu reparar esto en facturas, reparalo en todo, cuidado con borrar registros"
+
+Tras arreglar el filtro de Registros, el usuario pide aplicar el mismo fix a
+facturas y a TODO el sistema. Importante: NO borrar nada.
+
+Cambios aplicados (solo comparación, ninguna operación destructiva):
+
+1. prefactura-view.tsx:
+   - allC1Options: ahora viene de registros (no del catálogo normalizado)
+   - c2OptionsFiltered: ahora viene de registros filtrados por C1 normalizado
+   - filtered: comparación normalizada para fC1s y fC2s
+   - precioUnit (3 funciones: vista, PDF, Excel): comparación normalizada
+   - Esto arregla: el filtro de prefactura no mostraba nada si el catálogo
+     había sido normalizado y los registros mantenían variantes
+
+2. facturas-view.tsx:
+   - 3 funciones precioUnit (PDF, Excel, InvoicePreview) ahora usan
+     comparación normalizada
+   - Esto arregla: facturas mostrando importe 0 cuando el registro tenía
+     "viaje  nave" pero el catálogo ahora tenía "Viaje Nave"
+
+3. catalogo-view.tsx:
+   - Filtro fC1 ahora usa normStr() para comparar
+   - c1FilterOptions envuelto en useMemo
+
+4. entrada-view.tsx:
+   - Ya estaba normalizado en commit anterior (sin cambios)
+
+Build OK. Commit 33b4236. Push a GitHub → Vercel redeploy automático.
+
+Verificación de seguridad:
+- No se ha tocado ninguna operación deleteMany ni delete
+- No se ha modificado ninguna ruta API destructiva
+- Solo se han cambiado comparaciones === por normStr(a) === normStr(b)
+- El botón "Unificar" del catálogo sigue siendo NO destructivo (commit anterior)
+
+Stage Summary:
+- Filtro y precioUnit ahora usan comparación normalizada en TODAS las vistas:
+  Entrada, Registros, Catálogo, Pre-Factura y Facturas
+- Ya no importa si el catálogo se normalizó y los registros mantienen variantes
+  de mayúsculas/espacios: todo se resuelve correctamente
+- Cero operaciones destructivas: nada se borra
