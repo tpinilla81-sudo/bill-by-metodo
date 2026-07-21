@@ -93,9 +93,10 @@ export function RegistrosView() {
   }
 
   function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
-    let it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
-    if (!it) it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && !x.clienteId)
-    if (!it) it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val)
+    const a = normStr(c1Val), b = normStr(c2Val)
+    let it = catalogo.find(x => normStr(x.c1) === a && normStr(x.c2) === b && x.clienteId === cliId)
+    if (!it) it = catalogo.find(x => normStr(x.c1) === a && normStr(x.c2) === b && !x.clienteId)
+    if (!it) it = catalogo.find(x => normStr(x.c1) === a && normStr(x.c2) === b)
     return it ? Number(it.final) || 0 : 0
   }
 
@@ -104,15 +105,36 @@ export function RegistrosView() {
     return r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
   }
 
-  const c1FilterOptions = [...new Set(catalogo.map(x => x.c1))].sort()
-  const c2FilterOptions = useMemo(() => [...new Set(catalogo.filter(x => !fC1 || fC1 === '__all__' || x.c1 === fC1).map(x => x.c2))].sort(), [catalogo, fC1])
+  // Normaliza para comparar C1/C2 ignorando mayúsculas y espacios extra.
+  // Necesario porque los registros pueden tener "viaje  nave" y el catálogo
+  // "Viaje Nave", o viceversa — deben coincidir en filtros y autodetección.
+  function normStr(s: string): string {
+    return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
+  }
+
+  // Las opciones del filtro vienen de los PROPIOS registros (no del catálogo).
+  // Así aunque el catálogo se haya unificado/normalizado, el filtro sigue
+  // mostrando los valores que realmente existen en los registros.
+  const c1FilterOptions = useMemo(
+    () => [...new Set(registros.map(r => r.c1).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
+    [registros]
+  )
+  const c2FilterOptions = useMemo(() => {
+    // Si hay C1 seleccionado, filtrar C2 por coincidencia normalizada con ese C1
+    if (fC1 && fC1 !== '__all__') {
+      const c1n = normStr(fC1)
+      return [...new Set(registros.filter(r => normStr(r.c1) === c1n).map(r => r.c2).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'))
+    }
+    return [...new Set(registros.map(r => r.c2).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'))
+  }, [registros, fC1])
 
   const filtered = registros.filter(r => {
     if (fDesde && r.fecha < fDesde) return false
     if (fHasta && r.fecha > fHasta) return false
     if (fCliente && fCliente !== '__all__' && r.clienteId !== fCliente) return false
-    if (fC1 && fC1 !== '__all__' && r.c1 !== fC1) return false
-    if (fC2 && fC2 !== '__all__' && r.c2 !== fC2) return false
+    // Comparación normalizada para C1/C2: "Viaje Nave" debe coincidir con "viaje  nave"
+    if (fC1 && fC1 !== '__all__' && normStr(r.c1) !== normStr(fC1)) return false
+    if (fC2 && fC2 !== '__all__' && normStr(r.c2) !== normStr(fC2)) return false
     if (fQ) { const blob = (r.c1 + ' ' + r.c2 + ' ' + (r.obs || '') + ' ' + (r.cliente || '')).toLowerCase(); if (!blob.includes(fQ.toLowerCase())) return false }
     return true
   }).sort((a, b) => {

@@ -131,10 +131,16 @@ export function CatalogoView() {
 
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
-  // Unify modal
+  // Unify modal — NO destructivo: solo normaliza C1/C2 y lista duplicados
   const [unifyModalOpen, setUnifyModalOpen] = useState(false)
   const [unifying, setUnifying] = useState(false)
-  const [unifyResult, setUnifyResult] = useState<{ totalBefore: number; totalAfter: number; duplicatesRemoved: number } | null>(null)
+  const [unifyResult, setUnifyResult] = useState<{
+    totalItems: number
+    normalized: number
+    duplicateGroups: number
+    duplicateItems: number
+    duplicates: Array<{ c1: string; c2: string; clienteId: string; count: number; ids: string[] }>
+  } | null>(null)
 
   // Duplicate detection on form
   const [dupWarning, setDupWarning] = useState<CatalogoItem | null>(null)
@@ -254,24 +260,24 @@ export function CatalogoView() {
     resetForm(); triggerBackup(); loadData()
   }
 
-  // Unificar catálogo: fusiona duplicados (case-insensitive + trimmed)
+  // Unificar catálogo: NO destructivo. Solo normaliza C1/C2 (trim + colapsar
+  // espacios) y lista los grupos de duplicados para que el usuario decida
+  // manualmente cuáles borrar. Ya NO borra nada automáticamente.
   async function handleUnify() {
-    if (!confirm(
-      '¿Unificar el catálogo?\n\n' +
-      'Se fusionarán los artículos duplicados (mismo cliente + grupo + servicio, ' +
-      'ignorando mayúsculas y espacios extra).\n\n' +
-      'De cada grupo de duplicados se quedará el PRIMERO que se creó y se borrarán ' +
-      'el resto. Los espacios extra en C1/C2 se normalizarán.\n\n' +
-      'Recomendado: haz un backup antes.'
-    )) return
     setUnifying(true)
     setUnifyResult(null)
     try {
       const res = await fetch('/api/catalogo/unify', { method: 'POST' })
-      if (!res.ok) { alert('Error unificando catálogo'); setUnifying(false); return }
+      if (!res.ok) { alert('Error normalizando catálogo'); setUnifying(false); return }
       const r = await res.json()
-      setUnifyResult({ totalBefore: r.totalBefore, totalAfter: r.totalAfter, duplicatesRemoved: r.duplicatesRemoved })
-      showStatus('ok', `Unificado: ${r.duplicatesRemoved} duplicados eliminados`)
+      setUnifyResult({
+        totalItems: r.totalItems,
+        normalized: r.normalized,
+        duplicateGroups: r.duplicateGroups,
+        duplicateItems: r.duplicateItems,
+        duplicates: r.duplicates || [],
+      })
+      showStatus('ok', `${r.normalized} normalizados · ${r.duplicateGroups} grupos duplicados`)
       triggerBackup(); loadData()
     } catch (err) {
       console.error(err)
@@ -600,24 +606,20 @@ export function CatalogoView() {
           {!unifyResult ? (
             <>
               <div className="text-sm text-gray-700 space-y-3">
-                <p>Vas a fusionar los artículos duplicados. Se consideran duplicados los que tienen:</p>
+                <p>Esta operación es <b>NO destructiva</b>:</p>
                 <ul className="list-disc pl-5 space-y-1 text-xs">
-                  <li>Mismo <b>Cliente</b> (o ambos generales)</li>
-                  <li>Mismo <b>Grupo (C1)</b> — ignorando mayúsculas y espacios extra</li>
-                  <li>Mismo <b>Servicio (C2)</b> — ignorando mayúsculas y espacios extra</li>
+                  <li>Normaliza C1 y C2 de todos los artículos (quita espacios extra al inicio/final y colapsa dobles espacios).</li>
+                  <li><b>NO borra duplicados</b> — solo te muestra cuántos grupos de duplicados hay para que los revises manualmente.</li>
+                  <li>Así no se pierden precios distintos que tuvieran los duplicados.</li>
                 </ul>
-                <p className="text-xs text-gray-600">
-                  De cada grupo de duplicados se quedará el <b>PRIMERO que se creó</b> y se borrarán el resto.
-                  Los espacios extra en C1/C2 también se normalizarán en los artículos que sobrevivan.
-                </p>
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-                  <b>Recomendado:</b> haz un <b>backup</b> antes de unificar, por si necesitas revertir.
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-800">
+                  <b>Seguro:</b> no se elimina ningún artículo del catálogo.
                 </div>
               </div>
               <div className="flex gap-3 mt-4">
                 <Button variant="outline" onClick={() => setUnifyModalOpen(false)} className="flex-1">Cancelar</Button>
                 <Button onClick={handleUnify} disabled={unifying} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white">
-                  {unifying ? <span className="animate-pulse">Unificando…</span> : <><Merge className="h-4 w-4 mr-1" /> Unificar ahora</>}
+                  {unifying ? <span className="animate-pulse">Normalizando…</span> : <><Merge className="h-4 w-4 mr-1" /> Normalizar ahora</>}
                 </Button>
               </div>
             </>
@@ -626,24 +628,51 @@ export function CatalogoView() {
               <div className="text-sm text-gray-700 space-y-3">
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
                   <CheckCircle className="h-10 w-10 text-green-500 mx-auto mb-2" />
-                  <p className="font-bold text-green-800">Catálogo unificado ✓</p>
+                  <p className="font-bold text-green-800">Catálogo normalizado ✓</p>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="grid grid-cols-2 gap-2 text-center">
                   <div className="bg-gray-50 rounded-lg p-2">
-                    <div className="text-[10px] text-gray-500 uppercase">Antes</div>
-                    <div className="text-xl font-bold">{unifyResult.totalBefore}</div>
+                    <div className="text-[10px] text-gray-500 uppercase">Total artículos</div>
+                    <div className="text-xl font-bold">{unifyResult.totalItems}</div>
                   </div>
-                  <div className="bg-red-50 rounded-lg p-2">
-                    <div className="text-[10px] text-red-500 uppercase">Eliminados</div>
-                    <div className="text-xl font-bold text-red-600">{unifyResult.duplicatesRemoved}</div>
-                  </div>
-                  <div className="bg-green-50 rounded-lg p-2">
-                    <div className="text-[10px] text-green-500 uppercase">Ahora</div>
-                    <div className="text-xl font-bold text-green-700">{unifyResult.totalAfter}</div>
+                  <div className="bg-blue-50 rounded-lg p-2">
+                    <div className="text-[10px] text-blue-500 uppercase">Normalizados</div>
+                    <div className="text-xl font-bold text-blue-600">{unifyResult.normalized}</div>
                   </div>
                 </div>
+                {unifyResult.duplicateGroups > 0 ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs">
+                    <p className="font-bold text-amber-800 mb-1">
+                      ⚠ {unifyResult.duplicateGroups} grupos de duplicados ({unifyResult.duplicateItems} artículos)
+                    </p>
+                    <p className="text-amber-700 mb-2">Revisa manualmente estos artículos y borra los que no quieras mantener:</p>
+                    <div className="max-h-[180px] overflow-auto bg-white rounded border border-amber-200">
+                      {unifyResult.duplicates.slice(0, 30).map((d, i) => {
+                        const cliName = d.clienteId
+                          ? (data.clientes.find(c => c.id === d.clienteId)?.nombre || '?')
+                          : '— General —'
+                        return (
+                          <div key={i} className="px-2 py-1 border-b border-amber-100 last:border-b-0">
+                            <span className="font-semibold">{d.c1}</span> · <span>{d.c2}</span>
+                            <span className="text-gray-500"> · {cliName}</span>
+                            <span className="ml-2 text-amber-700 font-bold">×{d.count}</span>
+                          </div>
+                        )
+                      })}
+                      {unifyResult.duplicates.length > 30 && (
+                        <div className="px-2 py-1 text-xs text-gray-500 italic">
+                          … y {unifyResult.duplicates.length - 30} grupos más
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-800">
+                    ✓ No hay duplicados. Todos los artículos tienen combinaciones únicas de Cliente + Grupo + Servicio.
+                  </div>
+                )}
                 <p className="text-xs text-gray-500 text-center">
-                  Se ha creado un backup automático antes de la unificación.
+                  Se ha creado un backup automático.
                 </p>
               </div>
               <Button onClick={() => { setUnifyModalOpen(false); setUnifyResult(null) }} className="w-full mt-4">Cerrar</Button>
