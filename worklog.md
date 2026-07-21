@@ -654,3 +654,53 @@ Stage Summary:
 - Usuario facturacion con configuracion.empresa: ahora entra a Configuración → Empresa al primer clic aunque su sesión estuviera stale (se refresca inmediatamente y se navega).
 - PDF factura: márgenes visuales de 14mm a cada lado, sin cabeceras/pie del navegador (sin fecha/hora/about:blank). Líneas de la tabla no se parten en 2: cada celda usa white-space:nowrap.
 - Archivos modificados: src/app/page.tsx, src/lib/auth-context.tsx, src/lib/use-permissions.tsx, src/components/hualsa/facturas-view.tsx, src/components/hualsa/sidebar.tsx (build marker).
+
+---
+Task ID: 21
+Agent: Main Agent
+Task: "al hacer esto, se han borrado registros" + "no se puede filtrar en registros no detecta lo elegible"
+
+Diagnóstico:
+1. El botón "Unificar" del catálogo (commit 0cf6603) SÍ eliminó artículos del catálogo. La
+   función deleteMany borraba todos los duplicados dejando solo el primero de cada grupo. Si
+   los duplicados tenían precios distintos, se perdían.
+2. El filtro de Registros estaba roto: el dropdown C1/C2 sacaba las opciones del CATÁLOGO
+   (que se acaba de normalizar), pero los registros guardan sus propios valores C1/C2 (con
+   posibles variantes de mayúsculas/espacios). La comparación era estricta, así que un
+   registro con "viaje  nave" no coincidía con la opción del dropdown "Viaje Nave" → el
+   filtro no mostraba nada.
+
+Fix implementado:
+- registros-view.tsx:
+  * c1FilterOptions ahora se construye a partir de registros.map(r => r.c1) — los valores
+    REALES que existen en la tabla Registros
+  * c2FilterOptions ahora filtra por C1 normalizado (no estricto)
+  * El filtrado usa normStr(r.c1) !== normStr(fC1) — comparación case-insensitive y
+    colapsando espacios, así "Viaje Nave" coincide con "viaje  nave"
+  * precioUnit también compara normalizado contra el catálogo (igual que entrada-view)
+- /api/catalogo/unify/route.ts: YA NO ES DESTRUCTIVO
+  * Ya no hace deleteMany
+  * Solo normaliza C1/C2 (trim + colapsar dobles espacios) en todos los items
+  * Devuelve lista de grupos duplicados para que el usuario los revise manualmente
+  * Así no se pierden precios distintos
+- catalogo-view.tsx: modal "Unificar" ahora explica que es NO destructivo y muestra la
+  lista de grupos duplicados con su count, para que el usuario decida manualmente cuáles
+  borrar.
+- sidebar build marker: REG-FILTER-NORM · 2026-07-21a
+
+Build OK. Commit a537af8. Push a GitHub → Vercel redeploy automático.
+
+Recomendación al usuario:
+- Restaurar el último backup automático (Segmentos → SEGURIDAD → Restaurar) ANTES de que
+  se ejecutara el unify para recuperar los artículos del catálogo borrados
+- El backup automático se crea en cada cambio (con debounce 30s). El último backup antes
+  del unify debería tener todos los catálogos originales
+- Después de restaurar, NO usar el botón "Unificar" del catálogo como estaba antes — la
+  nueva versión ya es segura (solo normaliza, no borra)
+
+Stage Summary:
+- Filtro de Registros: arreglado. Las opciones salen de los propios registros y la
+  comparación es normalizada. Ya filtra bien aunque catálogo y registros tengan variantes
+  de mayúsculas/espacios.
+- Unificar catálogo: ya NO destructivo. Solo normaliza C1/C2 y lista duplicados.
+- Recuperación: restaurar último backup automático para recuperar catálogos borrados.
