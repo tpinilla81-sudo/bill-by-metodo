@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { VersionChecker } from "@/components/version-checker";
+import { BackupListeners } from "@/components/backup-listeners";
 import { readFileSync } from "fs";
 import { join } from "path";
 
@@ -147,6 +148,10 @@ export default function RootLayout({
         {/* Version checker — polls /api/version and shows a visible banner
             if a new build is detected and the silent redirect didn't fire */}
         <VersionChecker />
+        {/* Backup listeners — captures dirty flag and flushes backup on
+            pagehide / blur / visibilitychange / idle / periodic timer.
+            Prioridad: "nada se borra nunca". */}
+        <BackupListeners />
         {children}
         <Toaster />
       </body>

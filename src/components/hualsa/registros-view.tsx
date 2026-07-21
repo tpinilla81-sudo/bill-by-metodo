@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Filter, RotateCcw, FileSpreadsheet, Table2, CheckCircle2, Upload, Download, CheckCircle, AlertCircle, ChevronDown, Pencil, Trash2, Save, SquareCheck, X } from 'lucide-react'
 import { fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_REGISTROS, type FieldDef, parseCustomData } from '@/lib/config'
-import { triggerBackup } from '@/lib/trigger-backup'
+import { triggerBackup, backUpNow } from '@/lib/trigger-backup'
 
 interface RegistrosViewData {
   registros: Registro[]
@@ -285,6 +285,9 @@ export function RegistrosView() {
       const validRows = importPreview.filter(r => r.fecha && r.c1 && r.c2)
       if (validRows.length === 0) { showStatus('err', 'No hay filas válidas (requieren fecha y conceptos)'); setImporting(false); return }
 
+      // Backup automático ANTES de importar (nunca se pierde)
+      await backUpNow('antes_de', `importar_${validRows.length}_registros`)
+
       const res = await fetch('/api/registros', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -449,6 +452,8 @@ export function RegistrosView() {
 
   async function handleBulkDelete() {
     if (selectedIds.size === 0) return
+    // Backup automático ANTES de borrado masivo (nunca se pierde)
+    await backUpNow('antes_de', `borrar_${selectedIds.size}_registros`)
     setDeletingBulk(true)
     try {
       const ids = Array.from(selectedIds)

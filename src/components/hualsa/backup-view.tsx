@@ -5,11 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Download, Upload, Trash2, Database, Clock, RefreshCw, RotateCcw, Save } from 'lucide-react'
 import { useConfig } from '@/lib/config'
+import { backUpNow } from '@/lib/trigger-backup'
 
 interface SavedBackup {
   filename: string
   date: string
   type: string
+  label?: string
   url: string
 }
 
@@ -19,6 +21,8 @@ export function BackupView() {
   const [backups, setBackups] = useState<SavedBackup[]>([])
   const [loadingBackups, setLoadingBackups] = useState(true)
   const [restoring, setRestoring] = useState<string | null>(null)
+  const [labelInput, setLabelInput] = useState('')
+  const [showLabelInput, setShowLabelInput] = useState(false)
 
   const loadBackups = useCallback(async () => {
     setLoadingBackups(true)
@@ -56,7 +60,7 @@ export function BackupView() {
     }
   }
 
-  // Manual import (upload JSON file)
+  // Manual import (upload JSON file) — reemplaza todo, backup previo obligatorio
   async function handleImport() {
     const input = document.createElement('input')
     input.type = 'file'
@@ -66,6 +70,8 @@ export function BackupView() {
       if (!file) return
       if (!confirm('Esto REEMPLAZARÁ todos los datos actuales. ¿Continuar?')) return
       if (!confirm('Confirmación final: ¿seguro que quieres importar y sobrescribir?')) return
+      // Backup automático ANTES de importar (nunca se pierde)
+      await backUpNow('antes_de', 'importar_json')
       try {
         const text = await file.text()
         const data = JSON.parse(text)
@@ -82,14 +88,21 @@ export function BackupView() {
     input.click()
   }
 
-  // Create backup now (save to server)
+  // Create backup now (save to server) — PERMANENTE, con etiqueta opcional
   async function handleCreateBackup() {
+    const label = labelInput.trim()
+    if (label && label.length > 40) {
+      setStatus('La etiqueta no puede superar 40 caracteres')
+      return
+    }
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-      const res = await fetch('/api/auto-backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'manual', tz }) })
+      const res = await fetch('/api/auto-backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'manual', tz, label }) })
       const data = await res.json()
       if (data.ok) {
-        setStatus(`Backup guardado: ${data.filename}`)
+        setStatus(label ? `Backup guardado: ${label}` : `Backup guardado: ${data.filename}`)
+        setLabelInput('')
+        setShowLabelInput(false)
         loadBackups()
       } else {
         setStatus('Error: ' + (data.error || 'No se pudo crear'))
@@ -99,10 +112,12 @@ export function BackupView() {
     }
   }
 
-  // Restore a saved backup
+  // Restore a saved backup — reemplaza todo, backup previo obligatorio
   async function handleRestore(filename: string) {
     if (!confirm(`¿Restaurar desde "${filename}"? Esto REEMPLAZARÁ todos los datos actuales.`)) return
     if (!confirm('Confirmación final: ¿seguro que quieres sobrescribir los datos?')) return
+    // Backup automático ANTES de restaurar (nunca se pierde el estado actual)
+    await backUpNow('antes_de', 'restaurar_backup')
     setRestoring(filename)
     try {
       const res = await fetch('/api/auto-backup/restore', {
@@ -134,10 +149,12 @@ export function BackupView() {
     }
   }
 
-  // Wipe everything
+  // Wipe everything — backup previo obligatorio
   async function handleWipe() {
     if (!confirm('Esto BORRA TODO el sistema. ¿Continuar?')) return
     if (!confirm('Última confirmación: ¿SEGURO que quieres borrar todo definitivamente?')) return
+    // Backup automático ANTES de borrar todo (nunca se pierde)
+    await backUpNow('antes_de', 'borrar_todo')
     await fetch('/api/backup', { method: 'DELETE' })
     setStatus('Todo borrado')
   }
@@ -154,9 +171,26 @@ export function BackupView() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-3">
-            <Button onClick={handleCreateBackup} className="bg-[#2bb24c] hover:bg-[#239a3f] text-white">
-              <Save className="h-4 w-4 mr-1" /> GUARDAR COPIA
-            </Button>
+            <div className="flex flex-col gap-2 flex-1 min-w-[260px]">
+              <div className="flex gap-2">
+                <Button onClick={handleCreateBackup} className="bg-[#2bb24c] hover:bg-[#239a3f] text-white">
+                  <Save className="h-4 w-4 mr-1" /> GUARDAR COPIA
+                </Button>
+                <Button onClick={() => setShowLabelInput(!showLabelInput)} variant="outline" size="sm">
+                  {showLabelInput ? 'Quitar etiqueta' : '+ Etiqueta'}
+                </Button>
+              </div>
+              {showLabelInput && (
+                <input
+                  type="text"
+                  value={labelInput}
+                  onChange={e => setLabelInput(e.target.value)}
+                  placeholder="Ej: antes de unificar catálogo"
+                  maxLength={40}
+                  className="text-sm px-3 py-2 border rounded-md border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#2bb24c]/30"
+                />
+              )}
+            </div>
             <Button onClick={handleExport} className="bg-[#005bb5] hover:bg-[#003d7a] text-white">
               <Download className="h-4 w-4 mr-1" /> DESCARGAR JSON
             </Button>
@@ -168,7 +202,7 @@ export function BackupView() {
             </Button>
           </div>
           <p className="text-sm text-gray-500">
-            Se guarda una copia de seguridad automática con cada cambio que hagas (entradas, clientes, catálogo, facturas, configuración). Solo se guardan cambios reales — si no hay actividad, no se crean copias. Se conservan las últimas 5 copias.
+            Se guarda una copia automática cuando sales de la app (cambiar de pestaña, inactividad 5 min, cerrar navegador) y cada 30 min si hay cambios. <b>Las copias NO se borran solas</b> — se conservan todas. Solo tú puedes borrarlas manualmente.
           </p>
           {status && (
             <div className="text-sm font-bold text-green-600">{status}</div>
@@ -195,14 +229,21 @@ export function BackupView() {
           ) : (
             <div className="space-y-2 max-h-[400px] overflow-auto">
               {backups.map(b => (
-                <div key={b.filename} className="flex items-center gap-3 p-3 rounded-lg border bg-white hover:bg-gray-50 transition-colors">
-                  <Clock className="h-4 w-4 text-gray-400 shrink-0" />
+                <div key={b.filename} className={`flex items-center gap-3 p-3 rounded-lg border bg-white hover:bg-gray-50 transition-colors ${b.type === 'manual' ? 'border-blue-300 bg-blue-50/30' : ''}`}>
+                  {b.type === 'manual' ? (
+                    <span className="text-base shrink-0" title="Backup manual permanente">📌</span>
+                  ) : (
+                    <Clock className="h-4 w-4 text-gray-400 shrink-0" />
+                  )}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-semibold text-gray-700">{b.date}</p>
                       {b.type === 'manual' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 border border-blue-200">MANUAL</span>}
                       {b.type === 'cambio' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">AUTO</span>}
+                      {b.type === 'idle' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200">INACTIVIDAD</span>}
+                      {b.type === 'antes_de' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 border border-orange-200">ANTES DE</span>}
                       {b.type === 'auto' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">AUTO</span>}
+                      {b.label && <span className="text-[10px] text-gray-600 italic truncate">«{b.label}»</span>}
                     </div>
                     <p className="text-xs text-gray-400 truncate">{b.filename}</p>
                   </div>

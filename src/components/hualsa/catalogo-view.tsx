@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Pencil, Trash2, Save, RotateCcw, Filter, FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, ChevronDown, Settings2, BookOpen, Merge } from 'lucide-react'
 import { fmtCurrency, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_CATALOGO, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
-import { triggerBackup } from '@/lib/trigger-backup'
+import { triggerBackup, backUpNow } from '@/lib/trigger-backup'
 
 interface CatalogoViewData {
   catalogo: CatalogoItem[]
@@ -264,6 +264,8 @@ export function CatalogoView() {
   // espacios) y lista los grupos de duplicados para que el usuario decida
   // manualmente cuáles borrar. Ya NO borra nada automáticamente.
   async function handleUnify() {
+    // Backup automático ANTES de unificar (nunca se pierde)
+    await backUpNow('antes_de', 'unificar_catalogo')
     setUnifying(true)
     setUnifyResult(null)
     try {
@@ -361,6 +363,8 @@ export function CatalogoView() {
     try {
       const validRows = importPreview.filter(r => r.c1 && r.c2)
       if (validRows.length === 0) { showStatus('err', 'No hay filas válidas'); setImporting(false); return }
+      // Backup automático ANTES de importar (nunca se pierde)
+      await backUpNow('antes_de', `importar_${validRows.length}_catalogo`)
       const res = await fetch('/api/catalogo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batch: validRows.map(r => ({ clienteId: r.clienteId || '', c1: r.c1 || '', c2: r.c2 || '', coste: r.coste || 0, inc: r.inc || 0, final: r.final || 0 })) }) })
       if (res.ok) { const result = await res.json(); showStatus('ok', `${result.count || validRows.length} artículos importados ✓`); setImportModalOpen(false); setImportPreview([]); setImportErrors([]); triggerBackup(); loadData() }
       else { showStatus('err', 'Error importando') }
