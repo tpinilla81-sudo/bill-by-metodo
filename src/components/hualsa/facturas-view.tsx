@@ -286,9 +286,12 @@ export function FacturasView() {
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
     function pu(c1Val: string, c2Val: string, cliId: string): number {
-      let it = cat.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
-      if (!it) it = cat.find(x => x.c1 === c1Val && x.c2 === c2Val && !x.clienteId)
-      if (!it) it = cat.find(x => x.c1 === c1Val && x.c2 === c2Val)
+      // Normalizada: "Viaje Nave" en catálogo coincide con "viaje  nave" en el registro
+      const a = String(c1Val || '').trim().replace(/\s+/g, ' ').toLowerCase()
+      const b = String(c2Val || '').trim().replace(/\s+/g, ' ').toLowerCase()
+      let it = cat.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b && x.clienteId === cliId)
+      if (!it) it = cat.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b && !x.clienteId)
+      if (!it) it = cat.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b)
       return it ? Number(it.final) || 0 : 0
     }
 
@@ -437,9 +440,12 @@ export function FacturasView() {
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
     function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
-      let it = cat.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
-      if (!it) it = cat.find(x => x.c1 === c1Val && x.c2 === c2Val && !x.clienteId)
-      if (!it) it = cat.find(x => x.c1 === c1Val && x.c2 === c2Val)
+      // Normalizada: "Viaje Nave" en catálogo coincide con "viaje  nave" en el registro
+      const a = String(c1Val || '').trim().replace(/\s+/g, ' ').toLowerCase()
+      const b = String(c2Val || '').trim().replace(/\s+/g, ' ').toLowerCase()
+      let it = cat.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b && x.clienteId === cliId)
+      if (!it) it = cat.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b && !x.clienteId)
+      if (!it) it = cat.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b)
       return it ? Number(it.final) || 0 : 0
     }
 
@@ -717,9 +723,12 @@ function InvoicePreview({ data, catalogo, config, editing, lineasDraft, onUpdate
   const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
   function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
-    let it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
-    if (!it) it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && !x.clienteId)
-    if (!it) it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val)
+    // Normalizada: "Viaje Nave" en catálogo coincide con "viaje  nave" en el registro
+    const a = String(c1Val || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    const b = String(c2Val || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    let it = catalogo.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b && x.clienteId === cliId)
+    if (!it) it = catalogo.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b && !x.clienteId)
+    if (!it) it = catalogo.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b)
     return it ? Number(it.final) || 0 : 0
   }
 

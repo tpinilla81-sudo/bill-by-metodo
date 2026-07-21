@@ -86,10 +86,18 @@ export function PreFacturaView() {
 
   const { registros, clientes, catalogo } = data
 
+  // Normaliza para comparar C1/C2 ignorando mayúsculas y espacios extra.
+  // Necesario porque los registros pueden tener "viaje  nave" y el catálogo
+  // "Viaje Nave" — deben coincidir al buscar precio y al filtrar.
+  function normStr(s: string): string {
+    return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
+  }
+
   function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
-    let it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
-    if (!it) it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && !x.clienteId)
-    if (!it) it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val)
+    const a = normStr(c1Val), b = normStr(c2Val)
+    let it = catalogo.find(x => normStr(x.c1) === a && normStr(x.c2) === b && x.clienteId === cliId)
+    if (!it) it = catalogo.find(x => normStr(x.c1) === a && normStr(x.c2) === b && !x.clienteId)
+    if (!it) it = catalogo.find(x => normStr(x.c1) === a && normStr(x.c2) === b)
     return it ? Number(it.final) || 0 : 0
   }
 
@@ -97,28 +105,45 @@ export function PreFacturaView() {
     return r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
   }
 
-  const allC1Options = useMemo(() => [...new Set(catalogo.map(c => c.c1).filter(Boolean))].sort(), [catalogo])
+  // Opciones de filtro: vienen de los PROPIOS registros (no del catálogo) para que
+  // muestre los valores que realmente existen en los registros. Aunque el catálogo
+  // se haya normalizado, los registros pueden tener variantes ("viaje  nave" vs
+  // "Viaje Nave") que deben aparecer como opciones.
+  const allC1Options = useMemo(
+    () => [...new Set(registros.map(r => r.c1).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
+    [registros]
+  )
   const c2OptionsFiltered = useMemo(() => {
-    if (fC1s.length === 0) return [...new Set(catalogo.map(c => c.c2).filter(Boolean))].sort()
-    return [...new Set(catalogo.filter(c => fC1s.includes(c.c1)).map(c => c.c2).filter(Boolean))].sort()
-  }, [catalogo, fC1s])
+    if (fC1s.length === 0) {
+      return [...new Set(registros.map(r => r.c2).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'))
+    }
+    // Filtrar C2 por coincidencia normalizada con cualquiera de los C1s seleccionados
+    const c1sNorm = fC1s.map(normStr)
+    return [...new Set(
+      registros.filter(r => c1sNorm.includes(normStr(r.c1))).map(r => r.c2).filter(Boolean)
+    )].sort((a, b) => a.localeCompare(b, 'es'))
+  }, [registros, fC1s])
 
   function toggleMulti(current: string[], value: string): string[] {
     return current.includes(value) ? current.filter(v => v !== value) : [...current, value]
   }
 
-  const filtered = useMemo(() =>
-    registros.filter(r => {
+  const filtered = useMemo(() => {
+    // Pre-computar versiones normalizadas de los filtros C1/C2 para comparación rápida
+    const fC1sNorm = fC1s.map(normStr)
+    const fC2sNorm = fC2s.map(normStr)
+    return registros.filter(r => {
       if (fDesde && r.fecha < fDesde) return false
       if (fHasta && r.fecha > fHasta) return false
       if (fMes && r.fecha.slice(0, 7) !== fMes) return false
       if (fClientes.length > 0 && !fClientes.includes(r.clienteId)) return false
-      if (fC1s.length > 0 && !fC1s.includes(r.c1)) return false
-      if (fC2s.length > 0 && !fC2s.includes(r.c2)) return false
+      // Comparación normalizada: "Viaje Nave" en el filtro coincide con "viaje  nave" en el registro
+      if (fC1sNorm.length > 0 && !fC1sNorm.includes(normStr(r.c1))) return false
+      if (fC2sNorm.length > 0 && !fC2sNorm.includes(normStr(r.c2))) return false
       if (!showFacturados && r.facturado) return false
       return true
     }).sort((a, b) => a.fecha.localeCompare(b.fecha))
-  , [registros, fDesde, fHasta, fMes, fClientes, fC1s, fC2s, showFacturados])
+  }, [registros, fDesde, fHasta, fMes, fClientes, fC1s, fC2s, showFacturados])
 
   const selectedItems = filtered.filter(r => selection[r.id] !== false)
   const totalCant = selectedItems.reduce((s, r) => s + r.cant, 0)
@@ -270,9 +295,10 @@ export function PreFacturaView() {
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
     function pu(c1Val: string, c2Val: string, cliId: string): number {
-      let it = cat.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
-      if (!it) it = cat.find(x => x.c1 === c1Val && x.c2 === c2Val && !x.clienteId)
-      if (!it) it = cat.find(x => x.c1 === c1Val && x.c2 === c2Val)
+      const a = normStr(c1Val), b = normStr(c2Val)
+      let it = cat.find(x => normStr(x.c1) === a && normStr(x.c2) === b && x.clienteId === cliId)
+      if (!it) it = cat.find(x => normStr(x.c1) === a && normStr(x.c2) === b && !x.clienteId)
+      if (!it) it = cat.find(x => normStr(x.c1) === a && normStr(x.c2) === b)
       return it ? Number(it.final) || 0 : 0
     }
 
@@ -656,9 +682,12 @@ function InvoicePreview({ data, catalogo, config }: {
   const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
   function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
-    let it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
-    if (!it) it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && !x.clienteId)
-    if (!it) it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val)
+    // Normalizada: "Viaje Nave" en catálogo coincide con "viaje  nave" en el registro
+    const a = String(c1Val || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    const b = String(c2Val || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    let it = catalogo.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b && x.clienteId === cliId)
+    if (!it) it = catalogo.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b && !x.clienteId)
+    if (!it) it = catalogo.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b)
     return it ? Number(it.final) || 0 : 0
   }
 

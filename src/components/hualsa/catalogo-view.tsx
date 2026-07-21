@@ -300,12 +300,17 @@ export function CatalogoView() {
   }
 
   const { catalogo, clientes } = data
-  const c1FilterOptions = [...new Set(catalogo.map(x => x.c1))].sort()
+  const c1FilterOptions = useMemo(
+    () => [...new Set(catalogo.map(x => x.c1).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
+    [catalogo]
+  )
 
   const filtered = catalogo.filter(x => {
     if (fCli === '__gen__' && x.clienteId) return false
     if (fCli && fCli !== '__gen__' && fCli !== '__all__' && x.clienteId !== fCli) return false
-    if (fC1 && fC1 !== '__all__' && x.c1 !== fC1) return false
+    // Comparación normalizada para C1: el catálogo está normalizado, pero por si
+    // acaso quedan variantes, el filtro debe coincidir igualmente
+    if (fC1 && fC1 !== '__all__' && normStr(x.c1) !== normStr(fC1)) return false
     if (fQ && !((x.c1 + ' ' + x.c2).toLowerCase().includes(fQ.toLowerCase()))) return false
     return true
   })
