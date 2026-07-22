@@ -29,16 +29,18 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const { id } = await params
     const body = await req.json()
 
-    // only allow editing numero (and a few safe fields) per spec
+    // Edición completa de factura: número, fecha, cliente, IVA, modo, líneas, totales.
+    // No se permiten modificar campos de auditoría (tenantId, createdAt, etc.).
     const allowed: any = {}
     if (typeof body.numero === 'string') allowed.numero = body.numero
     if (typeof body.fecha === 'string' && body.fecha) allowed.fecha = body.fecha
     if (typeof body.clienteId === 'string') allowed.clienteId = body.clienteId
     if (typeof body.clienteNombre === 'string') allowed.clienteNombre = body.clienteNombre
+    if (typeof body.clienteSnap === 'string') allowed.clienteSnap = body.clienteSnap
     if (typeof body.impresa === 'boolean') allowed.impresa = body.impresa
-    // Edición de líneas (precios/cantidades) en el último paso de factura.
-    // Recibe lineas (JSON string) + totales recalculados en el frontend.
     if (typeof body.lineas === 'string') allowed.lineas = body.lineas
+    if (typeof body.iva === 'number' && isFinite(body.iva)) allowed.iva = body.iva
+    if (typeof body.modo === 'string' && body.modo) allowed.modo = body.modo
     if (typeof body.base === 'number' && isFinite(body.base)) allowed.base = body.base
     if (typeof body.ivaImp === 'number' && isFinite(body.ivaImp)) allowed.ivaImp = body.ivaImp
     if (typeof body.total === 'number' && isFinite(body.total)) allowed.total = body.total

@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { NextResponse } from 'next.server'
+import { NextResponse } from 'next/server'
 import { requireTenantId } from '@/lib/tenant-context'
 
 // POST /api/auto-backup/beacon

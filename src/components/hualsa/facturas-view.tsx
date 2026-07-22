@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Printer, FileSpreadsheet, Receipt, Search, ChevronLeft, Edit3, Save, Trash2, Eye } from 'lucide-react'
+import { Printer, FileSpreadsheet, Receipt, Search, ChevronLeft, Edit3, Save, Trash2, Eye, Plus, X } from 'lucide-react'
 import { fmtCurrency, fmtDate, fmtMonth, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_FACTURAS, type ResolvedConfig } from '@/lib/config'
 import { useAuth } from '@/lib/auth-context'
@@ -55,17 +55,22 @@ export function FacturasView() {
   const [editingNumero, setEditingNumero] = useState(false)
   const [numeroDraft, setNumeroDraft] = useState('')
   const [catalogo, setCatalogo] = useState<CatalogoItem[]>([])
+  const [clientes, setClientes] = useState<Cliente[]>([])
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null)
   // Toast que aparece al imprimir/guardar una factura: muestra número + cliente
   const [printNotice, setPrintNotice] = useState<string | null>(null)
-  // Modo edición de líneas (precios/cantidades) — solo en el paso de factura.
-  const [editingLineas, setEditingLineas] = useState(false)
+  // Modo edición completa: cliente, fecha, IVA, modo, líneas (añadir/eliminar/editar todo)
+  const [editingFull, setEditingFull] = useState(false)
   const [lineasDraft, setLineasDraft] = useState<LineaFactura[]>([])
-  const [savingLineas, setSavingLineas] = useState(false)
+  const [cliDraft, setCliDraft] = useState<Cliente | null>(null)
+  const [fechaDraft, setFechaDraft] = useState('')
+  const [ivaDraft, setIvaDraft] = useState(21)
+  const [modoDraft, setModoDraft] = useState('dia')
+  const [savingFull, setSavingFull] = useState(false)
 
   const canEditNumero = hasSubPermission(user?.role, user?.permissions, 'facturas.editarNumero')
-  // Mismo permiso para editar líneas (cambios de última hora en precios/cantidades)
-  const canEditLineas = canEditNumero
+  // Mismo permiso para edición completa de factura
+  const canEditFull = canEditNumero
 
   const loadFacturas = useCallback(async () => {
     const res = await fetch('/api/facturas')
@@ -76,6 +81,7 @@ export function FacturasView() {
   useEffect(() => {
     loadFacturas()
     fetch('/api/catalogo').then(r => r.json()).then(setCatalogo).catch(() => {})
+    fetch('/api/clientes').then(r => r.json()).then(data => setClientes(data.clientes || [])).catch(() => {})
   }, [loadFacturas])
 
   // Refrescar facturas cuando la pestaña recupera el foco.
@@ -155,22 +161,26 @@ export function FacturasView() {
     }
   }
 
-  // ===== Edición de líneas (precios/cantidades) en el último paso de factura =====
-  // El cálculo es automático al cambiar cantidad o precio: importe = cant × precio,
-  // base = Σ importes, ivaImp = base × iva%, total = base + ivaImp.
-  function startEditLineas() {
+  // ===== Edición COMPLETA de factura =====
+  // Cliente, fecha, IVA, modo + líneas (añadir, eliminar, editar todos los campos).
+  // Recalcula base/iva/total automáticamente al cambiar cant/precio/iva.
+  function startEditFull() {
     if (!invoiceData) return
-    // Copia profunda de las líneas para editar sin tocar el original hasta guardar
     setLineasDraft(invoiceData.lineas.map(l => ({ ...l })))
-    setEditingLineas(true)
+    setCliDraft({ ...invoiceData.cli })
+    setFechaDraft(invoiceData.fechaFact)
+    setIvaDraft(invoiceData.iva)
+    setModoDraft(invoiceData.modo)
+    setEditingFull(true)
   }
 
-  function cancelEditLineas() {
-    setEditingLineas(false)
+  function cancelEditFull() {
+    setEditingFull(false)
     setLineasDraft([])
+    setCliDraft(null)
   }
 
-  // Recalcular totales a partir de un array de líneas
+  // Recalcular totales a partir de líneas + IVA
   function recalcular(lineas: LineaFactura[], iva: number) {
     let base = 0
     for (const l of lineas) {
@@ -182,32 +192,61 @@ export function FacturasView() {
     return { base, ivaImp, total }
   }
 
-  function updateLinea(idx: number, field: 'cant' | 'precioUnitario', value: string) {
-    setLineasDraft(prev => {
-      const next = prev.map((l, i) => {
-        if (i !== idx) return l
-        if (field === 'cant') {
-          // entero o decimal positivo
-          const n = parseFloat(value.replace(',', '.'))
-          return { ...l, cant: isNaN(n) || n < 0 ? 0 : n }
-        } else {
-          const n = parseFloat(value.replace(',', '.'))
-          return { ...l, precioUnitario: isNaN(n) || n < 0 ? 0 : n }
-        }
-      })
-      return next
-    })
+  function updateLineaField(idx: number, field: keyof LineaFactura, value: string) {
+    setLineasDraft(prev => prev.map((l, i) => {
+      if (i !== idx) return l
+      if (field === 'cant' || field === 'precioUnitario') {
+        const n = parseFloat(value.replace(',', '.'))
+        return { ...l, [field]: isNaN(n) || n < 0 ? 0 : n }
+      }
+      return { ...l, [field]: value }
+    }))
   }
 
-  async function saveLineas() {
-    if (!selected || !invoiceData) return
-    setSavingLineas(true)
+  function addLinea() {
+    // Genera fecha por defecto = fecha de la factura o hoy
+    const hoy = new Date().toISOString().slice(0, 10)
+    setLineasDraft(prev => [...prev, {
+      fecha: fechaDraft || hoy,
+      c1: '', c2: '', cant: 1,
+      clienteId: cliDraft?.id || '',
+      obs: '', precioUnitario: 0
+    }])
+  }
+
+  function removeLinea(idx: number) {
+    setLineasDraft(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  function onClienteChange(id: string) {
+    const c = clientes.find(x => x.id === id)
+    if (c) {
+      setCliDraft({ ...c })
+      // Actualizar clienteId en todas las líneas también (para que precioUnitario busque bien)
+      setLineasDraft(prev => prev.map(l => ({ ...l, clienteId: c.id })))
+    }
+  }
+
+  async function saveFull() {
+    if (!selected || !invoiceData || !cliDraft) return
+    setSavingFull(true)
     try {
-      const { base, ivaImp, total } = recalcular(lineasDraft, invoiceData.iva)
+      const { base, ivaImp, total } = recalcular(lineasDraft, ivaDraft)
+      const clienteSnap = JSON.stringify({
+        nombre: cliDraft.nombre, cif: cliDraft.cif, dir: cliDraft.dir,
+        cp: cliDraft.cp, ciudad: cliDraft.ciudad, prov: cliDraft.prov,
+        mail: cliDraft.mail, tel: cliDraft.tel,
+      })
       const res = await fetch(`/api/facturas/${selected.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          clienteId: cliDraft.id,
+          clienteNombre: cliDraft.nombre,
+          clienteSnap,
+          fecha: fechaDraft,
+          iva: ivaDraft,
+          modo: modoDraft,
           lineas: JSON.stringify(lineasDraft),
           base,
           ivaImp,
@@ -215,21 +254,50 @@ export function FacturasView() {
         })
       })
       if (!res.ok) {
-        alert('Error guardando líneas')
-        setSavingLineas(false)
+        alert('Error guardando factura')
+        setSavingFull(false)
         return
       }
       // Actualizar estado local
-      setFacturas(prev => prev.map(f => f.id === selected.id ? { ...f, lineas: JSON.stringify(lineasDraft), base, ivaImp, total } : f))
-      setSelected(prev => prev ? { ...prev, lineas: JSON.stringify(lineasDraft), base, ivaImp, total } : prev)
-      setInvoiceData(prev => prev ? { ...prev, lineas: lineasDraft.map(l => ({ ...l })), base, ivaImp, total } : prev)
-      setEditingLineas(false)
+      setFacturas(prev => prev.map(f => f.id === selected.id ? {
+        ...f,
+        clienteId: cliDraft.id,
+        clienteNombre: cliDraft.nombre,
+        clienteSnap,
+        fecha: fechaDraft,
+        iva: ivaDraft,
+        modo: modoDraft,
+        lineas: JSON.stringify(lineasDraft),
+        base, ivaImp, total,
+      } : f))
+      setSelected(prev => prev ? {
+        ...prev,
+        clienteId: cliDraft.id,
+        clienteNombre: cliDraft.nombre,
+        clienteSnap,
+        fecha: fechaDraft,
+        iva: ivaDraft,
+        modo: modoDraft,
+        lineas: JSON.stringify(lineasDraft),
+        base, ivaImp, total,
+      } : prev)
+      setInvoiceData(prev => prev ? {
+        ...prev,
+        cli: { ...cliDraft },
+        lineas: lineasDraft.map(l => ({ ...l })),
+        fechaFact: fechaDraft,
+        iva: ivaDraft,
+        modo: modoDraft,
+        base, ivaImp, total,
+      } : prev)
+      setEditingFull(false)
       setLineasDraft([])
+      setCliDraft(null)
     } catch (err) {
       console.error(err)
       alert('Error inesperado')
     } finally {
-      setSavingLineas(false)
+      setSavingFull(false)
     }
   }
 
@@ -599,7 +667,7 @@ export function FacturasView() {
       </div>
 
       {/* Detail Modal */}
-      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) { setSelected(null); setInvoiceData(null); setEditingNumero(false); setEditingLineas(false); setLineasDraft([]) } }}>
+      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) { setSelected(null); setInvoiceData(null); setEditingNumero(false); setEditingFull(false); setLineasDraft([]); setCliDraft(null) } }}>
         <DialogContent className="max-w-[900px] max-h-[95vh] overflow-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -655,31 +723,49 @@ export function FacturasView() {
             </div>
           )}
 
-          {invoiceData && (
+          {invoiceData && !editingFull && (
             <InvoicePreview
               data={invoiceData}
               catalogo={catalogo}
               config={config}
-              editing={editingLineas}
-              lineasDraft={lineasDraft}
-              onUpdateLinea={updateLinea}
+              editing={false}
             />
           )}
 
-          {/* Botones de edición de líneas — solo si tiene permiso facturas.editarNumero */}
-          {invoiceData && canEditLineas && !editingLineas && (
+          {invoiceData && editingFull && cliDraft && (
+            <FacturaEditor
+              cliDraft={cliDraft}
+              fechaDraft={fechaDraft}
+              ivaDraft={ivaDraft}
+              modoDraft={modoDraft}
+              lineasDraft={lineasDraft}
+              clientes={clientes}
+              catalogo={catalogo}
+              config={config}
+              onClienteChange={onClienteChange}
+              onFechaChange={setFechaDraft}
+              onIvaChange={setIvaDraft}
+              onModoChange={setModoDraft}
+              onUpdateLinea={updateLineaField}
+              onAddLinea={addLinea}
+              onRemoveLinea={removeLinea}
+            />
+          )}
+
+          {/* Botón para entrar en edición completa — solo si tiene permiso */}
+          {invoiceData && canEditFull && !editingFull && (
             <div className="mt-2 flex justify-center">
-              <Button variant="outline" size="sm" onClick={startEditLineas} className="text-blue-700 border-blue-300 hover:bg-blue-50">
-                <Edit3 className="h-3.5 w-3.5 mr-1" /> Editar precios / cantidades
+              <Button variant="outline" size="sm" onClick={startEditFull} className="text-blue-700 border-blue-300 hover:bg-blue-50">
+                <Edit3 className="h-3.5 w-3.5 mr-1" /> Editar factura (cliente, fecha, líneas, IVA)
               </Button>
             </div>
           )}
-          {editingLineas && (
+          {editingFull && (
             <div className="mt-2 flex justify-center gap-2">
-              <Button size="sm" onClick={saveLineas} disabled={savingLineas} className="bg-green-600 hover:bg-green-700 text-white">
-                <Save className="h-3.5 w-3.5 mr-1" /> {savingLineas ? 'Guardando…' : 'Guardar cambios'}
+              <Button size="sm" onClick={saveFull} disabled={savingFull} className="bg-green-600 hover:bg-green-700 text-white">
+                <Save className="h-3.5 w-3.5 mr-1" /> {savingFull ? 'Guardando…' : 'Guardar cambios'}
               </Button>
-              <Button size="sm" variant="outline" onClick={cancelEditLineas} disabled={savingLineas}>
+              <Button size="sm" variant="outline" onClick={cancelEditFull} disabled={savingFull}>
                 Cancelar
               </Button>
             </div>
@@ -710,13 +796,10 @@ export function FacturasView() {
   )
 }
 
-function InvoicePreview({ data, catalogo, config, editing, lineasDraft, onUpdateLinea }: {
+function InvoicePreview({ data, catalogo, config }: {
   data: InvoiceData
   catalogo: CatalogoItem[]
   config: ResolvedConfig | null
-  editing?: boolean
-  lineasDraft?: LineaFactura[]
-  onUpdateLinea?: (idx: number, field: 'cant' | 'precioUnitario', value: string) => void
 }) {
   const L = config?.labelsFacturas || DEFAULT_LABELS_FACTURAS
   const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total } = data
@@ -732,16 +815,16 @@ function InvoicePreview({ data, catalogo, config, editing, lineasDraft, onUpdate
     return it ? Number(it.final) || 0 : 0
   }
 
-  // En modo edición: las líneas visibles son el draft; los totales se recalculan.
-  const visibleLineas = editing && lineasDraft ? lineasDraft : lineas
+  // Cálculo de totales a partir de las líneas (vista previa, no edición)
+  const visibleLineas = lineas
   let calcBase = 0
   for (const r of visibleLineas) {
     const p = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
     calcBase += p * (Number(r.cant) || 0)
   }
-  const calcIvaImp = editing ? calcBase * (iva / 100) : ivaImp
-  const calcTotal = editing ? calcBase + calcIvaImp : total
-  const showBase = editing ? calcBase : base
+  const calcIvaImp = ivaImp
+  const calcTotal = total
+  const showBase = base
 
   return (
     <div className="font-[family-name:var(--font-geist-sans)] text-black text-[11pt] leading-[1.35]">
@@ -790,30 +873,10 @@ function InvoicePreview({ data, catalogo, config, editing, lineasDraft, onUpdate
                 <td className="p-2 border border-gray-400 whitespace-nowrap overflow-hidden text-ellipsis">{fechaLbl(r.fecha)}</td>
                 <td className="p-2 border border-gray-400 whitespace-nowrap overflow-hidden text-ellipsis">{r.c1}{r.c2 ? ' - ' + r.c2 : ''}{r.obs ? ` (${r.obs})` : ''}</td>
                 <td className="p-1 border border-gray-400 text-right">
-                  {editing ? (
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={String(r.cant)}
-                      onChange={(e) => onUpdateLinea?.(i, 'cant', e.target.value)}
-                      className="w-full text-right border border-blue-400 rounded px-1 py-0.5 text-[10pt] focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    />
-                  ) : (
-                    <span>{r.cant}</span>
-                  )}
+                  <span>{r.cant}</span>
                 </td>
                 <td className="p-1 border border-gray-400 text-right">
-                  {editing ? (
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={pu.toLocaleString('es-ES', { minimumFractionDigits: 2, useGrouping: false })}
-                      onChange={(e) => onUpdateLinea?.(i, 'precioUnitario', e.target.value)}
-                      className="w-full text-right border border-blue-400 rounded px-1 py-0.5 text-[10pt] focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    />
-                  ) : (
-                    <span>{pu.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</span>
-                  )}
+                  <span>{pu.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</span>
                 </td>
                 <td className="p-2 border border-gray-400 text-right tabular-nums">{importe.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
               </tr>
@@ -837,11 +900,243 @@ function InvoicePreview({ data, catalogo, config, editing, lineasDraft, onUpdate
           </tr>
         </tbody>
       </table>
-      {editing && (
-        <div className="mt-2 text-[10pt] text-blue-700 italic text-center">
-          Editando precios/cantidades — los totales se recalculan automáticamente al cambiar un valor.
+    </div>
+  )
+}
+
+// ============================================================
+// Componente FacturaEditor — edición COMPLETA de una factura
+// Permite editar: cliente, fecha, IVA, modo y todas las líneas
+// (añadir, eliminar, modificar fecha, c1, c2, cantidad, precio, obs)
+// ============================================================
+function FacturaEditor({
+  cliDraft, fechaDraft, ivaDraft, modoDraft, lineasDraft,
+  clientes, catalogo, config,
+  onClienteChange, onFechaChange, onIvaChange, onModoChange,
+  onUpdateLinea, onAddLinea, onRemoveLinea,
+}: {
+  cliDraft: Cliente
+  fechaDraft: string
+  ivaDraft: number
+  modoDraft: string
+  lineasDraft: LineaFactura[]
+  clientes: Cliente[]
+  catalogo: CatalogoItem[]
+  config: ResolvedConfig | null
+  onClienteChange: (id: string) => void
+  onFechaChange: (v: string) => void
+  onIvaChange: (v: number) => void
+  onModoChange: (v: string) => void
+  onUpdateLinea: (idx: number, field: keyof LineaFactura, value: string) => void
+  onAddLinea: () => void
+  onRemoveLinea: (idx: number) => void
+}) {
+  const L = config?.labelsFacturas || DEFAULT_LABELS_FACTURAS
+
+  // Cálculo de totales en vivo a partir del draft
+  let base = 0
+  for (const l of lineasDraft) {
+    const p = l.precioUnitario > 0 ? l.precioUnitario : 0
+    base += p * (Number(l.cant) || 0)
+  }
+  const ivaImp = base * (ivaDraft / 100)
+  const total = base + ivaImp
+
+  // C1/C2 options por cliente desde catálogo
+  const c1Options = useMemo(() => {
+    const set = new Set<string>()
+    for (const it of catalogo) {
+      if (it.c1) set.add(it.c1)
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'))
+  }, [catalogo])
+
+  function c2OptionsFor(c1Val: string): string[] {
+    const a = String(c1Val || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    const set = new Set<string>()
+    for (const it of catalogo) {
+      const itA = String(it.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase()
+      if (itA === a && it.c2) set.add(it.c2)
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'))
+  }
+
+  return (
+    <div className="border-2 border-blue-300 rounded-lg p-4 bg-blue-50/30 space-y-4">
+      <div className="text-sm font-bold text-blue-800 flex items-center gap-2">
+        <Edit3 className="h-4 w-4" /> Editando factura — todos los campos son editables
+      </div>
+
+      {/* Cabecera: cliente, fecha, IVA, modo */}
+      <div className="grid grid-cols-2 gap-3 bg-white p-3 rounded border border-blue-200">
+        <div>
+          <Label className="text-xs uppercase font-bold text-slate-500">{L.cliente}</Label>
+          <select
+            value={cliDraft.id}
+            onChange={e => onClienteChange(e.target.value)}
+            className="w-full mt-1 border border-gray-300 rounded px-2 py-1.5 text-sm"
+          >
+            {clientes.map(c => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </select>
+          <div className="mt-1 text-[10px] text-gray-500">
+            CIF: {cliDraft.cif || '—'} · {cliDraft.dir || '—'} {cliDraft.cp} {cliDraft.ciudad} {cliDraft.prov}
+          </div>
         </div>
-      )}
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <Label className="text-xs uppercase font-bold text-slate-500">{L.fecha}</Label>
+            <Input
+              type="date"
+              value={fechaDraft ? fechaDraft.slice(0, 10) : ''}
+              onChange={e => onFechaChange(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-xs uppercase font-bold text-slate-500">IVA %</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={ivaDraft}
+              onChange={e => onIvaChange(parseFloat(e.target.value) || 0)}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-xs uppercase font-bold text-slate-500">Modo</Label>
+            <select
+              value={modoDraft}
+              onChange={e => onModoChange(e.target.value)}
+              className="w-full mt-1 border border-gray-300 rounded px-2 py-1.5 text-sm"
+            >
+              <option value="dia">Por día</option>
+              <option value="mes">Por mes</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabla de líneas editables */}
+      <div className="bg-white p-3 rounded border border-blue-200 overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="p-2 text-left border border-gray-300 w-[110px]">Fecha</th>
+              <th className="p-2 text-left border border-gray-300">Concepto (C1)</th>
+              <th className="p-2 text-left border border-gray-300 w-[140px]">Subconcepto (C2)</th>
+              <th className="p-2 text-right border border-gray-300 w-[80px]">Cant.</th>
+              <th className="p-2 text-right border border-gray-300 w-[100px]">Precio</th>
+              <th className="p-2 text-right border border-gray-300 w-[100px]">Importe</th>
+              <th className="p-2 text-center border border-gray-300 w-[40px]"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {lineasDraft.map((l, i) => {
+              const importe = (l.precioUnitario > 0 ? l.precioUnitario : 0) * (Number(l.cant) || 0)
+              return (
+                <tr key={i}>
+                  <td className="p-1 border border-gray-300">
+                    <input
+                      type="date"
+                      value={l.fecha ? l.fecha.slice(0, 10) : ''}
+                      onChange={e => onUpdateLinea(i, 'fecha', e.target.value)}
+                      className="w-full border border-gray-200 rounded px-1 py-0.5 text-[11px]"
+                    />
+                  </td>
+                  <td className="p-1 border border-gray-300">
+                    <input
+                      list={`c1-list-${i}`}
+                      value={l.c1}
+                      onChange={e => onUpdateLinea(i, 'c1', e.target.value)}
+                      className="w-full border border-gray-200 rounded px-1 py-0.5 text-[11px]"
+                      placeholder="Concepto"
+                    />
+                    <datalist id={`c1-list-${i}`}>
+                      {c1Options.map(o => <option key={o} value={o} />)}
+                    </datalist>
+                  </td>
+                  <td className="p-1 border border-gray-300">
+                    <input
+                      list={`c2-list-${i}`}
+                      value={l.c2}
+                      onChange={e => onUpdateLinea(i, 'c2', e.target.value)}
+                      className="w-full border border-gray-200 rounded px-1 py-0.5 text-[11px]"
+                      placeholder="Subconcepto"
+                    />
+                    <datalist id={`c2-list-${i}`}>
+                      {c2OptionsFor(l.c1).map(o => <option key={o} value={o} />)}
+                    </datalist>
+                  </td>
+                  <td className="p-1 border border-gray-300">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={String(l.cant)}
+                      onChange={e => onUpdateLinea(i, 'cant', e.target.value)}
+                      className="w-full text-right border border-gray-200 rounded px-1 py-0.5 text-[11px]"
+                    />
+                  </td>
+                  <td className="p-1 border border-gray-300">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={String(l.precioUnitario)}
+                      onChange={e => onUpdateLinea(i, 'precioUnitario', e.target.value)}
+                      className="w-full text-right border border-gray-200 rounded px-1 py-0.5 text-[11px]"
+                    />
+                  </td>
+                  <td className="p-1 border border-gray-300 text-right tabular-nums">
+                    {importe.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="p-1 border border-gray-300 text-center">
+                    <button
+                      onClick={() => onRemoveLinea(i)}
+                      title="Eliminar línea"
+                      className="text-red-500 hover:bg-red-50 rounded p-1"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+            {lineasDraft.length === 0 && (
+              <tr>
+                <td colSpan={7} className="p-4 text-center text-gray-400 italic">
+                  Sin líneas. Pulsa &quot;Añadir línea&quot; para crear una.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <div className="mt-2">
+          <Button size="sm" variant="outline" onClick={onAddLinea} className="text-blue-700 border-blue-300 hover:bg-blue-50">
+            <Plus className="h-3.5 w-3.5 mr-1" /> Añadir línea
+          </Button>
+        </div>
+      </div>
+
+      {/* Totales recalculados en vivo */}
+      <div className="bg-white p-3 rounded border border-blue-200 flex justify-end">
+        <table className="text-sm">
+          <tbody>
+            <tr>
+              <td className="px-3 py-1 text-right font-bold">Base imponible:</td>
+              <td className="px-3 py-1 text-right tabular-nums w-[120px]">{fmtCurrency(base)}</td>
+            </tr>
+            <tr>
+              <td className="px-3 py-1 text-right font-bold">IVA {ivaDraft}%:</td>
+              <td className="px-3 py-1 text-right tabular-nums">{fmtCurrency(ivaImp)}</td>
+            </tr>
+            <tr className="bg-green-100">
+              <td className="px-3 py-1 text-right font-extrabold">Total:</td>
+              <td className="px-3 py-1 text-right font-extrabold tabular-nums">{fmtCurrency(total)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
