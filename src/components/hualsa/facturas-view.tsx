@@ -192,14 +192,47 @@ export function FacturasView() {
     return { base, ivaImp, total }
   }
 
+  // Busca el precio en catálogo para (c1, c2, clienteId).
+  // Prioridad: catálogo específico del cliente → catálogo sin cliente → cualquier coincidencia.
+  // Devuelve null si no hay match (para no sobreescribir un precio manual).
+  function findPrecioInCatalogo(c1Val: string, c2Val: string, cliId: string): number | null {
+    const a = String(c1Val || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    const b = String(c2Val || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    if (!a || !b) return null
+    let it = catalogo.find(x =>
+      String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a &&
+      String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b &&
+      x.clienteId === cliId
+    )
+    if (!it) it = catalogo.find(x =>
+      String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a &&
+      String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b &&
+      !x.clienteId
+    )
+    if (!it) it = catalogo.find(x =>
+      String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === a &&
+      String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === b
+    )
+    return it ? Number(it.final) || 0 : null
+  }
+
   function updateLineaField(idx: number, field: keyof LineaFactura, value: string) {
     setLineasDraft(prev => prev.map((l, i) => {
       if (i !== idx) return l
+      const next: LineaFactura = { ...l }
       if (field === 'cant' || field === 'precioUnitario') {
         const n = parseFloat(value.replace(',', '.'))
-        return { ...l, [field]: isNaN(n) || n < 0 ? 0 : n }
+        next[field] = isNaN(n) || n < 0 ? 0 : n
+      } else {
+        (next as any)[field] = value
       }
-      return { ...l, [field]: value }
+      // Auto-rellenar precio desde catálogo al cambiar C1 o C2 (si hay match).
+      // Si no hay match, se mantiene el precio actual (editable manualmente).
+      if (field === 'c1' || field === 'c2') {
+        const precio = findPrecioInCatalogo(next.c1, next.c2, next.clienteId)
+        if (precio !== null) next.precioUnitario = precio
+      }
+      return next
     }))
   }
 
@@ -222,8 +255,13 @@ export function FacturasView() {
     const c = clientes.find(x => x.id === id)
     if (c) {
       setCliDraft({ ...c })
-      // Actualizar clienteId en todas las líneas también (para que precioUnitario busque bien)
-      setLineasDraft(prev => prev.map(l => ({ ...l, clienteId: c.id })))
+      // Actualizar clienteId en todas las líneas y re-buscar precios desde catálogo
+      setLineasDraft(prev => prev.map(l => {
+        const next = { ...l, clienteId: c.id }
+        const precio = findPrecioInCatalogo(next.c1, next.c2, c.id)
+        if (precio !== null) next.precioUnitario = precio
+        return next
+      }))
     }
   }
 
@@ -1092,11 +1130,12 @@ function FacturaEditor({
                   </td>
                   <td className="p-1 border border-gray-300 text-center">
                     <button
+                      type="button"
                       onClick={() => onRemoveLinea(i)}
                       title="Eliminar línea"
-                      className="text-red-500 hover:bg-red-50 rounded p-1"
+                      className="inline-flex items-center justify-center w-7 h-7 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded transition-colors"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-4 w-4" />
                     </button>
                   </td>
                 </tr>
