@@ -1,6 +1,7 @@
 'use client'
 
-import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown, CreditCard, Building2, ChevronDown, ClipboardList } from 'lucide-react'
+import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown, CreditCard, Building2, ChevronDown, ClipboardList, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useConfig } from '@/lib/config'
 import { useAuth, type TenantOption } from '@/lib/auth-context'
@@ -58,9 +59,29 @@ function parsePermissions(permissionsStr: string): string[] {
 
 export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, tenant, onLogout, effectiveTenantId, effectiveTenantName, availableTenants, onTenantChange }: SidebarProps) {
   const { config } = useConfig()
+  const [reloading, setReloading] = useState(false)
 
   const isSuperadmin = user?.role === 'superadmin'
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
+
+  // Recarga completa de la app con bypass de caché.
+  // Útil cuando se ha hecho un deploy nuevo y queremos garantizar que el
+  // navegador pide HTML/JS/CSS frescos en lugar de usar la caché (especial
+  // importante en Mac/Safari que cachea con frecuencia).
+  function handleReloadApp() {
+    setReloading(true)
+    try {
+      // Añadimos un parámetro _v con timestamp para forzar bypass de caché
+      // en la próxima carga. El servidor lo ignora (no se usa para nada).
+      const url = new URL(window.location.href)
+      url.searchParams.set('_v', String(Date.now()))
+      // Usamos replace para que no quede en el historial "atrás"
+      window.location.replace(url.toString())
+    } catch {
+      // Fallback: recarga simple si algo falla
+      window.location.reload()
+    }
+  }
 
   // Parse user permissions
   const userPermissions = parsePermissions(user?.permissions || '')
@@ -231,8 +252,17 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
 
         {/* Safe area padding for iPhone bottom bar */}
         <div className="flex-shrink-0 p-2 text-center text-[10px] text-gray-600 pb-[env(safe-area-inset-bottom,8px)]">
+          <button
+            onClick={handleReloadApp}
+            disabled={reloading}
+            title="Recargar la aplicación (última versión desplegada)"
+            className="w-full mb-2 px-3 py-2 flex items-center justify-center gap-2 text-xs font-medium text-blue-300 hover:text-blue-200 hover:bg-white/5 border border-blue-500/30 hover:border-blue-400/50 rounded transition-colors disabled:opacity-60"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${reloading ? 'animate-spin' : ''}`} />
+            {reloading ? 'Actualizando…' : 'Actualizar app'}
+          </button>
           {displayName}
-          <div className="mt-1 text-[9px] text-green-700 font-mono">build: FACT-EDIT-AUTOPRECIO · 2026-07-22</div>
+          <div className="mt-1 text-[9px] text-green-700 font-mono">build: RELOAD-BTN · 2026-07-22</div>
         </div>
       </aside>
     </>
