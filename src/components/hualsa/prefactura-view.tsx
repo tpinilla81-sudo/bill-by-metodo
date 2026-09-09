@@ -496,20 +496,39 @@ export function PreFacturaView() {
                 </div>
                 <div>
                   <Label className="text-xs uppercase font-bold text-slate-500">Mes</Label>
-                  <select
-                    value={fMes}
-                    onChange={e => setFMes(e.target.value)}
-                    className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm"
-                  >
-                    <option value="">— Todos —</option>
-                    {Array.from({ length: 12 }, (_, i) => {
-                      const d = new Date()
-                      d.setMonth(d.getMonth() - i)
-                      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-                      const label = d.toLocaleDateString('es-ES', { year: 'numeric', month: 'long' })
-                      return <option key={val} value={val}>{label}</option>
-                    })}
-                  </select>
+                  <div className="flex gap-2">
+                    <select
+                      value={fMes ? fMes.slice(0, 4) : ''}
+                      onChange={e => {
+                        const year = e.target.value
+                        const month = fMes ? fMes.slice(5, 7) : ''
+                        setFMes(year && month ? `${year}-${month}` : '')
+                      }}
+                      className="flex h-9 w-[100px] items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+                    >
+                      <option value="">Año</option>
+                      {Array.from({ length: 15 }, (_, i) => {
+                        const y = new Date().getFullYear() - 7 + i
+                        return <option key={y} value={String(y)}>{y}</option>
+                      })}
+                    </select>
+                    <select
+                      value={fMes ? fMes.slice(5, 7) : ''}
+                      onChange={e => {
+                        const month = e.target.value
+                        const year = fMes ? fMes.slice(0, 4) : ''
+                        setFMes(year && month ? `${year}-${month}` : '')
+                      }}
+                      className="flex h-9 flex-1 items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+                    >
+                      <option value="">Mes</option>
+                      {['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => (
+                        <option key={m} value={m}>
+                          {new Date(2024, parseInt(m)-1, 1).toLocaleDateString('es-ES', { month: 'long' })}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div className="relative" ref={dropdownClientesRef}>
                   <Label className="text-xs uppercase font-bold text-slate-500">Cliente{fClientes.length > 0 ? ` (${fClientes.length})` : ''}</Label>
