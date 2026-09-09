@@ -496,7 +496,20 @@ export function PreFacturaView() {
                 </div>
                 <div>
                   <Label className="text-xs uppercase font-bold text-slate-500">Mes</Label>
-                  <Input type="month" value={fMes} onChange={e => setFMes(e.target.value)} />
+                  <select
+                    value={fMes}
+                    onChange={e => setFMes(e.target.value)}
+                    className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+                  >
+                    <option value="">— Todos —</option>
+                    {Array.from({ length: 12 }, (_, i) => {
+                      const d = new Date()
+                      d.setMonth(d.getMonth() - i)
+                      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+                      const label = d.toLocaleDateString('es-ES', { year: 'numeric', month: 'long' })
+                      return <option key={val} value={val}>{label}</option>
+                    })}
+                  </select>
                 </div>
                 <div className="relative" ref={dropdownClientesRef}>
                   <Label className="text-xs uppercase font-bold text-slate-500">Cliente{fClientes.length > 0 ? ` (${fClientes.length})` : ''}</Label>
