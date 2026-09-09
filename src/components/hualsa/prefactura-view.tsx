@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -42,6 +42,11 @@ export function PreFacturaView() {
   const [openC1, setOpenC1] = useState(false)
   const [openC2, setOpenC2] = useState(false)
 
+  // Refs para detectar click-fuera de los dropdowns (funciona en Safari/Mac)
+  const dropdownClientesRef = useRef<HTMLDivElement>(null)
+  const dropdownC1Ref = useRef<HTMLDivElement>(null)
+  const dropdownC2Ref = useRef<HTMLDivElement>(null)
+
   // El número de factura se asigna después, en la pestaña FACTURAS
   // Aquí en PRE-FACTURA se genera siempre SIN número (en blanco)
   const [fFechaFact, setFFechaFact] = useState(todayISO())
@@ -70,7 +75,13 @@ export function PreFacturaView() {
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (!(e.target as HTMLElement).closest('.relative')) {
+      const target = e.target as HTMLElement
+      // Usar refs específicas en lugar de clase genérica '.relative'
+      // que falla en Safari/Mac porque .relative está en muchos sitios
+      const insideClientes = dropdownClientesRef.current?.contains(target)
+      const insideC1 = dropdownC1Ref.current?.contains(target)
+      const insideC2 = dropdownC2Ref.current?.contains(target)
+      if (!insideClientes && !insideC1 && !insideC2) {
         setOpenClientes(false); setOpenC1(false); setOpenC2(false)
       }
     }
@@ -487,7 +498,7 @@ export function PreFacturaView() {
                   <Label className="text-xs uppercase font-bold text-slate-500">Mes</Label>
                   <Input type="month" value={fMes} onChange={e => setFMes(e.target.value)} />
                 </div>
-                <div className="relative">
+                <div className="relative" ref={dropdownClientesRef}>
                   <Label className="text-xs uppercase font-bold text-slate-500">Cliente{fClientes.length > 0 ? ` (${fClientes.length})` : ''}</Label>
                   <button type="button" onClick={() => { setOpenClientes(!openClientes); setOpenC1(false); setOpenC2(false) }} className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm">
                     <span className="truncate">{fClientes.length === 0 ? '— Todos —' : clientes.filter(c => fClientes.includes(c.id)).map(c => c.nombre).join(', ')}</span>
@@ -504,7 +515,7 @@ export function PreFacturaView() {
                     </div>
                   )}
                 </div>
-                <div className="relative">
+                <div className="relative" ref={dropdownC1Ref}>
                   <Label className="text-xs uppercase font-bold text-slate-500">Concepto 1{fC1s.length > 0 ? ` (${fC1s.length})` : ''}</Label>
                   <button type="button" onClick={() => { setOpenC1(!openC1); setOpenClientes(false); setOpenC2(false) }} className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm">
                     <span className="truncate">{fC1s.length === 0 ? '— Todos —' : fC1s.join(', ')}</span>
@@ -521,7 +532,7 @@ export function PreFacturaView() {
                     </div>
                   )}
                 </div>
-                <div className="relative">
+                <div className="relative" ref={dropdownC2Ref}>
                   <Label className="text-xs uppercase font-bold text-slate-500">Concepto 2{fC2s.length > 0 ? ` (${fC2s.length})` : ''}</Label>
                   <button type="button" onClick={() => { setOpenC2(!openC2); setOpenClientes(false); setOpenC1(false) }} className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm">
                     <span className="truncate">{fC2s.length === 0 ? '— Todos —' : fC2s.join(', ')}</span>
