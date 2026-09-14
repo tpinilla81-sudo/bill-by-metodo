@@ -1170,3 +1170,69 @@ Stage Summary:
 - El editor ya no tiene dos secciones: una única lista con "+ Añadir" al final.
 - La estantería fantasma "ALMACÉN" queda explicada en la propia UI (importada) y
   se puede eliminar con la papelera sin tocar nada más.
+
+---
+Task ID: 33
+Agent: Main Agent
+Task: "UNA VEZ CREADAS LAS ESTANTERIAS, AL METER ENTRADAS NOS TIENE QUE DECIR EN AUTOMATICO EL HUECO OPTIMO PARA ESA UBICACION"
+
+Implementación (commit 397f299 · build marker STOCK-V11-HUECO-AUTO):
+
+1. NUEVA LIB COMPARTIDA src/lib/almacen.ts:
+   - Extraído de stock-almacen-view.tsx (refactor: la vista ahora importa de la
+     lib): normAlm, isEntradaPalet/isSalidaPalet, extractIdents, getUbicacion,
+     splitUbicacion, normHuecoKey, padPos, diasEnAlmacen, buildStock, buildRacks,
+     nombresHuecos, detectarEstanterias + tipos.
+   - loadAlmacenCfg()/saveAlmacenCfg(): localStorage 'stock-config-v2' con las
+     migraciones antiguas — MISMA fuente para Stock y Entrada.
+   - huecoOptimo(cfg, ocupadas, prefijo?, extraOcupadas?): primer hueco libre
+     en orden de configuración; con prefijo ("E2") → primer libre de ESA
+     estantería (reconoce alias); extraOcupadas = huecos ya asignados en la
+     misma tanda (grilla). Alias cuentan como ocupados (renombrar no libera).
+   - clavesOcupadas(registros) + clasificarUbicacion(cfg, ocupadas, valor) →
+     'libre' | 'ocupado' | 'no-config' para los avisos.
+
+2. FORMULARIO ENTRADA (entrada-view.tsx):
+   - Al elegir c2=ENTRADA PALET con UBICACIÓN vacía → se rellena solo con el
+     hueco óptimo; badge "⚡ hueco auto" + chip teal "⚡ E1-01 — primer hueco
+     libre (asignado solo)".
+   - Chips de estado: LIBRE (verde) / "ya hay stock en ese hueco" (ámbar) /
+     "Sugerido: E2-01 usar" (si escribes una estantería) / "no está en la
+     configuración" (gris) / "Almacén lleno" (rojo) / sin estanterías (gris).
+   - Si el usuario vacía el campo a mano NO se rellena (ubicClearedRef); al
+     cambiar c2 se reactiva. Tras guardar/atacar edición se resetea.
+   - loadData ahora también pide /api/registros (todos) para calcular los
+     huecos ocupados (entradas+salidas, activos+pasados).
+
+3. GRILLA MASIVA (entrada-grilla.tsx):
+   - Asignación SECUENCIAL al pasar una fila a ENTRADA PALET (o crearla):
+     E1-02, E1-04, E1-05… saltando los ocupados y los de la propia tanda
+     (prevC2Ref detecta la transición por fila; converge sin bucles).
+   - Filas nuevas/duplicadas/setRowCount de palet NO copian la ubicación de la
+     plantilla (customValuesSinUbicacion) → cada palet recibe su hueco.
+   - Botón "⚡ Huecos" en la barra: reasigna a todas las palet sin ubicación.
+   - Columna "UBICACIÓN ⚡" + celdas auto en teal + tooltip; tras guardar
+     recarga registros (el stock cambió → próximos óptimos actualizados).
+
+Verificación (agent-browser, build producción, seed local):
+- Config E1(12)+E2(8) + seed (E1-03 con 1 tras salida, E1-07, NAVE-9 fuera).
+- Form: ENTRADA PALET → E1-01 solo + chip AUTO; "E2" → Sugerido E2-01 usar;
+  "E1-03" → ámbar "ya hay stock"; vaciado manual → se respeta y muestra
+  "Hueco óptimo: E1-01 usar"; c2 cambiado y vuelto → reasigna E1-01.
+- OJO: agent-browser `fill ""` no dispara evento input real (chip no refresca)
+  — con evento input nativo funciona; NO es bug de la app.
+- Select de CLIENTE borra c1/c2 (comportamiento preexistente por catálogo).
+- Guardado: registro con customData {"custom_ubicacion":"E1-01"} ✓.
+- Grilla: 3 filas palet → E1-02/E1-04/E1-05; vaciar la del medio se respeta;
+  botón Huecos la repone con mensaje; guardado 3 registros ✓.
+- Mapa final: 6/20 huecos (E1-01..05 + E1-07), E1-06/08..12 LIBRE. KPI +6/−1.
+- Sin errores de consola ni page errors. Seed + entradas de prueba borradas
+  (0 restantes), fieldsEntrada local restaurado sin campos de prueba.
+
+Build OK (tsc: solo errores preexistentes). Commit 397f299 → push OK
+(PAT intacto en remote URL). Vercel despliega.
+
+Stage Summary:
+- El flujo queda: configuras estanterías → metes ENTRADA PALET → el sistema
+  dice/asigna el hueco óptimo solo (form y grilla), con avisos si el hueco
+  escrito está ocupado o fuera de configuración.
