@@ -7,8 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2, Layers, ChevronDown } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
+import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2, Layers, ChevronDown, Plus, Trash2 } from 'lucide-react'
 import { fmtDate, type Cliente, type Registro } from '@/lib/hualsa-utils'
 
 // Tipo minimo para el escáner QR — cargado dinamicamente para evitar
@@ -170,7 +169,12 @@ function buildStock(registros: Registro[], clientesFiltro: string[]): LoteStock[
   return lotes.filter(l => l.cantRestante > 0)
 }
 
-function buildRacks(stock: LoteStock[], known: Map<string, { rack: string; pos: string; ubicacion: string }>, refNow: number): RackStock[] {
+function buildRacks(
+  stock: LoteStock[],
+  known: Map<string, { rack: string; pos: string; ubicacion: string }>,
+  refNow: number,
+  cfg: Record<string, { cap: number; pos: number }>
+): RackStock[] {
   const porUb = new Map<string, CeldaStock>()
   for (const l of stock) {
     const key = normAlm(l.ubicacion) || '(sin ubicación)'
@@ -190,6 +194,24 @@ function buildRacks(stock: LoteStock[], known: Map<string, { rack: string; pos: 
       porUb.set(key, { ubicacion: k.ubicacion, rack: k.rack, pos: k.pos, total: 0, dias: 0, lotes: [] })
     }
   }
+  // POSICIONES DEFINIDAS EN LA CONFIGURACIÓN DEL ALMACÉN: para cada estantería
+  // con nº de posiciones, generar RACK-01..N (las vacías se ven como LIBRE).
+  // También crea estanterías que todavía no tienen ningún movimiento.
+  const racksCfg = new Set<string>()
+  for (const [rawName, c] of Object.entries(cfg)) {
+    if (!c || !c.pos || c.pos <= 0) continue
+    const rackName = rawName.trim().toUpperCase()
+    if (!rackName) continue
+    racksCfg.add(rackName)
+    for (let n = 1; n <= c.pos; n++) {
+      const posStr = String(n).padStart(2, '0')
+      const ubic = `${rackName}-${posStr}`
+      const key = normAlm(ubic)
+      if (!porUb.has(key)) {
+        porUb.set(key, { ubicacion: ubic, rack: rackName, pos: posStr, total: 0, dias: 0, lotes: [] })
+      }
+    }
+  }
   const racksMap = new Map<string, RackStock>()
   for (const c of porUb.values()) {
     let rk = racksMap.get(c.rack)
@@ -200,27 +222,30 @@ function buildRacks(stock: LoteStock[], known: Map<string, { rack: string; pos: 
     rk.total += c.total
     rk.celdas.push(c)
   }
-  // RELLENAR HUECOS NUMÉRICOS: si en un rack hay posiciones 01, 02, 05, 07,
-  // añadir 03, 04, 06 como LIBRE para que se vea el mapa completo.
+  // RELLENAR HUECOS NUMÉRICOS (solo estanterías SIN configurar): si en un rack
+  // hay posiciones 01, 02, 05, 07, añadir 03, 04, 06 como LIBRE. Las
+  // estanterías configuradas usan su layout definido tal cual.
   for (const rk of racksMap.values()) {
-    const nums = rk.celdas
-      .filter(c => /^\d{1,3}$/.test(c.pos))
-      .map(c => parseInt(c.pos, 10))
-    if (nums.length >= 2) {
-      const min = Math.min(...nums)
-      const max = Math.max(...nums)
-      const existentes = new Set(rk.celdas.map(c => c.pos))
-      for (let n = min; n <= max; n++) {
-        const posStr = String(n).padStart(2, '0')
-        if (!existentes.has(posStr) && !existentes.has(String(n))) {
-          rk.celdas.push({
-            ubicacion: `${rk.name}-${posStr}`,
-            rack: rk.name,
-            pos: posStr,
-            total: 0,
-            dias: 0,
-            lotes: [],
-          })
+    if (!racksCfg.has(rk.name)) {
+      const nums = rk.celdas
+        .filter(c => /^\d{1,3}$/.test(c.pos))
+        .map(c => parseInt(c.pos, 10))
+      if (nums.length >= 2) {
+        const min = Math.min(...nums)
+        const max = Math.max(...nums)
+        const existentes = new Set(rk.celdas.map(c => c.pos))
+        for (let n = min; n <= max; n++) {
+          const posStr = String(n).padStart(2, '0')
+          if (!existentes.has(posStr) && !existentes.has(String(n))) {
+            rk.celdas.push({
+              ubicacion: `${rk.name}-${posStr}`,
+              rack: rk.name,
+              pos: posStr,
+              total: 0,
+              dias: 0,
+              lotes: [],
+            })
+          }
         }
       }
     }
@@ -247,8 +272,6 @@ function knownUbicaciones(registros: Registro[], clientesFiltro: string[]): Map<
   return known
 }
 
-const PIE_COLORS = ['#14b8a6', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#22c55e', '#ef4444', '#6366f1', '#6b7280', '#0ea5e9']
-
 function colorPorDias(dias: number): string {
   if (dias > 60) return 'bg-red-100 border-red-400 border-b-red-500'
   if (dias > 30) return 'bg-amber-100 border-amber-400 border-b-amber-500'
@@ -274,15 +297,28 @@ export function StockAlmacenView() {
   const [query, setQuery] = useState('')
   const queryNorm = normAlm(query.trim())
 
-  // Capacidades por estantería (persistidas en localStorage)
-  const [capacidades, setCapacidades] = useState<Record<string, number>>(() => {
+  // Configuración del almacén por estantería: capacidad (max palets) +
+  // nº de posiciones (genera RACK-01..N en el dibujo, vacías = LIBRE).
+  // Persistida en localStorage; migra la antigua clave stock-capacidades.
+  const [almacenCfg, setAlmacenCfg] = useState<Record<string, { cap: number; pos: number }>>(() => {
     if (typeof window === 'undefined') return {}
-    try { return JSON.parse(localStorage.getItem('stock-capacidades') || '{}') } catch { return {} }
+    try {
+      const raw = localStorage.getItem('stock-config')
+      if (raw) return JSON.parse(raw)
+      const old = JSON.parse(localStorage.getItem('stock-capacidades') || '{}') as Record<string, number>
+      const migrated: Record<string, { cap: number; pos: number }> = {}
+      for (const [k, v] of Object.entries(old)) migrated[k] = { cap: Number(v) || 0, pos: 0 }
+      return migrated
+    } catch { return {} }
   })
   const [showCapEditor, setShowCapEditor] = useState(false)
+  // Formulario "añadir estantería"
+  const [newRackName, setNewRackName] = useState('')
+  const [newRackPos, setNewRackPos] = useState('')
+  const [newRackCap, setNewRackCap] = useState('')
   useEffect(() => {
-    try { localStorage.setItem('stock-capacidades', JSON.stringify(capacidades)) } catch { /* quota */ }
-  }, [capacidades])
+    try { localStorage.setItem('stock-config', JSON.stringify(almacenCfg)) } catch { /* quota */ }
+  }, [almacenCfg])
 
   // Escáner QR
   const [qrOpen, setQrOpen] = useState(false)
@@ -394,9 +430,9 @@ export function StockAlmacenView() {
   )
 
   const racks = useMemo(
-    () => buildRacks(stock, knownUbicaciones(registros, clienteFiltro), now),
+    () => buildRacks(stock, knownUbicaciones(registros, clienteFiltro), now, almacenCfg),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stock, registros, clienteFiltro, now]
+    [stock, registros, clienteFiltro, now, almacenCfg]
   )
 
   const totalStock = useMemo(() => stock.reduce((s, l) => s + l.cantRestante, 0), [stock])
@@ -415,24 +451,6 @@ export function StockAlmacenView() {
       salidas: salidas.reduce((s, r) => s + (r.cant || 0), 0),
     }
   }, [registros, clienteFiltro, mesActual])
-
-  // Gráfico barras: palets por estantería
-  const barData = useMemo(
-    () => racks.map(rk => ({ name: rk.name, palets: rk.total })),
-    [racks]
-  )
-
-  // Gráfico circular: stock por cliente (respeta el motor de stock completo,
-  // no el filtro, para ver la reparto real del almacén)
-  const pieData = useMemo(() => {
-    const all = buildStock(registros, [])
-    const porCli = new Map<string, number>()
-    for (const l of all) porCli.set(l.clienteId, (porCli.get(l.clienteId) || 0) + l.cantRestante)
-    return [...porCli.entries()]
-      .map(([id, v]) => ({ name: clientes.find(c => c.id === id)?.nombre || '(sin cliente)', value: v }))
-      .sort((a, b) => b.value - a.value)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registros, clientes, now])
 
   // Tabla detalle: lotes abiertos, más antiguos primero
   const detalle = useMemo(
@@ -466,7 +484,7 @@ export function StockAlmacenView() {
 
   // ¿La celda tiene capacidad agotada?
   function capInfo(rackName: string, total: number): { cap: number; pct: number; full: boolean } {
-    const cap = capacidades[rackName] || 0
+    const cap = almacenCfg[rackName]?.cap || 0
     if (cap <= 0) return { cap: 0, pct: 0, full: false }
     const pct = Math.min(100, Math.round((total / cap) * 100))
     return { cap, pct, full: total >= cap }
@@ -593,48 +611,129 @@ export function StockAlmacenView() {
           size="sm"
           className="h-9 ml-auto"
           onClick={() => setShowCapEditor(v => !v)}
-          title="Configurar capacidad de cada estantería"
+          title="Configurar estanterías, posiciones y capacidad"
         >
-          <Settings2 className="h-4 w-4 mr-1" /> Capacidad
+          <Settings2 className="h-4 w-4 mr-1" /> Configurar almacén
         </Button>
       </div>
 
-      {/* Editor de capacidades */}
-      {showCapEditor && racks.length > 0 && (
+      {/* Editor del almacén: estanterías, posiciones y capacidad */}
+      {showCapEditor && (
         <Card>
           <CardContent className="p-4">
             <h3 className="font-bold text-gray-800 mb-3 text-sm flex items-center gap-2">
-              <Settings2 className="h-4 w-4 text-teal-600" /> CAPACIDAD POR ESTANTERÍA
+              <Settings2 className="h-4 w-4 text-teal-600" /> CONFIGURAR ALMACÉN
             </h3>
             <p className="text-xs text-gray-500 mb-3">
-              Indica cuántos palets caben en cada estantería. Se guarda en este navegador (no se comparte con otros usuarios).
-              Si una estantería supera su capacidad, se resaltará en rojo en el mapa.
+              <b>Posiciones</b>: cuántos huecos tiene la estantería (genera E1-01, E1-02… y se ven las vacías como LIBRE).
+              <b> Capacidad</b>: máx. palets (avisa en rojo al superarla). Se guarda en este navegador.
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {racks.map(rk => {
-                const cap = capacidades[rk.name] || 0
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {[...new Set([...racks.map(rk => rk.name), ...Object.keys(almacenCfg)])].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })).map(name => {
+                const cfg = almacenCfg[name] || { cap: 0, pos: 0 }
+                const rk = racks.find(r => r.name === name)
                 return (
-                  <div key={rk.name} className="rounded-lg border border-gray-200 p-2 bg-white">
-                    <Label className="text-xs font-bold text-gray-600 flex items-center justify-between">
-                      <span>{rk.name}</span>
-                      <span className={`text-[10px] font-bold ${cap > 0 && rk.total > cap ? 'text-red-600' : 'text-gray-400'}`}>
-                        {rk.total}{cap > 0 ? `/${cap}` : ''}
-                      </span>
-                    </Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={cap || ''}
-                      onChange={e => {
-                        const v = parseInt(e.target.value, 10)
-                        setCapacidades(prev => ({ ...prev, [rk.name]: isNaN(v) ? 0 : Math.max(0, v) }))
-                      }}
-                      placeholder="Sin límite"
-                      className="h-8 mt-1 text-sm"
-                    />
+                  <div key={name} className="rounded-lg border border-gray-200 p-2 bg-white">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold text-gray-700">{name}</Label>
+                      <button
+                        onClick={() => setAlmacenCfg(prev => { const next = { ...prev }; delete next[name]; return next })}
+                        className="text-gray-300 hover:text-red-500 transition-colors"
+                        title="Quitar configuración de esta estantería"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-1">
+                      <div>
+                        <Label className="text-[10px] font-semibold text-gray-400 uppercase">Posiciones</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={200}
+                          value={cfg.pos || ''}
+                          onChange={e => {
+                            const v = parseInt(e.target.value, 10)
+                            setAlmacenCfg(prev => ({ ...prev, [name]: { cap: prev[name]?.cap || 0, pos: isNaN(v) ? 0 : Math.max(0, Math.min(200, v)) } }))
+                          }}
+                          placeholder="—"
+                          className="h-8 mt-0.5 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] font-semibold text-gray-400 uppercase">Capacidad</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={cfg.cap || ''}
+                          onChange={e => {
+                            const v = parseInt(e.target.value, 10)
+                            setAlmacenCfg(prev => ({ ...prev, [name]: { pos: prev[name]?.pos || 0, cap: isNaN(v) ? 0 : Math.max(0, v) } }))
+                          }}
+                          placeholder="Sin límite"
+                          className="h-8 mt-0.5 text-sm"
+                        />
+                      </div>
+                    </div>
+                    {rk && (
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        {rk.total} palet(s) ahora · {rk.celdas.length} hueco(s) en el mapa
+                      </p>
+                    )}
                   </div>
                 )
               })}
+            </div>
+
+            {/* Añadir estantería nueva */}
+            <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap items-end gap-2">
+              <div className="w-32">
+                <Label className="text-[10px] font-semibold text-gray-400 uppercase">Estantería</Label>
+                <Input
+                  type="text"
+                  value={newRackName}
+                  onChange={e => setNewRackName(e.target.value.toUpperCase())}
+                  placeholder="E1"
+                  className="h-8 mt-0.5 text-sm"
+                />
+              </div>
+              <div className="w-28">
+                <Label className="text-[10px] font-semibold text-gray-400 uppercase">Posiciones</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={newRackPos}
+                  onChange={e => setNewRackPos(e.target.value)}
+                  placeholder="12"
+                  className="h-8 mt-0.5 text-sm"
+                />
+              </div>
+              <div className="w-28">
+                <Label className="text-[10px] font-semibold text-gray-400 uppercase">Capacidad</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={newRackCap}
+                  onChange={e => setNewRackCap(e.target.value)}
+                  placeholder="Opcional"
+                  className="h-8 mt-0.5 text-sm"
+                />
+              </div>
+              <Button
+                size="sm"
+                className="h-8 bg-teal-600 hover:bg-teal-700 text-white"
+                onClick={() => {
+                  const name = newRackName.trim().toUpperCase()
+                  const pos = parseInt(newRackPos, 10) || 0
+                  const cap = parseInt(newRackCap, 10) || 0
+                  if (!name || pos <= 0) return
+                  setAlmacenCfg(prev => ({ ...prev, [name]: { pos, cap } }))
+                  setNewRackName(''); setNewRackPos(''); setNewRackCap('')
+                }}
+              >
+                <Plus className="h-4 w-4 mr-1" /> Añadir
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -842,44 +941,6 @@ export function StockAlmacenView() {
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {/* Gráficos */}
-      {totalStock > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-bold text-gray-800 mb-3 text-sm">PALETS POR ESTANTERÍA</h3>
-              <div className="h-[220px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={barData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#374151' }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#374151' }} />
-                    <Tooltip />
-                    <Bar dataKey="palets" name="Palets" fill="#14b8a6" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-bold text-gray-800 mb-3 text-sm">STOCK POR CLIENTE (TODO EL ALMACÉN)</h3>
-              <div className="h-[220px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={80} paddingAngle={2}>
-                      {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       )}
 
       {/* Detalle del stock */}
