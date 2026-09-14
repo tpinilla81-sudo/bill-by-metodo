@@ -98,6 +98,19 @@ export function getIdent(r: Registro): string {
   return Object.values(strong)[0] || ''
 }
 
+// Ident (lote / nº palet) directamente de los customValues del formulario
+// de ENTRADA — mismo criterio que extractIdents (strong): la primera clave
+// cuyo nombre contiene "palet" o "lote" con valor no vacío. Es lo que se
+// codifica en el QR de la etiqueta del palet al guardarlo.
+export function identDeCustomValues(cv: Record<string, string>): string {
+  for (const [k, v] of Object.entries(cv || {})) {
+    if (!/palet|lote/.test(normAlm(k))) continue
+    const s = String(v ?? '').trim()
+    if (s) return s
+  }
+  return ''
+}
+
 // "E1-03" → { rack: 'E1', pos: '03' } · "Nave 2 Paso B" → { rack: 'NAVE', pos: '2-PASO-B' }
 export function splitUbicacion(ub: string): { rack: string; pos: string } {
   const t = String(ub || '').trim()

@@ -6,14 +6,16 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus, Table } from 'lucide-react'
+import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus, Table, QrCode } from 'lucide-react'
 import { todayISO, fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData, fieldAppliesToClient } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 import { EntradaGrilla } from '@/components/hualsa/entrada-grilla'
+import { QrEtiquetaDialog, type EtiquetaPalet } from '@/components/hualsa/qr-etiqueta'
 import {
   loadAlmacenCfg, huecoOptimo, clasificarUbicacion, clavesOcupadas,
-  esC2EntradaPalet, normAlm, type EstanteriaCfg,
+  esC2EntradaPalet, normAlm, getIdent, getUbicacion, identDeCustomValues,
+  type EstanteriaCfg,
 } from '@/lib/almacen'
 
 interface EntradaViewData {
@@ -209,6 +211,33 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
+  // ─── ETIQUETA QR (desde el origen) ────────────────────────────────
+  // Al guardar una ENTRADA PALET se abre el diálogo con su etiqueta QR
+  // para imprimir y pegar en el palet. En STOCK ALMACÉN, "Escanear QR"
+  // la lee y localiza el palet en el mapa.
+  const [qrOpen, setQrOpen] = useState(false)
+  const [qrEtiquetas, setQrEtiquetas] = useState<EtiquetaPalet[]>([])
+
+  function abrirQr(etiquetas: EtiquetaPalet[]) {
+    if (etiquetas.length === 0) return
+    setQrEtiquetas(etiquetas)
+    setQrOpen(true)
+  }
+
+  // Etiqueta desde una fila de la tabla (reimprimir cuando se quiera).
+  // getIdent/getUbicacion devuelven el texto normalizado (minúsculas): se
+  // pasa a mayúsculas para la etiqueta — la búsqueda del escáner compara
+  // con normAlm por ambos lados, así que las mayúsculas no afectan.
+  function abrirQrDesdeRegistro(r: Registro) {
+    abrirQr([{
+      ident: getIdent(r).toUpperCase(),
+      ubicacion: getUbicacion(r).toUpperCase(),
+      cliente: r.cliente || '',
+      fecha: r.fecha,
+      cant: Math.max(1, r.cant || 1),
+    }])
+  }
+
   useEffect(() => { loadData() }, [loadData])
 
   // Refrescar datos cuando la pestaña recupera el foco.
@@ -395,6 +424,15 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     }
     const customDataStr = serializeCustomData(customValues)
     const currentPrice = autoPrice || 0
+    // Etiqueta QR del palet: se prepara ANTES de limpiar el formulario.
+    // Codifica el lote/nº palet (o la ubicación si no hay lote).
+    const etiquetaPalet: EtiquetaPalet | null = esPalet ? {
+      ident: identDeCustomValues(customValues),
+      ubicacion: ubicKey ? String(customValues[ubicKey] || '').trim() : '',
+      cliente: effectiveClienteName,
+      fecha,
+      cant: Math.max(1, Number(cant) || 1),
+    } : null
     const body = { fecha, clienteId: effectiveClienteId || null, cliente: effectiveClienteName, c1, c2, cant: Number(cant), obs, customData: customDataStr, precioUnitario: currentPrice }
 
     if (editingId) {
@@ -414,6 +452,8 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
         return
       }
       showStatus('ok', 'Guardado en Registros ✓')
+      // Etiqueta QR: se abre justo tras guardar el palet (imprimible)
+      if (etiquetaPalet) abrirQr([etiquetaPalet])
     }
     setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
     autoUbicRef.current = ''
@@ -752,6 +792,11 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
                     </td>
                   ))}
                   <td className="p-2 whitespace-nowrap">
+                    {esC2EntradaPalet(r.c2) && (
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-teal-600 hover:bg-teal-50" onClick={() => abrirQrDesdeRegistro(r)} title="Etiqueta QR del palet (imprimir)">
+                        <QrCode className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
                     <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                   </td>
@@ -784,6 +829,9 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       </div>
       </>
       )}
+
+      {/* Diálogo de etiqueta QR — se abre al guardar una ENTRADA PALET */}
+      <QrEtiquetaDialog open={qrOpen} onOpenChange={setQrOpen} etiquetas={qrEtiquetas} />
     </div>
   )
 }

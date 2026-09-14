@@ -1032,7 +1032,8 @@ export function StockAlmacenView() {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-gray-500">
-              Apunta la cámara al QR del palet. Al leerlo, se buscará automáticamente en el mapa.
+              Apunta la cámara al QR del palet (las etiquetas se generan e imprimen al guardar
+              <b> ENTRADAS de palets</b>). Al leerlo, se buscará automáticamente en el mapa.
             </p>
             <div
               id={qrRegionId}
