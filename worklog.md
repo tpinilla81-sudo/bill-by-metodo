@@ -945,3 +945,55 @@ Stage Summary:
   palets grande, lista de lotes con días individuales, días totales destacados,
   color por ocupación+antigüedad, y botón para imprimir/PDF.
 - Posiciones numéricas intermedias se rellenan como LIBRE automáticamente.
+---
+Task ID: 27
+Agent: Main Agent
+Task: Error produccion STOCK-V2 + capacidad maxima + buscador + entrada por QR
+
+BUG CRITICO produccion (Application error: a client-side exception):
+- En STOCK-V2 importe `Map` de lucide-react, lo que OCULTABA la clase
+  global `Map` de JS. Todos los `new Map<string, ...>()` (used por
+  buildRacks, knownUbicaciones, pieData) crasheaban en runtime.
+- El build local pasaba porque TS no detecta el shadowing de la clase
+  global por un import con mismo nombre.
+- Fix: quitar Map del import de lucide-react. Tambien limpie `Layers`
+  que no se usaba.
+
+Nuevas features:
+
+A) CAPACIDAD MAXIMA POR ESTANTERIA
+- Boton "Capacidad" en la toolbar abre un editor inline con un input
+  numerico por cada estanteria.
+- Los valores se persisten en localStorage (clave: stock-capacidades).
+- En el header de cada estanteria: badge "X/Y palets" + barra de
+  progreso (teal < 75%, ambar 75-99%, rojo 100%+).
+- Si una estanteria supera su capacidad, se resalta en rojo.
+
+B) BUSCADOR DE PALET POR LOTE
+- Input de busqueda en la toolbar (junto al QR y Capacidad).
+- Busca en: lote/nº palet, ubicacion, posicion, nombre de estanteria.
+- Las celdas que coincen se resaltan con ring sky-500 + escala 1.05;
+  las demas se atenuan (opacity-30) para localizarlo de un vistazo.
+- Boton X para limpiar la busqueda.
+- Compatible con el filtro por cliente (se puede buscar dentro de SMURFIT).
+
+C) ENTRADA POR QR (escaner de camara)
+- Boton "Escanear QR" en la toolbar abre un modal con la camara.
+- Usa html5-qrcode (@npm nuevo): pide facingMode: environment (camara
+  trasera en movil). Funciona en Safari iOS y Chrome Android.
+- Al detectar un QR, rellena el input de busqueda y cierra el modal.
+- Mensajes: ok (verde, "QR leido: X"), err (rojo, permisos), info (azul).
+- Cleanup seguro: stop() + clear() al cerrar modal o desmontar.
+- Importante: requiere HTTPS (Vercel lo es) y permiso de camara del
+  navegador. En escritorio funciona con webcam; en movil con camara
+  trasera.
+
+Build marker: STOCK-V3-QR · 2026-09-14 (sidebar.tsx)
+Nuevo dependency: html5-qrcode ^2.3.8
+Build OK. Commit 0f89479. Push -> Vercel redeploy automatico.
+
+Stage Summary:
+- Stock Almacen v3 sin crash en produccion.
+- Mapa de estanterias con capacidad configurable + barra de progreso.
+- Buscador por lote/ubicacion/estanteria con resaltado en el mapa.
+- Escaner QR con camara para localizar palets rapido (ideal en nave).
