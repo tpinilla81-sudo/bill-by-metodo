@@ -803,3 +803,32 @@ Stage Summary:
 - Compatible hacia atrás: campos sin `clientIds` siguen aplicando a todos.
 - PENDIENTE: push a GitHub → Vercel redeploy. Hace falta PAT (token anterior
   caducó y fue scrubbed). El commit está listo en local.
+
+---
+Task ID: 15
+Agent: Main Agent
+Task: Feature almacenaje palets SMURFIT + copia de campos entre secciones + campos obligatorios en Entrada
+
+Work Log:
+- enableClientFilter=true en las 5 secciones de Configuración → Campos
+- entrada-view: fieldAppliesToClient con cliente detectado (c1+c2) o seleccionado
+- registros-view: se quitó el filtro por cliente (columnas estables, decidido con el usuario)
+- FieldEditor: botón "Copiar a otra sección" con menú de las 5 secciones
+- Copia exacta: preserva clientIds del campo origen
+- Entrada: todos los campos visibles obligatorios excepto Observaciones
+- Fix TDZ: useState de clienteId/c1/c2 movidos antes de los useMemo (crasheó en producción)
+- clienteVisible ahora respeta config (ya no hardcodeado a false)
+- Feature almacenaje palets en prefactura-view: procesarAlmacenajePalets()
+  · Empareja SALIDA PALET (c2 contiene 'salida palet') con ENTRADA PALET
+  · Identificador: customData keys con lote/palet (fuerte) o ubicac (débil)
+  · Días = salida − entrada + 1, mínimo 1
+  · Coste diario del catálogo (c2 contiene 'coste diario', prioridad cliente)
+  · Línea: ALMACENAJE PALET {ID} (N DÍAS) × coste diario
+  · extraIds → registroIds para marcar entradas como facturadas
+  · Avisos: salidas sin match / coste diario no encontrado
+
+Stage Summary:
+- Deployed via git push (token persistido en remote según petición del usuario)
+- Convenciones documentadas en comentarios de prefactura-view.tsx
+- El usuario debe crear en producción: cliente SMURFIT, conceptos ENTRADA/SALIDA PALET
+  y COSTE DIARIO en catálogo, y campos personalizados Lote/Nº Palet/Ubicación
