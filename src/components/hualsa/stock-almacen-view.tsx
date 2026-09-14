@@ -109,10 +109,16 @@ function splitUbicacion(ub: string): { rack: string; pos: string } {
   return { rack: 'ALMACÉN', pos: t.toUpperCase() }
 }
 
-function diasEnAlmacen(fecha: string): number {
+// Días que un palet lleva en almacén: fechaEntrada → ahora.
+// El día de entrada cuenta como 1 día (ambos inclusive), como en facturación.
+// Recibe `refNow` (ms) para forzar recálculo limpio cuando el reloj avanza.
+function diasEnAlmacen(fecha: string, refNow: number = Date.now()): number {
   const d = new Date(fecha + 'T00:00:00')
   if (isNaN(d.getTime())) return 0
-  return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000))
+  // Diferencia en ms → redondear a días naturales completados + 1 (día inicial inclusive)
+  // Ej: entrada hoy → 1 día. Entrada ayer → 2 días.
+  const diffDays = Math.floor((refNow - d.getTime()) / 86400000)
+  return Math.max(1, diffDays + 1)
 }
 
 // Motor de stock: recorre los movimientos por orden de fecha y va
@@ -164,7 +170,7 @@ function buildStock(registros: Registro[], clientesFiltro: string[]): LoteStock[
   return lotes.filter(l => l.cantRestante > 0)
 }
 
-function buildRacks(stock: LoteStock[], known: Map<string, { rack: string; pos: string; ubicacion: string }>): RackStock[] {
+function buildRacks(stock: LoteStock[], known: Map<string, { rack: string; pos: string; ubicacion: string }>, refNow: number): RackStock[] {
   const porUb = new Map<string, CeldaStock>()
   for (const l of stock) {
     const key = normAlm(l.ubicacion) || '(sin ubicación)'
@@ -175,7 +181,7 @@ function buildRacks(stock: LoteStock[], known: Map<string, { rack: string; pos: 
       porUb.set(key, c)
     }
     c.total += l.cantRestante
-    c.dias = Math.max(c.dias, diasEnAlmacen(l.fecha))
+    c.dias = Math.max(c.dias, diasEnAlmacen(l.fecha, refNow))
     c.lotes.push(l)
   }
   // Ubicaciones conocidas (aparecieron en movimientos) sin stock actual → LIBRE
@@ -296,11 +302,22 @@ export function StockAlmacenView() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // Refrescar "días en almacén" cada 60s sin recargar datos
+  // Reloj en vivo: refresca "días en almacén" cada minuto y muestra un contador
+  // "actualizado hace Xs" para que se vea que el cálculo está vivo.
+  const [lastUpdate, setLastUpdate] = useState(() => Date.now())
+  const [tick, setTick] = useState(0)  // para el contador "hace Xs"
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 60000)
+    const t = setInterval(() => {
+      setNow(Date.now())
+      setLastUpdate(Date.now())
+    }, 60000)
     return () => clearInterval(t)
   }, [])
+  useEffect(() => {
+    const t = setInterval(() => setTick(t => t + 1), 1000)
+    return () => clearInterval(t)
+  }, [])
+  const segundosDesdeUpdate = Math.floor((Date.now() - lastUpdate) / 1000)
 
   // Cerrar dropdown de clientes al hacer click fuera
   useEffect(() => {
@@ -377,7 +394,7 @@ export function StockAlmacenView() {
   )
 
   const racks = useMemo(
-    () => buildRacks(stock, knownUbicaciones(registros, clienteFiltro)),
+    () => buildRacks(stock, knownUbicaciones(registros, clienteFiltro), now),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [stock, registros, clienteFiltro, now]
   )
@@ -419,8 +436,9 @@ export function StockAlmacenView() {
 
   // Tabla detalle: lotes abiertos, más antiguos primero
   const detalle = useMemo(
-    () => [...stock].sort((a, b) => diasEnAlmacen(b.fecha) - diasEnAlmacen(a.fecha)),
-    [stock]
+    () => [...stock].sort((a, b) => diasEnAlmacen(b.fecha, now) - diasEnAlmacen(a.fecha, now)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stock, now]
   )
 
   // Últimos movimientos palet
@@ -464,7 +482,12 @@ export function StockAlmacenView() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-gray-800 leading-tight">STOCK ALMACÉN</h2>
-            <p className="text-xs text-gray-500">Control de palets en almacén y estanterías · lectura en vivo</p>
+            <p className="text-xs text-gray-500">
+              Control de palets en almacén y estanterías · lectura en vivo
+              <span className="ml-2 text-[10px] text-teal-600 font-semibold tabular-nums" data-tick={tick}>
+                ● actualizado hace {segundosDesdeUpdate}s
+              </span>
+            </p>
           </div>
         </div>
 
@@ -784,7 +807,7 @@ export function StockAlmacenView() {
                                 {lotesUnicos.length > 0 && (
                                   <div className="mt-1 space-y-0.5">
                                     {lotesUnicos.map(l => {
-                                      const dl = diasEnAlmacen(l.fecha)
+                                      const dl = diasEnAlmacen(l.fecha, now)
                                       return (
                                         <div key={l.id} className="text-[9px] font-semibold text-gray-600 flex items-center justify-between gap-1">
                                           <span className="truncate">{l.ident || '—'}</span>
@@ -881,7 +904,7 @@ export function StockAlmacenView() {
                 </thead>
                 <tbody>
                   {detalle.map(l => {
-                    const d = diasEnAlmacen(l.fecha)
+                    const d = diasEnAlmacen(l.fecha, now)
                     const { rack, pos } = splitUbicacion(l.ubicacion)
                     return (
                       <tr key={l.id} className="border-b border-gray-100 hover:bg-gray-50">
