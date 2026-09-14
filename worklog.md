@@ -832,3 +832,30 @@ Stage Summary:
 - Convenciones documentadas en comentarios de prefactura-view.tsx
 - El usuario debe crear en producción: cliente SMURFIT, conceptos ENTRADA/SALIDA PALET
   y COSTE DIARIO en catálogo, y campos personalizados Lote/Nº Palet/Ubicación
+---
+Task ID: 24
+Agent: Main Agent
+Task: "LO HACE A MEDIAS YA QUE LA ENTRADA Y LA SALIDA TAMBIEN ESTA CON COSTE, ESTO SON TRES COSTE, LA ENTRADA, LA SALIDA Y LUEGO EL CALCULO DE DIAS"
+
+Problema: la version anterior de procesarAlmacenajePalets EXCLUIA la entrada y
+la salida de las lineas normales (idsExcluidos) y solo facturaba los dias.
+El usuario aclara que el ciclo de palet tiene TRES costes.
+
+Nuevo comportamiento (prefactura-view.tsx):
+- COSTE 1 ENTRADA: la entrada emparejada se factura a precio de catalogo
+  (getPrecio) si no estaba facturada; se marca facturada (extraIds). Si ya
+  estaba facturada solo sirve para calcular dias (no se repite). Si esta en
+  la seleccion actual ya sale como linea normal (no se duplica).
+- COSTE 2 SALIDA: ya NO se excluye — linea normal al precio de catalogo.
+- COSTE 3 DIAS: ALMACENAJE PALET ID (N DIAS) x coste diario del catalogo.
+- Matching: preferencia entradas sin facturar -> fallback 1:1 libres ->
+  fallback 1:1 sobre todas (solo dias).
+- Lineas ordenadas por fecha en modo dia.
+- Avisos: entradas anadidas / ya facturadas / salidas sin match / coste diario 0.
+
+Build marker: SMURFIT-3COSTES · 2026-09-14 (sidebar.tsx)
+Build OK. Commit 2b6a05e. Push a GitHub -> Vercel redeploy automatico.
+
+Stage Summary:
+- Ciclo de palet SMURFIT completo: entrada + salida + dias, los tres al precio
+  de su concepto del catalogo (precios editables por cliente en catalogo).
