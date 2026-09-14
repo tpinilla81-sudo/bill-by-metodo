@@ -10,7 +10,20 @@ import { Label } from '@/components/ui/label'
 import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import { fmtDate, type Cliente, type Registro } from '@/lib/hualsa-utils'
-import { Html5Qrcode } from 'html5-qrcode'
+
+// Tipo minimo para el escáner QR — cargado dinamicamente para evitar
+// problemas de SSR/bundling y reducir el JS inicial de la página.
+type Html5QrcodeLike = {
+  start: (
+    cameraIdOrConfig: { facingMode: string } | string,
+    configuration: { fps: number; qrbox: { width: number; height: number } },
+    qrCodeSuccessCallback: (decoded: string) => void,
+    qrCodeErrorCallback?: (err: unknown) => void
+  ) => Promise<void>
+  stop: () => Promise<void>
+  clear: () => Promise<void>
+  isScanning: boolean
+}
 
 // ─── STOCK ALMACÉN ─────────────────────────────────────────────────────
 // Control del stock en almacén a partir de los registros de palets:
@@ -266,7 +279,7 @@ export function StockAlmacenView() {
   // Escáner QR
   const [qrOpen, setQrOpen] = useState(false)
   const [qrMsg, setQrMsg] = useState<{ txt: string; kind: 'ok' | 'err' | 'info' } | null>(null)
-  const qrScannerRef = useRef<Html5Qrcode | null>(null)
+  const qrScannerRef = useRef<Html5QrcodeLike | null>(null)
   const qrRegionId = 'qr-reader-region'
 
   const loadData = useCallback(async () => {
@@ -289,15 +302,15 @@ export function StockAlmacenView() {
 
   // Cerrar el escáner QR al desmontar / cerrar el modal
   const stopQr = useCallback(async () => {
-    try {
-      const s = qrScannerRef.current
-      if (s) {
-        // El escáner puede estar "running" o ya parado — ambos casos son seguros
-        if (s.isScanning) await s.stop()
-        await s.clear()
-      }
-    } catch (err) { console.warn('QR stop:', err) }
+    const s = qrScannerRef.current
     qrScannerRef.current = null
+    if (!s) return
+    try {
+      // El escáner puede estar "running" o ya parado — ambos casos son seguros
+      // porque capturamos cualquier error y lo ignoramos (cleanup best-effort).
+      try { if (s.isScanning) await s.stop() } catch { /* ya parado */ }
+      try { await s.clear() } catch { /* ya limpiado */ }
+    } catch (err) { console.warn('QR cleanup:', err) }
   }, [])
   useEffect(() => () => { stopQr() }, [stopQr])
 
@@ -305,18 +318,24 @@ export function StockAlmacenView() {
   useEffect(() => {
     if (!qrOpen) return
     let cancelled = false
+    let stopNeeded = false
     setQrMsg(null)
     // Pequeño retardo para que el div del reader exista en el DOM
     const t = setTimeout(async () => {
       if (cancelled) return
       try {
-        const s = new Html5Qrcode(qrRegionId)
+        // Dynamic import — solo carga html5-qrcode cuando se abre el modal.
+        // Asi evitamos problemas de SSR en el bundle inicial y reducimos el
+        // JS que se descarga al entrar en STOCK ALMACÉN.
+        const mod = await import('html5-qrcode')
+        if (cancelled) return
+        const s: Html5QrcodeLike = new mod.Html5Qrcode(qrRegionId) as Html5QrcodeLike
         qrScannerRef.current = s
+        stopNeeded = true
         await s.start(
           { facingMode: 'environment' },
           { fps: 10, qrbox: { width: 240, height: 240 } },
           (decoded: string) => {
-            // Lectura válida: detener escáner y lanzar búsqueda
             setQuery(decoded)
             setQrMsg({ txt: `QR leído: "${decoded}"`, kind: 'ok' })
             setTimeout(() => { setQrOpen(false) }, 600)
@@ -328,7 +347,11 @@ export function StockAlmacenView() {
         setQrMsg({ txt: 'No se pudo acceder a la cámara. Revisa permisos del navegador.', kind: 'err' })
       }
     }, 100)
-    return () => { cancelled = true; clearTimeout(t); stopQr() }
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+      if (stopNeeded) stopQr()
+    }
   }, [qrOpen, stopQr])
 
   const clienteFiltro = cliFiltro === 'todos' ? '' : cliFiltro
