@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Filter, RotateCcw, FileSpreadsheet, Table2, CheckCircle2, Upload, Download, CheckCircle, AlertCircle, ChevronDown, Pencil, Trash2, Save, SquareCheck, X } from 'lucide-react'
 import { fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
-import { useConfig, DEFAULT_FIELDS_REGISTROS, type FieldDef, parseCustomData } from '@/lib/config'
+import { useConfig, DEFAULT_FIELDS_REGISTROS, type FieldDef, parseCustomData, fieldAppliesToClient } from '@/lib/config'
 import { triggerBackup, backUpNow } from '@/lib/trigger-backup'
 
 interface RegistrosViewData {
@@ -39,7 +39,6 @@ export function RegistrosView() {
   const { data, loadData, loading } = useRegistrosData()
   const { config } = useConfig()
   const fieldDefs = config?.fieldsRegistros || DEFAULT_FIELDS_REGISTROS
-  const visibleFields = fieldDefs.filter(f => f.visible)
 
   const [fDesde, setFDesde] = useState('')
   const [fHasta, setFHasta] = useState('')
@@ -47,6 +46,14 @@ export function RegistrosView() {
   const [fC1, setFC1] = useState('')
   const [fC2, setFC2] = useState('')
   const [fQ, setFQ] = useState('')
+
+  // visibleFields: apply client-specific filter based on selected cliente filter.
+  // When fCliente is set, exclusive fields for that client appear; otherwise
+  // only fields that apply to all clients are shown.
+  const visibleFields = useMemo(
+    () => fieldDefs.filter(f => f.visible && fieldAppliesToClient(f, fCliente || null)),
+    [fieldDefs, fCliente]
+  )
 
   // Sort control: 'entrada' = order in which records were entered (createdAt),
   // which is what users mean by "ordenar según como pasa desde entradas".

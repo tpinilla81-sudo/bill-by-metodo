@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus, Table } from 'lucide-react'
 import { todayISO, fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
-import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
+import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData, fieldAppliesToClient } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 import { EntradaGrilla } from '@/components/hualsa/entrada-grilla'
 
@@ -130,7 +130,34 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   const fieldDefs = config?.fieldsEntrada || DEFAULT_FIELDS_ENTRADA
   // Force cliente field HIDDEN in Entrada view: it's auto-detected from catalog
   // based on c1+c2 selection. Cliente is only visible in the Registros view.
-  const visibleFields = fieldDefs.filter(f => f.visible && f.key !== 'cliente')
+
+  function normStr(s: string): string {
+    return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
+  }
+
+  // Auto-detect client from catalog when field is hidden and c1+c2 are selected.
+  // Moved up here so visibleFields can depend on it for client-specific filtering.
+  const detectedCliente = useMemo(() => {
+    if (clienteVisible || clienteId || !c1 || !c2) return null
+    const c1n2 = normStr(c1)
+    const c2n2 = normStr(c2)
+    const item = data.catalogo.find(x => normStr(x.c1) === c1n2 && normStr(x.c2) === c2n2 && x.clienteId)
+    if (!item) return null
+    const cli = data.clientes.find(c => c.id === item.clienteId)
+    return cli ? { id: cli.id, nombre: cli.nombre } : null
+  }, [data.catalogo, data.clientes, clienteVisible, clienteId, c1, c2])
+
+  // Effective client for filtering client-specific fields. Either explicitly
+  // selected (when cliente field is visible) or auto-detected from c1+c2.
+  const effectiveClientId = clienteId || detectedCliente?.id || ''
+
+  // visibleFields: hide 'cliente' (auto-detected) and apply client-specific
+  // field filter so exclusive fields only show for the right client.
+  const visibleFields = useMemo(
+    () => fieldDefs.filter(f => f.visible && f.key !== 'cliente' && fieldAppliesToClient(f, effectiveClientId || null)),
+    [fieldDefs, effectiveClientId]
+  )
+
   const transferMode = config?.transferMode || 'auto'
   const transferTime = config?.transferTime || '00:00'
 
@@ -235,12 +262,8 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transferMode, transferTime, userCanTransfer])
 
-  // Cascading filters based on catalog + selections
-  // Normalizamos C1/C2 (trim + colapsar espacios + lowercase) para que
-  // "Viaje Nave" en el catálogo coincida con "VIAJE  NAVE" escrito en entrada.
-  function normStr(s: string): string {
-    return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
-  }
+  // Cascading filters based on catalog + selections.
+  // normStr was defined earlier (above detectedCliente) so it can be reused.
 
   // C1 options: if client field is visible and a client is selected, filter by client
   // If client field is hidden, show ALL (auto-detect will resolve later)
@@ -261,17 +284,6 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     : [...new Set(data.catalogo.map(x => x.c2))].sort()
 
   const allC2Options = [...new Set(data.catalogo.map(x => x.c2))].sort()
-
-  // Auto-detect client from catalog when field is hidden and c1+c2 are selected
-  const detectedCliente = useMemo(() => {
-    if (clienteVisible || clienteId || !c1 || !c2) return null
-    const c1n2 = normStr(c1)
-    const c2n2 = normStr(c2)
-    const item = data.catalogo.find(x => normStr(x.c1) === c1n2 && normStr(x.c2) === c2n2 && x.clienteId)
-    if (!item) return null
-    const cli = data.clientes.find(c => c.id === item.clienteId)
-    return cli ? { id: cli.id, nombre: cli.nombre } : null
-  }, [data.catalogo, data.clientes, clienteVisible, clienteId, c1, c2])
 
   // Auto-price: works with or without client selected
   const autoPrice = useMemo(() => {

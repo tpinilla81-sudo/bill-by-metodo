@@ -1060,6 +1060,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             defaultFields={DEFAULT_FIELDS_ENTRADA}
             configKey="fieldsEntrada"
             onUpdate={handleFieldsUpdate}
+            enableClientFilter={true}
           />
 
           <FieldsManager
@@ -1079,6 +1080,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             defaultFields={DEFAULT_FIELDS_CATALOGO}
             configKey="fieldsCatalogo"
             onUpdate={handleFieldsUpdate}
+            enableClientFilter={true}
           />
 
           <FieldsManager
@@ -1088,6 +1090,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             defaultFields={DEFAULT_FIELDS_REGISTROS}
             configKey="fieldsRegistros"
             onUpdate={handleFieldsUpdate}
+            enableClientFilter={true}
           />
 
           <FieldsManager
@@ -1097,6 +1100,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             defaultFields={DEFAULT_FIELDS_FACTURAS}
             configKey="fieldsFacturas"
             onUpdate={handleFieldsUpdate}
+            enableClientFilter={true}
           />
         </TabsContent>
         )}
