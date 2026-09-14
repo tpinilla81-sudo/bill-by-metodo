@@ -943,7 +943,8 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
   // Copy a field definition from one section to another.
   // - Always creates a NEW custom field in the target (does not modify the source).
   // - If a field with the same key already exists in target, appends a suffix.
-  // - Resets clientIds in the target (it's a different context — the admin can re-pick).
+  // - Copies EVERYTHING exactly the same, including clientIds (user requirement:
+  //   "que se copien exactamente igual incluso con el cliente seleccionado").
   function handleCopyFieldTo(sourceField: FieldDef, _sourceConfigKey: string, targetConfigKey: string) {
     if (_sourceConfigKey === targetConfigKey) return
     // Get current target fields
@@ -969,10 +970,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
       key: finalKey,
       // Always treat the copy as a custom field in the target section
       isCustom: true,
-      // Reset client-specific scope — different section context
-      clientIds: undefined,
-      // Ensure it shows up
-      visible: true,
+      // clientIds copied AS-IS (exact copy, same client scope)
     }
     // Append to target's field list
     const updatedTarget = [...targetFields, newField]

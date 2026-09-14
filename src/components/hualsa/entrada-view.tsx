@@ -310,14 +310,25 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   }
 
   async function handleSave() {
-    // If cliente field is visible, it's required
-    if (clienteVisible && !clienteId) {
-      showStatus('err', 'Selecciona un cliente')
-      return
-    }
-    if (!fecha || !c1 || !c2 || !cant) {
-      showStatus('err', 'Completa fecha, conceptos y cantidad')
-      return
+    // ALL visible fields in Entrada are mandatory (user requirement).
+    // Iterate visible fields and enforce a value for each one.
+    for (const f of visibleFields) {
+      let empty = false
+      switch (f.key) {
+        case 'fecha': empty = !fecha; break
+        case 'cliente': empty = !clienteId; break
+        case 'c1': empty = !c1; break
+        case 'c2': empty = !c2; break
+        case 'cantidad': empty = !cant; break
+        case 'observaciones': empty = !String(obs || '').trim(); break
+        default:
+          if (f.isCustom) empty = !String(customValues[f.key] || '').trim()
+          else empty = false
+      }
+      if (empty) {
+        showStatus('err', `El campo "${f.label}" es obligatorio`)
+        return
+      }
     }
     // Resolve client: if field is hidden, auto-detect from catalog
     let effectiveClienteId = clienteId
