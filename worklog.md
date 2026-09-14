@@ -1029,3 +1029,28 @@ Stage Summary:
 - Si el error persiste, el siguiente paso es pedir al usuario que abra
   la consola del navegador (F12 > Console) y pegue el stack trace
   real — el mensaje "client-side exception" es generico de Next.js.
+---
+Task ID: 29
+Agent: Main Agent
+Task: "Application error: a client-side exception" persiste al cargar STOCK ALMACEN
+
+Diagnostico real (usando agent-browser en local):
+- En la task 27 quite `Map` y `Layers` del import de lucide-react pensando
+  que `Map` era el culpable y `Layers` no se usaba. Pero `Layers` SIGUE
+  usandose en la linea 602 (icono del KPI "UBICACIONES OCUPADAS").
+- Resultado: `Runtime ReferenceError: Layers is not defined` en stock-almacen-view.tsx:602.
+- El build de Next.js NO detecta este error porque es un componente
+  client y las refs a variables no definidas solo explotan en runtime.
+
+Fix:
+- Re-anadido `Layers` al import de lucide-react.
+- Verificado en navegador (localhost:3001): la vista carga sin errores,
+  se ven todos los elementos (buscador, QR, Capacidad, KPIs).
+
+Build marker: STOCK-V3-FIX · 2026-09-14 (sidebar.tsx)
+Build OK. Commit 4af7ee3. Push -> Vercel.
+
+Stage Summary:
+- STOCK ALMACEN operativo en produccion de nuevo.
+- Causa raiz del "client-side exception": icono `Layers` no importado
+  tras la refactorizacion del task 27. NO era un problema de html5-qrcode.
