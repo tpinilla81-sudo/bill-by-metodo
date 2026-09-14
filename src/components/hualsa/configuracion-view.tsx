@@ -1208,7 +1208,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             defaultFields={DEFAULT_FIELDS_REGISTROS}
             configKey="fieldsRegistros"
             onUpdate={handleFieldsUpdate}
-            enableClientFilter={true}
+            enableClientFilter={false}
             sections={FIELD_SECTIONS}
             onCopyFieldTo={handleCopyFieldTo}
           />
