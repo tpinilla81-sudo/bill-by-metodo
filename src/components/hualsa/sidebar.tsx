@@ -1,6 +1,6 @@
 'use client'
 
-import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown, CreditCard, Building2, ChevronDown, ClipboardList, RefreshCw } from 'lucide-react'
+import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown, CreditCard, Building2, ChevronDown, ClipboardList, RefreshCw, Warehouse } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useConfig } from '@/lib/config'
@@ -43,7 +43,7 @@ interface SidebarProps {
 }
 
 // All available screen permission keys (including sub-permissions)
-const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa', 'configuracion.usuarios', 'configuracion.campos'] as const
+const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'stock', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa', 'configuracion.usuarios', 'configuracion.campos'] as const
 
 // Parse permissions from JSON string to array
 function parsePermissions(permissionsStr: string): string[] {
@@ -90,6 +90,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
   const navItems: { key: View; label: string; icon: React.ReactNode; color: string; adminOnly?: boolean; superadminOnly?: boolean; permissionKey?: string }[] = [
     { key: 'entrada', label: config?.sectionEntrada || 'ENTRADA', icon: <FileInput className="h-4 w-4" />, color: 'text-green-400', permissionKey: 'entrada' },
     { key: 'registros', label: config?.sectionRegistros || 'REGISTROS', icon: <Table2 className="h-4 w-4" />, color: 'text-blue-400', permissionKey: 'registros' },
+    { key: 'stock', label: 'STOCK ALMACÉN', icon: <Warehouse className="h-4 w-4" />, color: 'text-teal-400', permissionKey: 'stock' },
     { key: 'clientes', label: config?.sectionClientes || 'CLIENTES', icon: <Users className="h-4 w-4" />, color: 'text-purple-400', permissionKey: 'clientes' },
     { key: 'catalogo', label: config?.sectionCatalogo || 'CATÁLOGO', icon: <BookOpen className="h-4 w-4" />, color: 'text-amber-400', permissionKey: 'catalogo' },
     { key: 'prefactura', label: config?.sectionPreFactura || 'PRE-FACTURA', icon: <ClipboardList className="h-4 w-4" />, color: 'text-orange-400', permissionKey: 'prefactura' },
@@ -262,7 +263,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
             {reloading ? 'Actualizando…' : 'Actualizar app'}
           </button>
           {displayName}
-          <div className="mt-1 text-[9px] text-green-700 font-mono">build: SMURFIT-3COSTES · 2026-09-14</div>
+          <div className="mt-1 text-[9px] text-green-700 font-mono">build: STOCK-ALMACEN · 2026-09-14</div>
         </div>
       </aside>
     </>

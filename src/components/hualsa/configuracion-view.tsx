@@ -72,6 +72,7 @@ function UsersManager() {
     { key: 'entrada.pasarRegistros', label: '  ↳ Pasar a Registros', parent: 'entrada' },
     { key: 'entrada.grilla', label: '  ↳ Entrada Masiva (Grilla)', parent: 'entrada' },
     { key: 'registros', label: 'Registros' },
+    { key: 'stock', label: 'Stock Almacén' },
     { key: 'clientes', label: 'Clientes' },
     { key: 'catalogo', label: 'Catálogo' },
     { key: 'prefactura', label: 'Pre-Factura' },

@@ -8,6 +8,7 @@ import { ClientesView } from '@/components/hualsa/clientes-view'
 import { CatalogoView } from '@/components/hualsa/catalogo-view'
 import { FacturasView } from '@/components/hualsa/facturas-view'
 import { PreFacturaView } from '@/components/hualsa/prefactura-view'
+import { StockAlmacenView } from '@/components/hualsa/stock-almacen-view'
 import { BackupView } from '@/components/hualsa/backup-view'
 import { ConfiguracionView } from '@/components/hualsa/configuracion-view'
 import { AdminView } from '@/components/hualsa/admin-view'
@@ -16,10 +17,10 @@ import { ConfigProvider, useConfig } from '@/lib/config'
 import { AuthProvider, useAuth } from '@/lib/auth-context'
 import { canAccessConfig } from '@/lib/permissions'
 
-export type View = 'entrada' | 'registros' | 'clientes' | 'catalogo' | 'prefactura' | 'facturas' | 'backup' | 'config' | 'admin' | 'suscripcion'
+export type View = 'entrada' | 'registros' | 'stock' | 'clientes' | 'catalogo' | 'prefactura' | 'facturas' | 'backup' | 'config' | 'admin' | 'suscripcion'
 
 // Screen permission keys (including sub-permissions)
-const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa', 'configuracion.usuarios', 'configuracion.campos'] as const
+const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'stock', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa', 'configuracion.usuarios', 'configuracion.campos'] as const
 
 // Parse permissions from JSON string to array
 function parsePermissions(permissionsStr: string): string[] {
@@ -75,7 +76,7 @@ function AppContent() {
     if (user && !loading) {
       if (!hasPermission(user.role, user.permissions, activeView)) {
         // Find first accessible view
-        const viewOrder: View[] = ['entrada', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'backup']
+        const viewOrder: View[] = ['entrada', 'registros', 'stock', 'clientes', 'catalogo', 'prefactura', 'facturas', 'backup']
         const accessible = viewOrder.find(v => hasPermission(user.role, user.permissions, v))
         // eslint-disable-next-line react-hooks/set-state-in-effect
         if (accessible) setActiveView(accessible)
@@ -157,7 +158,7 @@ function AppContent() {
       return
     }
     // For regular users (empleado / facturacion), check permissions for screen views
-    if (['entrada', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'backup'].includes(view)) {
+    if (['entrada', 'registros', 'stock', 'clientes', 'catalogo', 'prefactura', 'facturas', 'backup'].includes(view)) {
       if (hasPermission(user.role, user.permissions, view)) {
         setActiveView(view)
       }
@@ -212,10 +213,11 @@ function AppContent() {
             {activeView === 'facturas' && hasPermission(user.role, user.permissions, 'facturas') && <div className="h-full flex flex-col"><FacturasView /></div>}
           </div>
         )}
-        {/* Scrollable views: config, admin, backup, suscripcion */}
-        {['backup','suscripcion','config','admin'].includes(activeView) && (
+        {/* Scrollable views: stock, config, admin, backup, suscripcion */}
+        {['stock', 'backup','suscripcion','config','admin'].includes(activeView) && (
           <div key={`${activeView}-${effectiveTenantId}`} className="flex-1 min-h-0 overflow-y-auto">
             <div className="p-3 md:p-6 pt-16 md:pt-6 pb-8">
+              {activeView === 'stock' && hasPermission(user.role, user.permissions, 'stock') && <StockAlmacenView />}
               {activeView === 'backup' && hasPermission(user.role, user.permissions, 'backup') && <BackupView />}
               {activeView === 'suscripcion' && (user.role === 'admin' || user.role === 'superadmin') && <PlansView tenantId={effectiveTenantId || user.tenantId} />}
               {activeView === 'config' && canAccessConfig(user.role, user.permissions) && <ConfiguracionView tenant={tenant} />}
@@ -231,7 +233,7 @@ function AppContent() {
           </div>
         )}
         {/* No permission view */}
-        {['entrada', 'registros', 'clientes', 'catalogo', 'prefactura', 'facturas', 'backup'].includes(activeView) && !hasPermission(user.role, user.permissions, activeView) && (
+        {['entrada', 'registros', 'stock', 'clientes', 'catalogo', 'prefactura', 'facturas', 'backup'].includes(activeView) && !hasPermission(user.role, user.permissions, activeView) && (
           <div className="flex-1 min-h-0 flex items-center justify-center">
             <div className="text-center space-y-3">
               <div className="text-4xl">🔒</div>
