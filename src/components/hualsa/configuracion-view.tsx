@@ -420,6 +420,8 @@ function FieldEditor({
   onMoveDown,
   isFirst,
   isLast,
+  clientes,
+  enableClientFilter,
 }: {
   field: FieldDef
   onUpdate: (updated: FieldDef) => void
@@ -428,11 +430,21 @@ function FieldEditor({
   onMoveDown: () => void
   isFirst: boolean
   isLast: boolean
+  clientes?: { id: string; nombre: string }[]
+  enableClientFilter?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<FieldDef>(field)
+  const [showClientPicker, setShowClientPicker] = useState(false)
 
   useEffect(() => { setDraft(field) }, [field])
+
+  // Toggle a cliente id in the draft.clientIds array
+  function toggleClientId(id: string) {
+    const current = draft.clientIds || []
+    const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id]
+    setDraft({ ...draft, clientIds: next })
+  }
 
   function handleSave() {
     onUpdate(draft)
@@ -464,38 +476,86 @@ function FieldEditor({
 
       {editing ? (
         // Edit mode
-        <div className="flex-1 grid grid-cols-[1fr_1fr_120px_auto] gap-2 items-center">
-          <Input
-            value={draft.label}
-            onChange={e => setDraft({ ...draft, label: e.target.value })}
-            className="h-8 text-sm"
-            placeholder="Etiqueta del campo"
-          />
-          <Input
-            value={draft.key}
-            onChange={e => setDraft({ ...draft, key: e.target.value.replace(/[^a-zA-Z0-9_]/g, '_') })}
-            className="h-8 text-sm"
-            placeholder="key_campo"
-            disabled={!field.isCustom}
-          />
-          <Select value={draft.type} onValueChange={v => setDraft({ ...draft, type: v as FieldDef['type'] })}>
-            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="text">Texto</SelectItem>
-              <SelectItem value="number">Número</SelectItem>
-              <SelectItem value="date">Fecha</SelectItem>
-              <SelectItem value="select">Selección</SelectItem>
-              <SelectItem value="textarea">Texto largo</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="flex gap-1">
-            <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:bg-green-50" onClick={handleSave}>
-              <CheckCircle className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-7 w-7 text-gray-500 hover:bg-gray-100" onClick={handleCancel}>
-              <X className="h-4 w-4" />
-            </Button>
+        <div className="flex-1 space-y-2">
+          <div className="flex items-center gap-2 grid grid-cols-[1fr_1fr_120px_auto]">
+            <Input
+              value={draft.label}
+              onChange={e => setDraft({ ...draft, label: e.target.value })}
+              className="h-8 text-sm"
+              placeholder="Etiqueta del campo"
+            />
+            <Input
+              value={draft.key}
+              onChange={e => setDraft({ ...draft, key: e.target.value.replace(/[^a-zA-Z0-9_]/g, '_') })}
+              className="h-8 text-sm"
+              placeholder="key_campo"
+              disabled={!field.isCustom}
+            />
+            <Select value={draft.type} onValueChange={v => setDraft({ ...draft, type: v as FieldDef['type'] })}>
+              <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">Texto</SelectItem>
+                <SelectItem value="number">Número</SelectItem>
+                <SelectItem value="date">Fecha</SelectItem>
+                <SelectItem value="select">Selección</SelectItem>
+                <SelectItem value="textarea">Texto largo</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex gap-1">
+              <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:bg-green-50" onClick={handleSave} title="Guardar">
+                <CheckCircle className="h-4 w-4" />
+              </Button>
+              <Button size="icon" variant="ghost" className="h-7 w-7 text-gray-500 hover:bg-gray-100" onClick={handleCancel} title="Cancelar">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
+          {enableClientFilter && field.isCustom && clientes && clientes.length > 0 && (
+            <div className="border-t border-dashed border-gray-200 pt-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-500 uppercase shrink-0">Aplica a:</span>
+                {(!draft.clientIds || draft.clientIds.length === 0) ? (
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Todos los clientes</span>
+                ) : (
+                  <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                    {draft.clientIds.length} cliente{draft.clientIds.length !== 1 ? 's' : ''} específico{draft.clientIds.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowClientPicker(s => !s)}
+                  className="text-xs text-[#005bb5] hover:underline ml-1"
+                >
+                  {showClientPicker ? 'Cerrar' : 'Cambiar'}
+                </button>
+              </div>
+              {showClientPicker && (
+                <div className="mt-2 max-h-44 overflow-auto border border-gray-200 rounded-md p-2 bg-white">
+                  <label className="flex items-center gap-2 text-xs py-1 border-b border-gray-100 mb-1">
+                    <input
+                      type="checkbox"
+                      checked={!draft.clientIds || draft.clientIds.length === 0}
+                      onChange={() => setDraft({ ...draft, clientIds: [] })}
+                    />
+                    <span className="font-medium text-green-700">Todos los clientes (por defecto)</span>
+                  </label>
+                  {clientes.map(c => (
+                    <label key={c.id} className="flex items-center gap-2 text-xs py-0.5 hover:bg-gray-50 px-1 rounded">
+                      <input
+                        type="checkbox"
+                        checked={(draft.clientIds || []).includes(c.id)}
+                        onChange={() => toggleClientId(c.id)}
+                      />
+                      <span className="truncate">{c.nombre}</span>
+                    </label>
+                  ))}
+                  <p className="text-[10px] text-gray-400 mt-1 pt-1 border-t border-gray-100">
+                    Si marcas clientes específicos, este campo solo aparecerá al editar esos clientes.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         // Display mode
@@ -511,12 +571,19 @@ function FieldEditor({
 
           {/* Field info */}
           <div className="flex-1 min-w-0">
-            <span className={`text-sm font-medium ${field.visible ? 'text-gray-700' : 'text-gray-400'}`}>
-              {field.label}
-            </span>
-            <span className="text-xs text-gray-400 ml-2">
-              ({field.type}{field.required ? ' · obligatorio' : ''}{field.isCustom ? ' · personalizado' : ''})
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-sm font-medium ${field.visible ? 'text-gray-700' : 'text-gray-400'}`}>
+                {field.label}
+              </span>
+              <span className="text-xs text-gray-400">
+                ({field.type}{field.required ? ' · obligatorio' : ''}{field.isCustom ? ' · personalizado' : ''})
+              </span>
+              {enableClientFilter && field.isCustom && field.clientIds && field.clientIds.length > 0 && (
+                <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full" title={`Solo para: ${field.clientIds.length} cliente(s)`}>
+                  Solo {field.clientIds.length} cliente{field.clientIds.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Actions */}
@@ -544,6 +611,7 @@ function FieldsManager({
   defaultFields,
   configKey,
   onUpdate,
+  enableClientFilter,
 }: {
   title: string
   icon: React.ReactNode
@@ -551,9 +619,23 @@ function FieldsManager({
   defaultFields: FieldDef[]
   configKey: string
   onUpdate: (configKey: string, fields: FieldDef[]) => void
+  enableClientFilter?: boolean
 }) {
   const [newFieldLabel, setNewFieldLabel] = useState('')
   const [newFieldType, setNewFieldType] = useState<FieldDef['type']>('text')
+  const [clientes, setClientes] = useState<{ id: string; nombre: string }[]>([])
+
+  // Fetch clientes only when clientFilter is enabled (CLIENTES section)
+  useEffect(() => {
+    if (!enableClientFilter) return
+    let cancelled = false
+    fetch('/api/clientes').then(r => r.json()).then(data => {
+      if (!cancelled && Array.isArray(data)) {
+        setClientes(data.map((c: { id: string; nombre: string }) => ({ id: c.id, nombre: c.nombre })))
+      }
+    }).catch(err => console.error('Error loading clientes for field editor:', err))
+    return () => { cancelled = true }
+  }, [enableClientFilter])
 
   function handleAddField() {
     if (!newFieldLabel.trim()) return
@@ -642,6 +724,8 @@ function FieldsManager({
               onMoveDown={() => handleMoveDown(index)}
               isFirst={index === 0}
               isLast={index === fields.length - 1}
+              clientes={clientes}
+              enableClientFilter={enableClientFilter}
             />
           ))}
         </div>
@@ -985,6 +1069,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             defaultFields={DEFAULT_FIELDS_CLIENTES}
             configKey="fieldsClientes"
             onUpdate={handleFieldsUpdate}
+            enableClientFilter={true}
           />
 
           <FieldsManager

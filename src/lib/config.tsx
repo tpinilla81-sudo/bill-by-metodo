@@ -14,6 +14,9 @@ export interface FieldDef {
   placeholder?: string
   options?: string[]    // for select type
   dbColumn?: string     // maps to which DB column (for core fields)
+  // Client-specific fields: only show this field when editing one of these clientes.
+  // Empty/undefined = applies to ALL clients (default behaviour, backward compatible).
+  clientIds?: string[]
 }
 
 // ─── Default field definitions per section ────────────────────
@@ -337,6 +340,16 @@ export function useConfig() {
 // ─── Helper: get visible fields ───────────────────────────────
 export function getVisibleFields(fields: FieldDef[]): FieldDef[] {
   return fields.filter(f => f.visible)
+}
+
+// ─── Helper: does a field apply to a given cliente? ───────────
+// clientIds empty/missing = applies to all clients (backward compat)
+// clientIds populated = only applies to those specific clients
+export function fieldAppliesToClient(field: FieldDef, clienteId: string | null): boolean {
+  if (!field.isCustom) return true  // core fields always apply
+  if (!field.clientIds || field.clientIds.length === 0) return true
+  if (!clienteId) return false  // creating new client → specific fields hidden
+  return field.clientIds.includes(clienteId)
 }
 
 // ─── Helper: get label for a field key ────────────────────────

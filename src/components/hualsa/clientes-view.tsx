@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Pencil, Trash2, Save, RotateCcw, Settings2, ChevronDown } from 'lucide-react'
 import type { Cliente } from '@/lib/hualsa-utils'
-import { useConfig, DEFAULT_FIELDS_CLIENTES, type FieldDef, parseCustomData, serializeCustomData } from '@/lib/config'
+import { useConfig, DEFAULT_FIELDS_CLIENTES, type FieldDef, parseCustomData, serializeCustomData, fieldAppliesToClient } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 
 export function ClientesView() {
@@ -19,6 +19,9 @@ export function ClientesView() {
   const [localLabels, setLocalLabels] = useState<Record<string, string>>({})
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Fields shown in the form: only those applicable to the client being edited (or new client)
+  // Computed AFTER editingId is declared.
+  const formFields = visibleFields.filter(f => fieldAppliesToClient(f, editingId))
 
   // Core field state
   const [nombre, setNombre] = useState('')
@@ -116,6 +119,8 @@ export function ClientesView() {
 
   // Get display value from a cliente record for a field
   function getDisplayValue(c: Cliente, field: FieldDef): string {
+    // For client-specific fields that don't apply to this client, show '—'
+    if (!fieldAppliesToClient(field, c.id)) return '—'
     if (field.isCustom) {
       const cd = parseCustomData((c as Record<string, unknown>).customData as string || '')
       return String(cd[field.key] || '')
@@ -165,14 +170,21 @@ export function ClientesView() {
 
         <Card className={`border-l-4 ${editingId ? 'border-l-indigo-500 bg-indigo-50/30' : 'border-l-transparent'}`}>
           <CardContent className="p-4">
+            {/* Banner: indicates this client has client-specific fields shown */}
+            {editingId && formFields.some(f => f.isCustom && f.clientIds && f.clientIds.length > 0) && (
+              <div className="mb-3 text-xs bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1.5 rounded-md flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                Este cliente tiene campos personalizados exclusivos habilitados.
+              </div>
+            )}
             <div className="grid gap-3">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                {visibleFields.filter(f => !f.isCustom).slice(0, 4).map(renderFieldInput)}
+                {formFields.filter(f => !f.isCustom).slice(0, 4).map(renderFieldInput)}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_150px] gap-3">
-                {visibleFields.filter((f, i) => !f.isCustom && i >= 4).map(renderFieldInput)}
-                {/* Custom fields inline */}
-                {visibleFields.filter(f => f.isCustom).map(renderFieldInput)}
+                {formFields.filter((f, i) => !f.isCustom && i >= 4).map(renderFieldInput)}
+                {/* Custom fields inline — only those applicable to this client */}
+                {formFields.filter(f => f.isCustom).map(renderFieldInput)}
                 <div className="flex gap-2 items-end">
                   <Button onClick={handleSave} className="bg-[#005bb5] hover:bg-[#003d7a] text-white flex-1">
                     <Save className="h-4 w-4 mr-1" />{editingId ? 'ACTUALIZAR' : 'GUARDAR'}
@@ -192,7 +204,17 @@ export function ClientesView() {
             <thead className="sticky top-0 z-10 shadow-sm">
               <tr className="bg-green-50">
                 {visibleFields.map(f => (
-                  <th key={f.key} className="p-2 text-left font-semibold border-b bg-green-50">{f.label}</th>
+                  <th key={f.key} className="p-2 text-left font-semibold border-b bg-green-50">
+                    <span className="inline-flex items-center gap-1">
+                      {f.label}
+                      {f.isCustom && f.clientIds && f.clientIds.length > 0 && (
+                        <span
+                          className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"
+                          title={`Solo para ${f.clientIds.length} cliente(s) específico(s)`}
+                        />
+                      )}
+                    </span>
+                  </th>
                 ))}
                 <th className="p-2 text-left font-semibold border-b bg-green-50">Acc.</th>
               </tr>
@@ -201,7 +223,7 @@ export function ClientesView() {
               {clientes.map(c => (
                 <tr key={c.id} className="border-b hover:bg-gray-50">
                   {visibleFields.map(f => (
-                    <td key={f.key} className="p-2">{getDisplayValue(c, f)}</td>
+                    <td key={f.key} className={`p-2 ${!fieldAppliesToClient(f, c.id) ? 'text-gray-300' : ''}`}>{getDisplayValue(c, f)}</td>
                   ))}
                   <td className="p-2">
                     <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEdit(c)}><Pencil className="h-3.5 w-3.5" /></Button>
