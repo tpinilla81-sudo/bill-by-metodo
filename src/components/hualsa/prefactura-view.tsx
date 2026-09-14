@@ -22,6 +22,131 @@ interface FacturasData {
 }
 
 type LineaFactura = { fecha: string; c1: string; c2: string; cant: number; clienteId: string; obs: string; precioUnitario: number }
+
+// ─── Almacenaje de palets (p.ej. cliente SMURFIT) ──────────────────────
+// Cuando se factura a un cliente, si hay registros de "Salida Palet",
+// se emparejan con su "Entrada Palet", se calculan los días de almacenaje
+// y se genera una línea de facturación al "coste diario" del catálogo.
+//
+// Convenciones (sin acentos, minúsculas, espacios colapsados):
+//  · ENTRADA: registro cuyo C2 contiene "entrada palet"
+//  · SALIDA:  registro cuyo C2 contiene "salida palet"
+//  · COSTE DIARIO: ítem del catálogo cuyo C2 contiene "coste diario"
+//    (prioridad: precio específico del cliente > precio general)
+//  · IDENTIFICADOR del palet: campos personalizados cuyo nombre contiene
+//    "lote" o "palet" (fuertes) o "ubicac" (débil) con el mismo valor.
+//    Si no hay campos, se comparan las observaciones.
+//  · DÍAS facturados: fechaSalida − fechaEntrada + 1 (ambos inclusive), mínimo 1.
+//    La entrada y la salida NO se facturan como líneas normales: quedan
+//    marcadas como facturadas y su importe sale solo por la línea de almacenaje.
+
+function normAlm(s: string): string {
+  return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+function isEntradaPalet(r: Registro): boolean {
+  return /entrada palet/.test(normAlm(r.c2))
+}
+
+function isSalidaPalet(r: Registro): boolean {
+  return /salida palet/.test(normAlm(r.c2))
+}
+
+function extractIdents(r: Registro): { strong: Record<string, string>; weak: Record<string, string> } {
+  const strong: Record<string, string> = {}
+  const weak: Record<string, string> = {}
+  try {
+    const cd = JSON.parse(r.customData || '{}') as Record<string, unknown>
+    for (const [k, v] of Object.entries(cd)) {
+      const nk = normAlm(k)
+      const val = normAlm(String(v ?? ''))
+      if (!val) continue
+      if (/palet|lote/.test(nk)) strong[nk] = val
+      else if (/ubicac/.test(nk)) weak[nk] = val
+    }
+  } catch { /* customData corrupto — ignorar */ }
+  return { strong, weak }
+}
+
+function matchIdents(a: { strong: Record<string, string>; weak: Record<string, string> }, b: { strong: Record<string, string>; weak: Record<string, string> }): boolean {
+  const aStrong = Object.keys(a.strong).length > 0
+  const bStrong = Object.keys(b.strong).length > 0
+  if (aStrong || bStrong) {
+    // Si hay identificadores fuertes (lote/nºpalet), son los que mandan
+    for (const k of Object.keys(a.strong)) {
+      if (b.strong[k] && b.strong[k] === a.strong[k]) return true
+    }
+    return false
+  }
+  // Solo ubicación disponible en ambos lados
+  for (const k of Object.keys(a.weak)) {
+    if (b.weak[k] && b.weak[k] === a.weak[k]) return true
+  }
+  return false
+}
+
+function diasAlmacenaje(fEntrada: string, fSalida: string): number {
+  const d1 = new Date(fEntrada + 'T00:00:00')
+  const d2 = new Date(fSalida + 'T00:00:00')
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return 1
+  const diff = Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1  // ambos días inclusive
+  return Math.max(1, diff)
+}
+
+function procesarAlmacenajePalets(
+  sel: Registro[],
+  allRegistros: Registro[],
+  catalogo: CatalogoItem[],
+  targetCliId: string
+): { lineas: LineaFactura[]; idsExcluidos: string[]; extraIds: string[]; sinMatch: number; precioCero: number } {
+  const empty = { lineas: [] as LineaFactura[], idsExcluidos: [] as string[], extraIds: [] as string[], sinMatch: 0, precioCero: 0 }
+  const salidas = sel.filter(isSalidaPalet)
+  if (!targetCliId || salidas.length === 0) return empty
+
+  // Coste diario en catálogo: específico del cliente primero, luego general
+  const cdItem = catalogo.find(x => /coste diari/.test(normAlm(x.c2)) && x.clienteId === targetCliId)
+    || catalogo.find(x => /coste diari/.test(normAlm(x.c2)) && !x.clienteId)
+  const costeDiario = cdItem ? Number(cdItem.final) || 0 : 0
+
+  // Entradas candidatas: mismo cliente, no facturadas aún
+  const candidatos = allRegistros.filter(r => !r.facturado && isEntradaPalet(r) && r.clienteId === targetCliId)
+  const usados = new Set<string>()
+  const lineas: LineaFactura[] = []
+  const idsExcluidos: string[] = []
+  const extraIds: string[] = []
+  let sinMatch = 0
+  let precioCero = 0
+
+  for (const s of [...salidas].sort((a, b) => a.fecha.localeCompare(b.fecha))) {
+    const si = extractIdents(s)
+    let ent = candidatos.find(e => !usados.has(e.id) && matchIdents(extractIdents(e), si))
+    if (!ent) {
+      // Fallback 1:1 — si solo hay una entrada libre para ese cliente, emparejar
+      const libres = candidatos.filter(e => !usados.has(e.id))
+      if (libres.length === 1) ent = libres[0]
+    }
+    if (!ent) { sinMatch++; continue }
+    usados.add(ent.id)
+    idsExcluidos.push(s.id, ent.id)
+    extraIds.push(ent.id)
+    const dias = diasAlmacenaje(ent.fecha, s.fecha)
+    const ident = [...Object.values(si.strong), ...Object.values(si.weak)][0] || ''
+    const identTxt = ident ? ` ${ident.toUpperCase()}` : ''
+    lineas.push({
+      fecha: s.fecha,
+      c1: s.c1,
+      c2: `ALMACENAJE PALET${identTxt} (${dias} ${dias === 1 ? 'DÍA' : 'DÍAS'})`,
+      cant: dias,
+      clienteId: s.clienteId,
+      obs: `Entrada ${fmtDate(ent.fecha)} · Salida ${fmtDate(s.fecha)}`,
+      precioUnitario: costeDiario,
+    })
+    if (costeDiario === 0) precioCero++
+  }
+
+  return { lineas, idsExcluidos, extraIds, sinMatch, precioCero }
+}
 interface InvoiceData {
   cli: Cliente; lineas: LineaFactura[]
   iva: number; numero: string; fechaFact: string; modo: string; base: number; ivaImp: number; total: number
@@ -228,7 +353,21 @@ export function PreFacturaView() {
     const effectiveFCliente = fClientes.length === 1 ? fClientes[0] : ''
     const targetCliId = effectiveFCliente || cliIds[0]
     const cli = clientes.find(c => c.id === targetCliId) || { id: '', nombre: '(varios)', cif: '', dir: '', cp: '', ciudad: '', prov: '', mail: '', tel: '' }
-    const lineasBase: LineaFactura[] = (effectiveFCliente ? sel.filter(r => r.clienteId === effectiveFCliente) : sel).map(r => ({ fecha: r.fecha, c1: r.c1, c2: r.c2, cant: r.cant, clienteId: r.clienteId, obs: r.obs || '', precioUnitario: getPrecio(r) }))
+
+    // Almacenaje de palets (SMURFIT): emparejar SALIDA PALET con ENTRADA PALET,
+    // calcular días y generar líneas de almacenaje al coste diario del catálogo.
+    const alm = procesarAlmacenajePalets(sel, registros, catalogo, targetCliId)
+    if (alm.sinMatch > 0 || alm.precioCero > 0) {
+      const msgs: string[] = []
+      if (alm.sinMatch > 0) msgs.push(`⚠ ${alm.sinMatch} salida(s) de palet SIN entrada coincidente — quedan como línea normal`)
+      if (alm.precioCero > 0) msgs.push(`⚠ No se encontró "COSTE DIARIO" en el catálogo para este cliente — precio 0`)
+      alert('Almacenaje de palets:\n' + msgs.join('\n'))
+    }
+
+    const lineasBase: LineaFactura[] = sel
+      .filter(r => !alm.idsExcluidos.includes(r.id))
+      .map(r => ({ fecha: r.fecha, c1: r.c1, c2: r.c2, cant: r.cant, clienteId: r.clienteId, obs: r.obs || '', precioUnitario: getPrecio(r) }))
+    if (alm.lineas.length > 0) lineasBase.push(...alm.lineas)
     const iva = Number(fIva) || 0
 
     let lineas: LineaFactura[]
@@ -249,7 +388,7 @@ export function PreFacturaView() {
     const base = lineas.reduce((s, r) => s + (r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)) * r.cant, 0)
     const ivaImp = base * iva / 100
     const total = base + ivaImp
-    const registroIds = sel.map(r => r.id)
+    const registroIds = [...sel.map(r => r.id), ...alm.extraIds]
 
     setInvoiceData({ cli, lineas, iva, numero: '', fechaFact: fFechaFact, modo: fModo, base, ivaImp, total, registroIds })
     setModalOpen(true)
