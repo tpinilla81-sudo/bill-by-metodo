@@ -1,12 +1,16 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
-import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, Layers, CalendarClock, Printer, Map } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import { fmtDate, type Cliente, type Registro } from '@/lib/hualsa-utils'
+import { Html5Qrcode } from 'html5-qrcode'
 
 // ─── STOCK ALMACÉN ─────────────────────────────────────────────────────
 // Control del stock en almacén a partir de los registros de palets:
@@ -245,6 +249,26 @@ export function StockAlmacenView() {
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(() => Date.now())
 
+  // Buscador por lote/palet/ubicación
+  const [query, setQuery] = useState('')
+  const queryNorm = normAlm(query.trim())
+
+  // Capacidades por estantería (persistidas en localStorage)
+  const [capacidades, setCapacidades] = useState<Record<string, number>>(() => {
+    if (typeof window === 'undefined') return {}
+    try { return JSON.parse(localStorage.getItem('stock-capacidades') || '{}') } catch { return {} }
+  })
+  const [showCapEditor, setShowCapEditor] = useState(false)
+  useEffect(() => {
+    try { localStorage.setItem('stock-capacidades', JSON.stringify(capacidades)) } catch { /* quota */ }
+  }, [capacidades])
+
+  // Escáner QR
+  const [qrOpen, setQrOpen] = useState(false)
+  const [qrMsg, setQrMsg] = useState<{ txt: string; kind: 'ok' | 'err' | 'info' } | null>(null)
+  const qrScannerRef = useRef<Html5Qrcode | null>(null)
+  const qrRegionId = 'qr-reader-region'
+
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
@@ -262,6 +286,50 @@ export function StockAlmacenView() {
     const t = setInterval(() => setNow(Date.now()), 60000)
     return () => clearInterval(t)
   }, [])
+
+  // Cerrar el escáner QR al desmontar / cerrar el modal
+  const stopQr = useCallback(async () => {
+    try {
+      const s = qrScannerRef.current
+      if (s) {
+        // El escáner puede estar "running" o ya parado — ambos casos son seguros
+        if (s.isScanning) await s.stop()
+        await s.clear()
+      }
+    } catch (err) { console.warn('QR stop:', err) }
+    qrScannerRef.current = null
+  }, [])
+  useEffect(() => () => { stopQr() }, [stopQr])
+
+  // Iniciar el escáner QR cuando se abre el modal
+  useEffect(() => {
+    if (!qrOpen) return
+    let cancelled = false
+    setQrMsg(null)
+    // Pequeño retardo para que el div del reader exista en el DOM
+    const t = setTimeout(async () => {
+      if (cancelled) return
+      try {
+        const s = new Html5Qrcode(qrRegionId)
+        qrScannerRef.current = s
+        await s.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          (decoded: string) => {
+            // Lectura válida: detener escáner y lanzar búsqueda
+            setQuery(decoded)
+            setQrMsg({ txt: `QR leído: "${decoded}"`, kind: 'ok' })
+            setTimeout(() => { setQrOpen(false) }, 600)
+          },
+          () => { /* frame sin decode — ignorar */ }
+        )
+      } catch (err) {
+        console.error('QR start error:', err)
+        setQrMsg({ txt: 'No se pudo acceder a la cámara. Revisa permisos del navegador.', kind: 'err' })
+      }
+    }, 100)
+    return () => { cancelled = true; clearTimeout(t); stopQr() }
+  }, [qrOpen, stopQr])
 
   const clienteFiltro = cliFiltro === 'todos' ? '' : cliFiltro
 
@@ -338,6 +406,23 @@ export function StockAlmacenView() {
 
   const tieneMovs = registros.some(r => isEntradaPalet(r) || isSalidaPalet(r))
 
+  // Buscador: ¿coincide una celda o un lote con la query?
+  function cellMatch(c: { ubicacion: string; pos: string; rack: string; lotes: LoteStock[] }): boolean {
+    if (!queryNorm) return false
+    if (normAlm(c.ubicacion).includes(queryNorm)) return true
+    if (normAlm(c.pos).includes(queryNorm)) return true
+    if (normAlm(c.rack).includes(queryNorm)) return true
+    return c.lotes.some(l => normAlm(l.ident).includes(queryNorm))
+  }
+
+  // ¿La celda tiene capacidad agotada?
+  function capInfo(rackName: string, total: number): { cap: number; pct: number; full: boolean } {
+    const cap = capacidades[rackName] || 0
+    if (cap <= 0) return { cap: 0, pct: 0, full: false }
+    const pct = Math.min(100, Math.round((total / cap) * 100))
+    return { cap, pct, full: total >= cap }
+  }
+
   return (
     <div className="space-y-4 pb-8">
       {/* Cabecera */}
@@ -376,6 +461,90 @@ export function StockAlmacenView() {
           <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Actualizar
         </Button>
       </div>
+
+      {/* Barra de búsqueda + QR + capacidades */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <Input
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Buscar lote / nº palet / ubicación / estantería…"
+            className="pl-9 pr-9 h-9 bg-white"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              title="Limpiar"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9"
+          onClick={() => setQrOpen(true)}
+          title="Escanear QR con la cámara"
+        >
+          <QrCode className="h-4 w-4 mr-1" /> Escanear QR
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 ml-auto"
+          onClick={() => setShowCapEditor(v => !v)}
+          title="Configurar capacidad de cada estantería"
+        >
+          <Settings2 className="h-4 w-4 mr-1" /> Capacidad
+        </Button>
+      </div>
+
+      {/* Editor de capacidades */}
+      {showCapEditor && racks.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-bold text-gray-800 mb-3 text-sm flex items-center gap-2">
+              <Settings2 className="h-4 w-4 text-teal-600" /> CAPACIDAD POR ESTANTERÍA
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Indica cuántos palets caben en cada estantería. Se guarda en este navegador (no se comparte con otros usuarios).
+              Si una estantería supera su capacidad, se resaltará en rojo en el mapa.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {racks.map(rk => {
+                const cap = capacidades[rk.name] || 0
+                return (
+                  <div key={rk.name} className="rounded-lg border border-gray-200 p-2 bg-white">
+                    <Label className="text-xs font-bold text-gray-600 flex items-center justify-between">
+                      <span>{rk.name}</span>
+                      <span className={`text-[10px] font-bold ${cap > 0 && rk.total > cap ? 'text-red-600' : 'text-gray-400'}`}>
+                        {rk.total}{cap > 0 ? `/${cap}` : ''}
+                      </span>
+                    </Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={cap || ''}
+                      onChange={e => {
+                        const v = parseInt(e.target.value, 10)
+                        setCapacidades(prev => ({ ...prev, [rk.name]: isNaN(v) ? 0 : Math.max(0, v) }))
+                      }}
+                      placeholder="Sin límite"
+                      className="h-8 mt-1 text-sm"
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {!tieneMovs && !loading && (
         <Card>
@@ -469,16 +638,35 @@ export function StockAlmacenView() {
               </div>
             </div>
             <div className="flex flex-wrap gap-4 print-racks">
-              {racks.map(rk => (
+              {racks.map(rk => {
+                const cap = capInfo(rk.name, rk.total)
+                return (
                 <div key={rk.name} className="rounded-xl border-2 border-gray-300 bg-gradient-to-b from-gray-50 to-white p-3 shadow-sm min-w-[250px] flex-1 max-w-full print-rack">
-                  <div className="flex items-center justify-between mb-2 px-0.5">
+                  <div className="flex items-center justify-between mb-1 px-0.5">
                     <div className="font-bold text-gray-700 text-sm flex items-center gap-1.5">
                       <Warehouse className="h-4 w-4 text-teal-600" /> ESTANTERÍA {rk.name}
                     </div>
-                    <span className="text-[11px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">
-                      {rk.total} {rk.total === 1 ? 'palet' : 'palets'}
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                      cap.cap > 0
+                        ? cap.full
+                          ? 'bg-red-50 text-red-700 border-red-300'
+                          : cap.pct > 75
+                            ? 'bg-amber-50 text-amber-700 border-amber-300'
+                            : 'bg-teal-50 text-teal-700 border-teal-200'
+                        : 'bg-teal-50 text-teal-700 border-teal-200'
+                    }`}>
+                      {rk.total}{cap.cap > 0 ? `/${cap.cap}` : ''} {rk.total === 1 ? 'palet' : 'palets'}
                     </span>
                   </div>
+                  {/* Barra de capacidad */}
+                  {cap.cap > 0 && (
+                    <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden mb-2 mx-0.5 print-hide">
+                      <div
+                        className={`h-full rounded-full transition-all ${cap.full ? 'bg-red-500' : cap.pct > 75 ? 'bg-amber-500' : 'bg-teal-500'}`}
+                        style={{ width: `${Math.min(100, cap.pct)}%` }}
+                      />
+                    </div>
+                  )}
                   {/* Postes laterales del estante + huecos */}
                   <div className="border-l-[6px] border-r-[6px] border-gray-400 rounded-sm bg-white p-1.5">
                     <div className="grid grid-cols-[repeat(auto-fill,minmax(108px,1fr))] gap-1.5">
@@ -486,11 +674,18 @@ export function StockAlmacenView() {
                         const ocupada = c.total > 0
                         const lotesUnicos = [...new Map(c.lotes.map(l => [l.ident || l.id, l])).values()]
                         const diasMax = c.dias
+                        const match = cellMatch(c)
                         return (
                           <div
                             key={`${c.rack}-${c.ubicacion}`}
                             title={`${c.ubicacion}${ocupada ? ` · ${c.total} palet(s) · ${diasMax} días` : ' · LIBRE'}${lotesUnicos.some(l => l.ident) ? ' · ' + lotesUnicos.map(l => l.ident).join(', ') : ''}`}
-                            className={`rounded-md border-2 p-1.5 shadow-sm cursor-default ${
+                            className={`rounded-md border-2 p-1.5 shadow-sm cursor-default transition-all ${
+                              match
+                                ? 'ring-4 ring-sky-500 ring-offset-1 scale-105 z-10 relative'
+                                : queryNorm
+                                  ? 'opacity-30'
+                                  : ''
+                            } ${
                               ocupada
                                 ? colorPorDias(c.dias)
                                 : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'
@@ -548,7 +743,8 @@ export function StockAlmacenView() {
                   {/* Base del estante */}
                   <div className="h-2 bg-gray-400 rounded-b-lg -mx-1.5 mt-0" />
                 </div>
-              ))}
+                )
+              })}
             </div>
           </CardContent>
         </Card>
@@ -662,6 +858,49 @@ export function StockAlmacenView() {
           </CardContent>
         </Card>
       )}
+
+      {/* Modal Escáner QR */}
+      <Dialog open={qrOpen} onOpenChange={(o) => { if (!o) setQrOpen(false) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="h-5 w-5 text-teal-600" /> Escanear código QR
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-500">
+              Apunta la cámara al QR del palet. Al leerlo, se buscará automáticamente en el mapa.
+            </p>
+            <div
+              id={qrRegionId}
+              className="w-full aspect-square rounded-lg overflow-hidden bg-black border-2 border-gray-200"
+            />
+            {qrMsg && (
+              <div className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                qrMsg.kind === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' :
+                qrMsg.kind === 'err' ? 'bg-red-50 text-red-700 border border-red-200' :
+                'bg-blue-50 text-blue-700 border border-blue-200'
+              }`}>
+                {qrMsg.txt}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                onClick={() => setQrOpen(false)}
+              >
+                <X className="h-4 w-4 mr-1" /> Cerrar
+              </Button>
+            </div>
+            <p className="text-[10px] text-gray-400">
+              Si no funciona, revisa que el navegador tenga permiso de cámara para esta web.
+              En iPhone usa Safari; en Android, Chrome.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
