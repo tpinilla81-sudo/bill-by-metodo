@@ -1294,3 +1294,44 @@ Verificación (agent-browser, servidor producción local rebuild):
 Stage Summary:
 - El círculo QR queda configurable: activado por defecto; quien no quiera imprimir al guardar lo apaga con un clic (en formulario o grilla, misma preferencia) y puede reimprimir cuando quiera desde la fila.
 - Commit b009efa (solo src + scripts; db/custom.db excluido) → push OK, PAT intacto. Vercel despliega.
+
+---
+Task ID: V14-GRILLA-OBLIG
+Agent: Main Agent
+Task: "en grilla cuando se tiene que pasar igual con los campos que en normal, según la configuración se abren más campos y estos son obligatorios"
+
+Work Log:
+- Problema: la grilla solo validaba fecha+c1+c2 y guardaba filas con campos
+  personalizados vacíos (lote, ubicación...) sin avisar, mientras el
+  formulario normal exige TODOS los campos visibles según configuración.
+- entrada-grilla.tsx:
+  * Nueva filaMissing(row): etiquetas de campos obligatorios vacíos —
+    fecha, c1, c2, cliente (si visible), cantidad y todos los customFields
+    visibles, con fieldAppliesToClient (exclusividad por cliente usando el
+    cliente de la fila o el autodetectado del catálogo si está oculto).
+  * handleSave: tras el filtro fecha+c1+c2, si alguna fila tiene campos
+    obligatorios vacíos → BLOQUEA todo con «Fila N: falta/n «CAMPO», …»
+    (nada se guarda a medias, igual que el formulario normal).
+  * Render de fila: isValid ahora = filaMissing vacía → las incompletas se
+    resaltan en ámbar + tooltip "Falta: …" en la fila.
+  * Tip del footer: "todos los campos visibles son obligatorios (igual que
+    el formulario normal)".
+  * Import añadido: fieldAppliesToClient, getFieldLabel de '@/lib/config'.
+- sidebar.tsx: build marker V14-GRILLA-OBLIG · 2026-09-15.
+
+Verificación (agent-browser, servidor producción rebuild):
+- OJO recurrencia: al reconstruir hay que MATAR el custom-server viejo y
+  esperar a que el puerto quede libre (EADDRINUSE si se relanza pronto);
+  un proceso viejo + .next nuevo = "Application error" client-side.
+- Grilla fila ENTRADA PALET (hueco auto E1-01) sin cliente/lote → GUARDAR →
+  bloqueada: "Fila 1: faltan «CLIENTE», «LOTE / Nº PALET»", 0 registros ✓.
+- Fila ámbar + tooltip "Falta: CLIENTE, LOTE / Nº PALET" ✓.
+- Completada (cliente VEGAMAYOR + lote L-V14-01) → ámbar desaparece →
+  GUARDAR → registro guardado + diálogo ETIQUETA QR (toggle ON) ✓.
+- 0 errores de consola. Registro de prueba L-V14-01 borrado, storage limpio.
+- tsc/eslint: solo errores preexistentes. Commit 8adac65 → push OK (PAT intacto).
+
+Stage Summary:
+- La grilla masiva respeta ahora la misma regla que el formulario normal:
+  los campos que abre la configuración son obligatorios, con aviso claro
+  de fila y campo, y bloqueo del guardado hasta completarlos.
