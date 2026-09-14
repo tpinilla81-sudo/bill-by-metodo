@@ -1054,3 +1054,29 @@ Stage Summary:
 - STOCK ALMACEN operativo en produccion de nuevo.
 - Causa raiz del "client-side exception": icono `Layers` no importado
   tras la refactorizacion del task 27. NO era un problema de html5-qrcode.
+---
+Task ID: 30
+Agent: Main Agent
+Task: "quitamos los 2 graficos perdona" + "donde metemos las ubicaciones de las estanterias para que se vea lo vacio"
+
+1. ELIMINADOS los 2 graficos (barras PALETS POR ESTANTERIA + dona STOCK POR
+   CLIENTE). Tambien el import de recharts, barData, pieData y PIE_COLORS.
+
+2. NUEVO EDITOR "Configurar almacen" (boton Settings2, antes "Capacidad"):
+   - Por cada estanteria: input Posiciones (genera RACK-01..N en el dibujo,
+     las sin stock se ven LIBRE) + input Capacidad (max palets).
+   - Papelera para quitar la configuracion de una estanteria.
+   - Formulario "Anadir": nombre + posiciones + capacidad. Permite crear
+     estanterias que aun no tienen ningun movimiento.
+   - Persistencia localStorage 'stock-config' (migra la antigua
+     'stock-capacidades' automaticamente).
+   - buildRacks ahora recibe cfg y genera las posiciones configuradas;
+     el auto-relleno de huecos numericos solo se aplica a estanterias
+     SIN configurar (la config manda).
+
+Build marker: STOCK-V8-CONFIG · 2026-09-14. Build OK. Commit + push.
+
+Stage Summary:
+- Vista mas limpia sin graficos.
+- El usuario define el layout completo del almacen: cada estanteria con sus
+  posiciones; el dibujo muestra todas las ubicaciones, ocupadas o LIBRE.
