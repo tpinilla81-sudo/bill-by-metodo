@@ -2,12 +2,12 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2, Layers } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2, Layers, ChevronDown } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import { fmtDate, type Cliente, type Registro } from '@/lib/hualsa-utils'
 
@@ -117,10 +117,10 @@ function diasEnAlmacen(fecha: string): number {
 
 // Motor de stock: recorre los movimientos por orden de fecha y va
 // consumiendo lotes. Salida sin coincidencia → descuenta del lote más antiguo.
-function buildStock(registros: Registro[], clienteFiltro: string): LoteStock[] {
+function buildStock(registros: Registro[], clientesFiltro: string[]): LoteStock[] {
   const movs = registros
     .filter(r => isEntradaPalet(r) || isSalidaPalet(r))
-    .filter(r => !clienteFiltro || r.clienteId === clienteFiltro)
+    .filter(r => clientesFiltro.length === 0 || clientesFiltro.includes(r.clienteId || ''))
     .sort((a, b) => a.fecha.localeCompare(b.fecha))
 
   const lotes: LoteStock[] = []
@@ -227,11 +227,11 @@ function buildRacks(stock: LoteStock[], known: Map<string, { rack: string; pos: 
 
 // Todas las ubicaciones que aparecen en CUALQUIER movimiento de palet
 // (con stock o sin él) para dibujar también las posiciones libres.
-function knownUbicaciones(registros: Registro[], clienteFiltro: string): Map<string, { rack: string; pos: string; ubicacion: string }> {
+function knownUbicaciones(registros: Registro[], clientesFiltro: string[]): Map<string, { rack: string; pos: string; ubicacion: string }> {
   const known = new Map<string, { rack: string; pos: string; ubicacion: string }>()
   for (const r of registros) {
     if (!isEntradaPalet(r) && !isSalidaPalet(r)) continue
-    if (clienteFiltro && r.clienteId !== clienteFiltro) continue
+    if (clientesFiltro.length > 0 && !clientesFiltro.includes(r.clienteId || '')) continue
     const ub = getUbicacion(r)
     const key = normAlm(ub)
     if (!key || known.has(key)) continue
@@ -258,9 +258,11 @@ function textoPorDias(dias: number): string {
 export function StockAlmacenView() {
   const [registros, setRegistros] = useState<Registro[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
-  const [cliFiltro, setCliFiltro] = useState<string>('todos')
+  const [cliFiltro, setCliFiltro] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(() => Date.now())
+  const [openClientes, setOpenClientes] = useState(false)
+  const dropdownClientesRef = useRef<HTMLDivElement>(null)
 
   // Buscador por lote/palet/ubicación
   const [query, setQuery] = useState('')
@@ -298,6 +300,17 @@ export function StockAlmacenView() {
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60000)
     return () => clearInterval(t)
+  }, [])
+
+  // Cerrar dropdown de clientes al hacer click fuera
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownClientesRef.current && !dropdownClientesRef.current.contains(e.target as Node)) {
+        setOpenClientes(false)
+      }
+    }
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
   }, [])
 
   // Cerrar el escáner QR al desmontar / cerrar el modal
@@ -354,7 +367,7 @@ export function StockAlmacenView() {
     }
   }, [qrOpen, stopQr])
 
-  const clienteFiltro = cliFiltro === 'todos' ? '' : cliFiltro
+  const clienteFiltro = cliFiltro // string[]: vacío = todos
 
   // El motor de stock depende de "now" para los días → key de recálculo
   const stock = useMemo(
@@ -378,8 +391,8 @@ export function StockAlmacenView() {
   }, [])
 
   const movsMes = useMemo(() => {
-    const entradas = registros.filter(r => isEntradaPalet(r) && (!clienteFiltro || r.clienteId === clienteFiltro) && r.fecha.slice(0, 7) === mesActual)
-    const salidas = registros.filter(r => isSalidaPalet(r) && (!clienteFiltro || r.clienteId === clienteFiltro) && r.fecha.slice(0, 7) === mesActual)
+    const entradas = registros.filter(r => isEntradaPalet(r) && (clienteFiltro.length === 0 || clienteFiltro.includes(r.clienteId || '')) && r.fecha.slice(0, 7) === mesActual)
+    const salidas = registros.filter(r => isSalidaPalet(r) && (clienteFiltro.length === 0 || clienteFiltro.includes(r.clienteId || '')) && r.fecha.slice(0, 7) === mesActual)
     return {
       entradas: entradas.reduce((s, r) => s + (r.cant || 0), 0),
       salidas: salidas.reduce((s, r) => s + (r.cant || 0), 0),
@@ -395,7 +408,7 @@ export function StockAlmacenView() {
   // Gráfico circular: stock por cliente (respeta el motor de stock completo,
   // no el filtro, para ver la reparto real del almacén)
   const pieData = useMemo(() => {
-    const all = buildStock(registros, '')
+    const all = buildStock(registros, [])
     const porCli = new Map<string, number>()
     for (const l of all) porCli.set(l.clienteId, (porCli.get(l.clienteId) || 0) + l.cantRestante)
     return [...porCli.entries()]
@@ -414,7 +427,7 @@ export function StockAlmacenView() {
   const ultMovs = useMemo(
     () => registros
       .filter(r => isEntradaPalet(r) || isSalidaPalet(r))
-      .filter(r => !clienteFiltro || r.clienteId === clienteFiltro)
+      .filter(r => clienteFiltro.length === 0 || clienteFiltro.includes(r.clienteId || ''))
       .sort((a, b) => (b.fecha + (b.customData || '')).localeCompare(a.fecha + (a.customData || '')) || (b.id > a.id ? 1 : -1))
       .slice(0, 10),
     [registros, clienteFiltro]
@@ -455,15 +468,65 @@ export function StockAlmacenView() {
           </div>
         </div>
 
-        <Select value={cliFiltro} onValueChange={setCliFiltro}>
-          <SelectTrigger className="w-[220px] h-9 bg-white text-sm">
-            <SelectValue placeholder="Cliente" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos los clientes</SelectItem>
-            {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        {/* Multi-select de clientes con checkboxes */}
+        <div className="relative" ref={dropdownClientesRef}>
+          <button
+            onClick={() => setOpenClientes(v => !v)}
+            className="h-9 px-3 min-w-[200px] flex items-center gap-2 rounded-md border border-gray-200 bg-white text-sm hover:bg-gray-50"
+          >
+            <span className="font-semibold text-gray-700 truncate">
+              {cliFiltro.length === 0
+                ? 'Todos los clientes'
+                : cliFiltro.length === 1
+                  ? (clientes.find(c => c.id === cliFiltro[0])?.nombre || '1 cliente')
+                  : `${cliFiltro.length} clientes`}
+            </span>
+            <ChevronDown className="h-4 w-4 ml-auto text-gray-400" />
+          </button>
+          {openClientes && (
+            <div className="absolute z-30 mt-1 w-[280px] max-h-[360px] overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg p-2">
+              <div className="flex items-center gap-2 px-2 py-1.5 border-b border-gray-100 mb-1">
+                <Checkbox
+                  id="cli-todos"
+                  checked={cliFiltro.length === 0}
+                  onCheckedChange={(v) => { if (v) setCliFiltro([]) }}
+                />
+                <Label htmlFor="cli-todos" className="text-sm font-bold cursor-pointer flex-1">
+                  Todos los clientes
+                </Label>
+              </div>
+              <div className="space-y-0.5">
+                {clientes.map(c => {
+                  const checked = cliFiltro.includes(c.id)
+                  return (
+                    <div key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50">
+                      <Checkbox
+                        id={`cli-${c.id}`}
+                        checked={checked}
+                        onCheckedChange={(v) => {
+                          setCliFiltro(prev => v
+                            ? [...prev, c.id]
+                            : prev.filter(x => x !== c.id))
+                        }}
+                      />
+                      <Label htmlFor={`cli-${c.id}`} className="text-sm cursor-pointer flex-1 truncate">
+                        {c.nombre}
+                      </Label>
+                    </div>
+                  )
+                })}
+              </div>
+              {cliFiltro.length > 0 && (
+                <button
+                  onClick={() => setCliFiltro([])}
+                  className="mt-2 w-full text-xs font-bold text-teal-700 hover:bg-teal-50 rounded py-1.5"
+                >
+                  Limpiar selección
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         <Button variant="outline" size="sm" className="h-9" onClick={loadData} disabled={loading}>
           <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Actualizar
