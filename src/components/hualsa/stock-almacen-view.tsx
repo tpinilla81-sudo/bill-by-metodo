@@ -9,6 +9,11 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2, Layers, ChevronDown, Plus, Trash2 } from 'lucide-react'
 import { fmtDate, type Cliente, type Registro } from '@/lib/hualsa-utils'
+import {
+  normAlm, isEntradaPalet, isSalidaPalet, getUbicacion, getIdent, splitUbicacion,
+  diasEnAlmacen, buildStock, buildRacks, nombresHuecos, detectarEstanterias,
+  loadAlmacenCfg, saveAlmacenCfg, type EstanteriaCfg, type LoteStock,
+} from '@/lib/almacen'
 
 // Tipo minimo para el escáner QR — cargado dinamicamente para evitar
 // problemas de SSR/bundling y reducir el JS inicial de la página.
@@ -26,279 +31,10 @@ type Html5QrcodeLike = {
 
 // ─── STOCK ALMACÉN ─────────────────────────────────────────────────────
 // Control del stock en almacén a partir de los registros de palets:
-//  · ENTRADA PALET → suma stock
-//  · SALIDA PALET  → resta stock (emparejando por lote/nº palet/ubicación, FIFO)
-// El stock actual = entradas − salidas, agrupado por UBICACIÓN (customData).
-// Las ubicaciones se agrupan en ESTANTERÍAS por su primer token:
-//  · "E1-03" → estantería E1, posición 03
-//  · "A/12"  → estantería A,  posición 12
-//  · sin separador → estantería ALMACÉN
-// Vista 100% lectura: no modifica registros.
-
-interface LoteStock {
-  id: string
-  fecha: string
-  clienteId: string
-  ubicacion: string
-  ident: string
-  cantTotal: number
-  cantRestante: number
-}
-
-interface CeldaStock {
-  ubicacion: string
-  rack: string
-  pos: string
-  total: number
-  dias: number      // días del lote más antiguo
-  lotes: LoteStock[]
-}
-
-interface RackStock {
-  name: string
-  total: number
-  celdas: CeldaStock[]
-}
-
-// ─── CONFIGURACIÓN DEL ALMACÉN ─────────────────────────────────────────
-// El almacén se define a partir de ESTANTERÍAS y sus HUECOS: cada estantería
-// tiene un nombre y un nº de huecos, y cada hueco se nombra automáticamente
-// (E1 con 12 huecos → E1-01, E1-02 … E1-12). El mapa del almacén se dibuja
-// a partir de esta configuración; los huecos sin palets se ven como LIBRE.
-interface EstanteriaCfg {
-  id: string        // id estable (keys de React)
-  nombre: string    // "E1" — prefijo con el que se nombran los huecos
-  huecos: number    // nº de huecos de la estantería
-  cap: number       // capacidad máx. de palets (0 = sin límite) — opcional
-  alias?: string[]  // nombres antiguos de la estantería: los palets registrados
-                    // con ellos siguen apareciendo en el mapa tras un renombrado
-}
-
-function normAlm(s: string): string {
-  return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-}
-
-function isEntradaPalet(r: Registro): boolean {
-  return /entrada palet/.test(normAlm(r.c2))
-}
-
-function isSalidaPalet(r: Registro): boolean {
-  return /salida palet/.test(normAlm(r.c2))
-}
-
-function extractIdents(r: Registro): { strong: Record<string, string>; weak: Record<string, string> } {
-  const strong: Record<string, string> = {}
-  const weak: Record<string, string> = {}
-  try {
-    const cd = JSON.parse(r.customData || '{}') as Record<string, unknown>
-    for (const [k, v] of Object.entries(cd)) {
-      const nk = normAlm(k)
-      const val = normAlm(String(v ?? ''))
-      if (!val) continue
-      if (/palet|lote/.test(nk)) strong[nk] = val
-      else if (/ubicac/.test(nk)) weak[nk] = val
-    }
-  } catch { /* customData corrupto — ignorar */ }
-  return { strong, weak }
-}
-
-function getUbicacion(r: Registro): string {
-  const { weak } = extractIdents(r)
-  return Object.values(weak)[0] || ''
-}
-
-function getIdent(r: Registro): string {
-  const { strong } = extractIdents(r)
-  return Object.values(strong)[0] || ''
-}
-
-// "E1-03" → { rack: 'E1', pos: '03' } · "Nave 2 Paso B" → { rack: 'NAVE', pos: '2-PASO-B' }
-function splitUbicacion(ub: string): { rack: string; pos: string } {
-  const t = String(ub || '').trim()
-  if (!t) return { rack: 'SIN UBICACIÓN', pos: '' }
-  const parts = t.split(/[\s\-_/.]+/).filter(Boolean)
-  if (parts.length >= 2) return { rack: parts[0].toUpperCase(), pos: parts.slice(1).join('-').toUpperCase() }
-  return { rack: 'ALMACÉN', pos: t.toUpperCase() }
-}
-
-// Clave robusta para emparejar ubicaciones de los movimientos con huecos
-// configurados: "E1-03", "e1 3", "E1/03" → todas → "E-1-3" (bloques de
-// letras y números, sin acentos, sin ceros a la izquierda, sin separadores).
-function normHuecoKey(s: string): string {
-  const t = String(s || '').trim().toUpperCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  if (!t) return ''
-  return (t.match(/[A-Z]+|[0-9]+/g) || [])
-    .map(tok => (/^[0-9]+$/.test(tok) ? String(parseInt(tok, 10)) : tok))
-    .join('-')
-}
-
-// Número de hueco con ceros: hueco 3 de 12 → "03" · hueco 5 de 120 → "005"
-function padPos(n: number, total: number): string {
-  return String(n).padStart(Math.max(2, String(total).length), '0')
-}
-
-// Días que un palet lleva en almacén: fechaEntrada → ahora.
-// El día de entrada cuenta como 1 día (ambos inclusive), como en facturación.
-// Recibe `refNow` (ms) para forzar recálculo limpio cuando el reloj avanza.
-function diasEnAlmacen(fecha: string, refNow: number = Date.now()): number {
-  const d = new Date(fecha + 'T00:00:00')
-  if (isNaN(d.getTime())) return 0
-  // Diferencia en ms → redondear a días naturales completados + 1 (día inicial inclusive)
-  // Ej: entrada hoy → 1 día. Entrada ayer → 2 días.
-  const diffDays = Math.floor((refNow - d.getTime()) / 86400000)
-  return Math.max(1, diffDays + 1)
-}
-
-// Motor de stock: recorre los movimientos por orden de fecha y va
-// consumiendo lotes. Salida sin coincidencia → descuenta del lote más antiguo.
-function buildStock(registros: Registro[], clientesFiltro: string[]): LoteStock[] {
-  const movs = registros
-    .filter(r => isEntradaPalet(r) || isSalidaPalet(r))
-    .filter(r => clientesFiltro.length === 0 || clientesFiltro.includes(r.clienteId || ''))
-    // Orden cronológico: fecha, y dentro del mismo día por createdAt (la API
-    // devuelve desc por createdAt; sin este desempate una SALIDA creada después
-    // de su ENTRADA el mismo día se procesaría antes y consumiría FIFO.
-    .sort((a, b) =>
-      a.fecha.localeCompare(b.fecha) ||
-      String(a.createdAt || '').localeCompare(String(b.createdAt || '')) ||
-      a.id.localeCompare(b.id)
-    )
-
-  const lotes: LoteStock[] = []
-  for (const m of movs) {
-    if (isEntradaPalet(m)) {
-      lotes.push({
-        id: m.id,
-        fecha: m.fecha,
-        clienteId: m.clienteId || '',
-        ubicacion: getUbicacion(m),
-        ident: getIdent(m),
-        cantTotal: m.cant || 0,
-        cantRestante: m.cant || 0,
-      })
-      continue
-    }
-    // SALIDA: consumir stock
-    let resto = m.cant || 0
-    const si = extractIdents(m)
-    const candidatos = lotes.filter(l => l.cantRestante > 0 && l.clienteId === (m.clienteId || ''))
-    // Prioridad 1: mismo lote/nº palet
-    let sel = candidatos.filter(l => {
-      const strongVals = Object.values(si.strong)
-      return strongVals.length > 0 && strongVals.includes(l.ident) && !!l.ident
-    })
-    // Prioridad 2: misma ubicación
-    if (sel.length === 0) {
-      const ubSalida = Object.values(si.weak)[0] || ''
-      if (ubSalida) sel = candidatos.filter(l => normAlm(l.ubicacion) === normAlm(ubSalida))
-    }
-    // Prioridad 3: FIFO — el más antiguo
-    if (sel.length === 0) sel = candidatos
-    sel.sort((a, b) => a.fecha.localeCompare(b.fecha))
-    for (const l of sel) {
-      if (resto <= 0) break
-      const toma = Math.min(l.cantRestante, resto)
-      l.cantRestante -= toma
-      resto -= toma
-    }
-  }
-  return lotes.filter(l => l.cantRestante > 0)
-}
-
-interface RacksResultado {
-  racks: RackStock[]       // estanterías configuradas, con TODOS sus huecos
-  fuera: CeldaStock[]      // stock en ubicaciones que no están en la configuración
-  totalHuecos: number      // nº total de huecos configurados
-  huecosOcupados: number   // huecos con al menos 1 palet
-}
-
-// El mapa se dibuja SOLO a partir de la configuración (estantería → nº de
-// huecos). Cada hueco se nombra automáticamente RACK-01…N; los que no tienen
-// palets se ven LIBRE. El stock que cae en ubicaciones fuera de la
-// configuración (o sin ubicación) se devuelve aparte para no perder nada.
-function buildRacks(stock: LoteStock[], cfg: EstanteriaCfg[], refNow: number): RacksResultado {
-  const racksMap = new Map<string, RackStock>()
-  const huecoPorClave = new Map<string, CeldaStock>()
-  for (const e of cfg) {
-    const nombre = String(e?.nombre || '').trim().toUpperCase()
-    if (!nombre || !e.huecos || e.huecos <= 0) continue
-    const rk: RackStock = { name: nombre, total: 0, celdas: [] }
-    racksMap.set(nombre, rk)
-    // Prefijos que reconocen los huecos: el nombre actual + alias antiguos
-    const prefijos = [nombre, ...(e.alias || []).map(a => String(a || '').trim().toUpperCase())]
-      .filter(p => p)
-      .filter((p, i, arr) => arr.indexOf(p) === i)
-    for (let n = 1; n <= e.huecos; n++) {
-      const pos = padPos(n, e.huecos)
-      const celda: CeldaStock = { ubicacion: `${nombre}-${pos}`, rack: nombre, pos, total: 0, dias: 0, lotes: [] }
-      rk.celdas.push(celda)
-      for (const pref of prefijos) {
-        huecoPorClave.set(normHuecoKey(`${pref}-${pos}`), celda)
-      }
-    }
-  }
-  const fueraMap = new Map<string, CeldaStock>()
-  for (const l of stock) {
-    const clave = normHuecoKey(l.ubicacion)
-    const celda = clave ? huecoPorClave.get(clave) : undefined
-    if (celda) {
-      celda.total += l.cantRestante
-      celda.dias = Math.max(celda.dias, diasEnAlmacen(l.fecha, refNow))
-      celda.lotes.push(l)
-      const rk = racksMap.get(celda.rack)
-      if (rk) rk.total += l.cantRestante
-    } else {
-      const key = clave || '(SIN UBICACIÓN)'
-      let f = fueraMap.get(key)
-      if (!f) {
-        f = { ubicacion: l.ubicacion || 'SIN UBICACIÓN', rack: 'FUERA', pos: (l.ubicacion || '—').toUpperCase(), total: 0, dias: 0, lotes: [] }
-        fueraMap.set(key, f)
-      }
-      f.total += l.cantRestante
-      f.dias = Math.max(f.dias, diasEnAlmacen(l.fecha, refNow))
-      f.lotes.push(l)
-    }
-  }
-  const racks = [...racksMap.values()].sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }))
-  const fuera = [...fueraMap.values()].sort((a, b) => a.ubicacion.localeCompare(b.ubicacion, 'es', { numeric: true }))
-  let totalHuecos = 0
-  let huecosOcupados = 0
-  for (const rk of racks) {
-    for (const c of rk.celdas) {
-      totalHuecos++
-      if (c.total > 0) huecosOcupados++
-    }
-  }
-  return { racks, fuera, totalHuecos, huecosOcupados }
-}
-
-// Nombres automáticos de los huecos de una estantería: E1 + 12 → E1-01…E1-12
-function nombresHuecos(nombre: string, huecos: number): string[] {
-  const n = String(nombre || '').trim().toUpperCase()
-  if (!n || huecos <= 0) return []
-  return Array.from({ length: huecos }, (_, i) => `${n}-${padPos(i + 1, huecos)}`)
-}
-
-// Estanterías detectadas en los movimientos (para sugerir su configuración):
-// rack → nº de hueco máximo visto y nº de movimientos.
-function detectarEstanterias(registros: Registro[]): { nombre: string; maxPos: number; movs: number }[] {
-  const acc = new Map<string, { maxPos: number; movs: number }>()
-  for (const r of registros) {
-    if (!isEntradaPalet(r) && !isSalidaPalet(r)) continue
-    const { rack, pos } = splitUbicacion(getUbicacion(r))
-    if (!rack || rack === 'SIN UBICACIÓN' || rack === 'ALMACÉN') continue
-    let a = acc.get(rack)
-    if (!a) { a = { maxPos: 0, movs: 0 }; acc.set(rack, a) }
-    a.movs++
-    const n = parseInt(pos, 10)
-    if (!isNaN(n) && n > a.maxPos) a.maxPos = n
-  }
-  return [...acc.entries()]
-    .map(([nombre, a]) => ({ nombre, maxPos: a.maxPos, movs: a.movs }))
-    .sort((x, y) => x.nombre.localeCompare(y.nombre, 'es', { numeric: true }))
-}
+// ENTRADA PALET suma, SALIDA PALET resta (lote → ubicación → FIFO).
+// El motor de stock, la configuración de estanterías/huecos y el cálculo
+// del hueco óptimo viven en '@/lib/almacen' — compartidos con ENTRADA,
+// que asigna el hueco automáticamente al meter palets nuevos.
 
 function colorPorDias(dias: number): string {
   if (dias > 60) return 'bg-red-100 border-red-400 border-b-red-500'
@@ -348,53 +84,17 @@ export function StockAlmacenView() {
 
   // Configuración del almacén: lista de estanterías con su nº de huecos.
   // Cada hueco se nombra automáticamente y el mapa se dibuja a partir de
-  // esta lista. Persistida en localStorage ('stock-config-v2'); migra las
-  // claves antiguas 'stock-config' y 'stock-capacidades' si existen.
-  const [almacenCfg, setAlmacenCfg] = useState<EstanteriaCfg[]>(() => {
-    if (typeof window === 'undefined') return []
-    try {
-      const raw = localStorage.getItem('stock-config-v2')
-      if (raw) {
-        const arr = JSON.parse(raw) as EstanteriaCfg[]
-        return Array.isArray(arr)
-          ? arr.filter(e => e && String(e.nombre || '').trim()).map(e => ({
-              id: e.id || Math.random().toString(36).slice(2, 9),
-              nombre: String(e.nombre).trim().toUpperCase(),
-              huecos: Math.max(0, Math.min(200, Number(e.huecos) || 0)),
-              cap: Math.max(0, Number(e.cap) || 0),
-              alias: Array.isArray(e.alias) ? e.alias.map(a => String(a || '').trim().toUpperCase()).filter(Boolean).slice(0, 10) : [],
-            }))
-          : []
-      }
-      const nuevaId = () => Math.random().toString(36).slice(2, 9)
-      // Migración: formato anterior { nombre: { cap, pos } }
-      const old = JSON.parse(localStorage.getItem('stock-config') || '{}') as Record<string, { cap?: number; pos?: number }>
-      const migrado: EstanteriaCfg[] = Object.entries(old).map(([nombre, v]) => ({
-        id: nuevaId(),
-        nombre: nombre.trim().toUpperCase(),
-        huecos: Math.max(0, Math.min(200, Number(v?.pos) || 0)),
-        cap: Math.max(0, Number(v?.cap) || 0),
-      })).filter(e => e.nombre)
-      if (migrado.length > 0) return migrado
-      // Migración: formato original { nombre: capacidad }
-      const older = JSON.parse(localStorage.getItem('stock-capacidades') || '{}') as Record<string, number>
-      return Object.entries(older).map(([nombre, v]) => ({
-        id: nuevaId(),
-        nombre: nombre.trim().toUpperCase(),
-        huecos: 0,
-        cap: Math.max(0, Number(v) || 0),
-      })).filter(e => e.nombre)
-    } catch { return [] }
-  })
+  // esta lista. Compartida con ENTRADA (hueco óptimo automático) vía
+  // '@/lib/almacen': persistida en localStorage ('stock-config-v2') con
+  // migración de las claves antiguas 'stock-config' y 'stock-capacidades'.
+  const [almacenCfg, setAlmacenCfg] = useState<EstanteriaCfg[]>(() => loadAlmacenCfg())
   const [showCfgEditor, setShowCfgEditor] = useState(false)
   // Formulario "añadir estantería" (tarjeta punteada al final de la lista)
   const [addOpen, setAddOpen] = useState(false)
   const [newRackName, setNewRackName] = useState('')
   const [newRackHuecos, setNewRackHuecos] = useState('')
   const [newRackCap, setNewRackCap] = useState('')
-  useEffect(() => {
-    try { localStorage.setItem('stock-config-v2', JSON.stringify(almacenCfg)) } catch { /* quota */ }
-  }, [almacenCfg])
+  useEffect(() => { saveAlmacenCfg(almacenCfg) }, [almacenCfg])
 
   // ── Helpers de configuración (estanterías → huecos) ──
   function anadirEstanteria(nombre: string, huecos: number, cap: number): boolean {

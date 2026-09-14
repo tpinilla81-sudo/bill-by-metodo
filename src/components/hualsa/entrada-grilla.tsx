@@ -5,10 +5,13 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Trash2, Save, CheckCircle, AlertCircle, Table } from 'lucide-react'
-import { todayISO, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
+import { Plus, Trash2, Save, CheckCircle, AlertCircle, Table, Zap } from 'lucide-react'
+import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, parseCustomData, serializeCustomData, type FieldDef } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
+import {
+  loadAlmacenCfg, huecoOptimo, clavesOcupadas, esC2EntradaPalet, normAlm, type EstanteriaCfg,
+} from '@/lib/almacen'
 
 interface GrillaData {
   clientes: Cliente[]
@@ -53,6 +56,15 @@ function lookupCliente(catalogo: CatalogoItem[], c1: string, c2: string): string
 export function EntradaGrilla() {
   const { config } = useConfig()
   const [data, setData] = useState<GrillaData>({ clientes: [], catalogo: [] })
+  // TODOS los registros (entradas + salidas) — para saber qué huecos están
+  // ocupados y asignar el óptimo a cada palet nuevo.
+  const [todosRegistros, setTodosRegistros] = useState<Registro[]>([])
+  // Configuración de estanterías/huecos compartida con STOCK ALMACÉN ('@/lib/almacen')
+  const [almacenCfg, setAlmacenCfg] = useState<EstanteriaCfg[]>([])
+  // Filas con hueco asignado automáticamente (para pintarlas en teal) y
+  // c2 anterior de cada fila (para asignar justo cuando pasa a ENTRADA PALET)
+  const autoUbicRowsRef = useRef<Set<string>>(new Set())
+  const prevC2Ref = useRef<Map<string, string>>(new Map())
   const [rows, setRows] = useState<GrillaRow[]>(() => Array.from({ length: 1 }, () => emptyRow()))
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
@@ -62,15 +74,92 @@ export function EntradaGrilla() {
   const customFields = fieldDefs.filter(f => f.isCustom && f.visible)
   const clienteVisible = fieldDefs.some(f => f.key === 'cliente' && f.visible)
 
+  // Campo UBICACIÓN (mismo criterio que el motor de stock: nombre/clave con "ubicación")
+  const ubicField = useMemo(
+    () => customFields.find(f => /ubicac/i.test(normAlm(`${f.key} ${f.label}`))) || null,
+    [customFields]
+  )
+  const ubicKey = ubicField?.key || ''
+
+  // Huecos con stock ahora mismo
+  const ocupadas = useMemo(() => clavesOcupadas(todosRegistros), [todosRegistros])
+
   const loadData = useCallback(async () => {
-    const [cRes, catRes] = await Promise.all([
+    const [cRes, catRes, allRes] = await Promise.all([
       fetch('/api/clientes'),
       fetch('/api/catalogo'),
+      fetch('/api/registros'),
     ])
     setData({ clientes: await cRes.json(), catalogo: await catRes.json() })
+    setTodosRegistros(await allRes.json())
+    setAlmacenCfg(loadAlmacenCfg())
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
+
+  // ── HUECO ÓPTIMO AUTOMÁTICO ───────────────────────────────────────────
+  // Cuando una fila pasa a ENTRADA PALET (o se crea nueva ya siendo palet) y
+  // su UBICACIÓN está vacía, se le asigna el primer hueco libre — contando
+  // los ya asignados a las otras filas de la tanda para no repetir ninguno.
+  // Si el usuario vacía o edita la celda a mano, se respeta su valor.
+  useEffect(() => {
+    if (!ubicKey) {
+      prevC2Ref.current = new Map(rows.map(r => [r.id, r.c2]))
+      return
+    }
+    if (almacenCfg.length === 0) return
+    const extra: string[] = []   // ubicaciones ya usadas en esta tanda
+    let cambio = false
+    const next = rows.map(r => {
+      const prevC2 = prevC2Ref.current.get(r.id)
+      const ahoraPalet = esC2EntradaPalet(r.c2)
+      const antesPalet = prevC2 !== undefined ? esC2EntradaPalet(prevC2) : false
+      // Asignar solo en la transición a ENTRADA PALET (o fila recién creada)
+      const recienPalet = ahoraPalet && (prevC2 === undefined || (!antesPalet && ahoraPalet))
+      const val = String(r.customValues[ubicKey] || '').trim()
+      if (recienPalet && !val) {
+        const opt = huecoOptimo(almacenCfg, ocupadas, '', extra)
+        if (opt) {
+          extra.push(opt.hueco)
+          autoUbicRowsRef.current.add(r.id)
+          cambio = true
+          return { ...r, customValues: { ...r.customValues, [ubicKey]: opt.hueco } }
+        }
+      }
+      if (val) extra.push(val)
+      return r
+    })
+    prevC2Ref.current = new Map(rows.map(r => [r.id, r.c2]))
+    if (cambio) setRows(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, ubicKey, almacenCfg, ocupadas])
+
+  // Botón manual: asigna el primer hueco libre a TODAS las filas de ENTRADA
+  // PALET con la ubicación vacía (útil tras importar o editar en bloque).
+  function asignarHuecosManual() {
+    if (!ubicKey) return
+    if (almacenCfg.length === 0) {
+      showStatus('err', 'Sin estanterías configuradas — defínelas en Stock Almacén')
+      return
+    }
+    const extra: string[] = []
+    let n = 0
+    const next = rows.map(r => {
+      const val = String(r.customValues[ubicKey] || '').trim()
+      if (val) { extra.push(val); return r }
+      if (!esC2EntradaPalet(r.c2)) return r
+      const opt = huecoOptimo(almacenCfg, ocupadas, '', extra)
+      if (!opt) return r
+      extra.push(opt.hueco)
+      autoUbicRowsRef.current.add(r.id)
+      n++
+      return { ...r, customValues: { ...r.customValues, [ubicKey]: opt.hueco } }
+    })
+    if (n > 0) setRows(next)
+    showStatus(n > 0 ? 'ok' : 'err', n > 0
+      ? `${n} hueco(s) asignado(s) — primer hueco libre de cada tanda`
+      : 'No hay filas de ENTRADA PALET sin ubicación (o el almacén está lleno)')
+  }
 
   // Keep rowCountInput synced when rows change by other means (+5, +10, duplicate, delete, CSV import, etc.)
   useEffect(() => { setRowCountInput(String(rows.length)) }, [rows.length])
@@ -113,6 +202,15 @@ export function EntradaGrilla() {
     return null
   }
 
+  // Copia los customValues de una plantilla SIN la ubicación cuando la fila
+  // es de ENTRADA PALET: cada palet nuevo recibe su propio hueco óptimo.
+  function customValuesSinUbicacion(cv: Record<string, string>): Record<string, string> {
+    if (!ubicKey || !(ubicKey in cv)) return cv
+    const copia = { ...cv }
+    delete copia[ubicKey]
+    return copia
+  }
+
   function newRowFromTemplate(): GrillaRow {
     const tpl = lastFilledRow()
     if (!tpl) return emptyRow()
@@ -125,7 +223,7 @@ export function EntradaGrilla() {
       c2: tpl.c2,
       cant: tpl.cant,
       obs: '',  // leave obs empty, usually each entry has its own
-      customValues: { ...tpl.customValues },
+      customValues: esC2EntradaPalet(tpl.c2) ? customValuesSinUbicacion(tpl.customValues) : { ...tpl.customValues },
     }
   }
 
@@ -139,6 +237,8 @@ export function EntradaGrilla() {
 
   function deleteRow(id: string) {
     setRows(prev => prev.filter(r => r.id !== id))
+    autoUbicRowsRef.current.delete(id)
+    prevC2Ref.current.delete(id)
     if (rows.length <= 1) {
       setRows([emptyRow()])
     }
@@ -147,6 +247,8 @@ export function EntradaGrilla() {
   function clearAll() {
     if (!confirm('¿Borrar todas las filas?')) return
     setRows([emptyRow()])
+    autoUbicRowsRef.current.clear()
+    prevC2Ref.current.clear()
   }
 
   // Set exact number of rows (add or remove from the end)
@@ -157,7 +259,7 @@ export function EntradaGrilla() {
       if (prev.length < target) {
         const tpl = lastFilledRow()
         const baseRow = tpl
-          ? { id: '', fecha: tpl.fecha, clienteId: tpl.clienteId, c1: tpl.c1, c2: tpl.c2, cant: tpl.cant, obs: '', customValues: { ...tpl.customValues } }
+          ? { id: '', fecha: tpl.fecha, clienteId: tpl.clienteId, c1: tpl.c1, c2: tpl.c2, cant: tpl.cant, obs: '', customValues: esC2EntradaPalet(tpl.c2) ? customValuesSinUbicacion(tpl.customValues) : { ...tpl.customValues } }
           : { id: '', fecha: todayISO(), clienteId: '', c1: '', c2: '', cant: '1', obs: '', customValues: {} }
         const newRows = Array.from({ length: target - prev.length }, () => ({ ...baseRow, id: uid() }))
         return [...prev, ...newRows]
@@ -170,7 +272,10 @@ export function EntradaGrilla() {
     setRows(prev => {
       const idx = prev.findIndex(r => r.id === id)
       if (idx < 0) return prev
-      const copy = { ...prev[idx], id: uid(), customValues: { ...prev[idx].customValues } }
+      // Duplicar un palet = otro palet distinto: la ubicación no se copia
+      // (se le asignará su propio hueco óptimo automáticamente)
+      const cv = esC2EntradaPalet(prev[idx].c2) ? customValuesSinUbicacion(prev[idx].customValues) : { ...prev[idx].customValues }
+      const copy = { ...prev[idx], id: uid(), customValues: cv }
       const next = [...prev]
       next.splice(idx + 1, 0, copy)
       return next
@@ -257,11 +362,18 @@ export function EntradaGrilla() {
         // Keep the rows that failed so the user can fix and retry — but clear the saved ones.
         // For simplicity here we just clear all and show the error; user can re-enter.
         setRows([emptyRow()])
+        autoUbicRowsRef.current.clear()
+        prevC2Ref.current.clear()
+        loadData()
         triggerBackup()
         return
       }
       showStatus('ok', `${result.count} entrada(s) guardada(s) ✓`)
       setRows([emptyRow()])
+      autoUbicRowsRef.current.clear()
+      prevC2Ref.current.clear()
+      // Recargar: el stock acaba de cambiar y los próximos huecos óptimos también
+      loadData()
       triggerBackup()
     } catch (err) {
       console.error('Grilla save error:', err)
@@ -301,6 +413,11 @@ export function EntradaGrilla() {
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5 items-center">
+          {ubicKey && (
+            <Button variant="outline" size="sm" onClick={asignarHuecosManual} title="Asignar el primer hueco libre a las filas de ENTRADA PALET sin ubicación">
+              <Zap className="h-4 w-4 mr-1 text-teal-600" /> Huecos
+            </Button>
+          )}
           <div className="flex items-center gap-1.5 px-2 h-9 rounded-md border border-input bg-background">
             <span className="text-xs text-slate-500">Filas:</span>
             <input
@@ -336,7 +453,13 @@ export function EntradaGrilla() {
               <th className="px-2 py-2 text-xs font-bold text-slate-600 uppercase w-20">Cant.</th>
               <th className="px-2 py-2 text-xs font-bold text-slate-600 uppercase min-w-[160px]">Obs.</th>
               {customFields.map(f => (
-                <th key={f.key} className="px-2 py-2 text-xs font-bold text-slate-600 uppercase min-w-[120px]">{f.label}</th>
+                <th
+                  key={f.key}
+                  className="px-2 py-2 text-xs font-bold text-slate-600 uppercase min-w-[120px]"
+                  title={f.key === ubicKey ? 'Al elegir ENTRADA PALET se asigna solo el primer hueco libre' : undefined}
+                >
+                  {f.label}{f.key === ubicKey ? ' ⚡' : ''}
+                </th>
               ))}
               <th className="px-2 py-2 text-xs font-bold text-slate-600 uppercase w-24 text-right">Precio</th>
               <th className="px-2 py-2 w-24 text-center text-xs font-bold text-slate-500">Acciones</th>
@@ -427,17 +550,25 @@ export function EntradaGrilla() {
                       className="w-full h-8 px-1 text-sm bg-transparent border border-transparent hover:border-gray-200 focus:border-[#005bb5] focus:outline-none rounded"
                     />
                   </td>
-                  {customFields.map(f => (
-                    <td key={f.key} className="px-1 py-1">
-                      <input
-                        type="text"
-                        value={row.customValues[f.key] || ''}
-                        onChange={e => updateRow(row.id, { customValues: { ...row.customValues, [f.key]: e.target.value } })}
-                        onKeyDown={e => handleKeyDown(e, idx, f.key)}
-                        className="w-full h-8 px-1 text-sm bg-transparent border border-transparent hover:border-gray-200 focus:border-[#005bb5] focus:outline-none rounded"
-                      />
-                    </td>
-                  ))}
+                  {customFields.map(f => {
+                    const esUbic = f.key === ubicKey
+                    const autoUbic = esUbic && autoUbicRowsRef.current.has(row.id)
+                    return (
+                      <td key={f.key} className="px-1 py-1">
+                        <input
+                          type="text"
+                          value={row.customValues[f.key] || ''}
+                          onChange={e => {
+                            if (esUbic) autoUbicRowsRef.current.delete(row.id)  // editado a mano → ya no es "auto"
+                            updateRow(row.id, { customValues: { ...row.customValues, [f.key]: e.target.value } })
+                          }}
+                          onKeyDown={e => handleKeyDown(e, idx, f.key)}
+                          title={esUbic ? (autoUbic ? '⚡ Hueco asignado automáticamente — primer hueco libre' : 'Ubicación del palet (hueco), p.ej. E1-04') : undefined}
+                          className={`w-full h-8 px-1 text-sm bg-transparent border border-transparent hover:border-gray-200 focus:border-[#005bb5] focus:outline-none rounded ${autoUbic ? 'text-teal-700 font-semibold' : ''}`}
+                        />
+                      </td>
+                    )
+                  })}
                   <td className="px-2 py-1 text-right text-xs text-slate-600">
                     {precio > 0 ? `${precio.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : '—'}
                   </td>
@@ -471,7 +602,7 @@ export function EntradaGrilla() {
       {/* Footer with save */}
       <div className="flex items-center justify-between bg-white rounded-lg px-4 py-2.5 shadow-sm border">
         <div className="text-xs text-slate-500">
-          💡 <b>Tip:</b> Al pulsar <b>+1</b> o <b>Filas</b>, se copian los datos de la última fila rellena · Enter baja a la siguiente · botón <b>+</b> duplica fila · el precio se autodetecta del catálogo
+          💡 <b>Tip:</b> Al pulsar <b>+1</b> o <b>Filas</b>, se copian los datos de la última fila rellena · Enter baja a la siguiente · botón <b>+</b> duplica fila · el precio se autodetecta del catálogo{ubicKey ? <> · con <b>ENTRADA PALET</b> el <b>hueco</b> se asigna solo (⚡ primer libre)</> : null}
         </div>
         <Button onClick={handleSave} disabled={saving || validCount === 0} className="bg-[#2bb24c] hover:bg-[#239a3f] text-white">
           <Save className="h-4 w-4 mr-1" /> {saving ? 'Guardando...' : `GUARDAR ${validCount} entrada(s)`}

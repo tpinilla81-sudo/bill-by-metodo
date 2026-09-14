@@ -11,27 +11,40 @@ import { todayISO, fmtCurrency, fmtDate, getISOWeek, type Cliente, type Catalogo
 import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData, fieldAppliesToClient } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 import { EntradaGrilla } from '@/components/hualsa/entrada-grilla'
+import {
+  loadAlmacenCfg, huecoOptimo, clasificarUbicacion, clavesOcupadas,
+  esC2EntradaPalet, normAlm, type EstanteriaCfg,
+} from '@/lib/almacen'
 
 interface EntradaViewData {
   registros: Registro[]
   clientes: Cliente[]
   catalogo: CatalogoItem[]
+  // TODOS los registros (entradas + salidas, activos y pasados): se usan para
+  // calcular qué huecos están ocupados y sugerir el óptimo al meter palets.
+  todosRegistros: Registro[]
 }
 
 function useEntradaData() {
-  const [data, setData] = useState<EntradaViewData>({ registros: [], clientes: [], catalogo: [] })
+  const [data, setData] = useState<EntradaViewData>({ registros: [], clientes: [], catalogo: [], todosRegistros: [] })
   const [loading, setLoading] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
     // cache: 'no-store' para que el navegador NO use la respuesta cacheada y
     // siempre pida el catálogo actualizado al servidor (ítems nuevos, edits, etc.)
-    const [rRes, cRes, catRes] = await Promise.all([
+    const [rRes, cRes, catRes, allRes] = await Promise.all([
       fetch('/api/registros?filter=entrada', { cache: 'no-store' }),
       fetch('/api/clientes', { cache: 'no-store' }),
-      fetch('/api/catalogo', { cache: 'no-store' })
+      fetch('/api/catalogo', { cache: 'no-store' }),
+      fetch('/api/registros', { cache: 'no-store' })
     ])
-    setData({ registros: await rRes.json(), clientes: await cRes.json(), catalogo: await catRes.json() })
+    setData({
+      registros: await rRes.json(),
+      clientes: await cRes.json(),
+      catalogo: await catRes.json(),
+      todosRegistros: await allRes.json(),
+    })
     setLoading(false)
   }, [])
 
@@ -153,6 +166,46 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   // Custom fields form state
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
+
+  // ─── HUECO ÓPTIMO AUTOMÁTICO ───────────────────────────────────────────
+  // Con las estanterías configuradas (STOCK ALMACÉN), al meter una ENTRADA
+  // PALET el campo UBICACIÓN se rellena solo con el primer hueco libre.
+  // La configuración se comparte vía '@/lib/almacen' (localStorage).
+  const [almacenCfg, setAlmacenCfg] = useState<EstanteriaCfg[]>([])
+  const autoUbicRef = useRef<string>('')      // último hueco asignado automáticamente
+  const ubicClearedRef = useRef(false)        // el usuario vació la ubicación a mano → no rellenar
+
+  // Refresca la configuración cada vez que se recargan los datos (la pestaña
+  // puede recuperar el foco tras editarla en STOCK ALMACÉN en otra pestaña).
+  useEffect(() => { setAlmacenCfg(loadAlmacenCfg()) }, [data])
+
+  // Campo UBICACIÓN: cualquier campo personalizado cuyo nombre/clave contenga
+  // "ubicación" (igual criterio que el motor de stock para leerlo luego).
+  const ubicField = useMemo(
+    () => fieldDefs.find(f => f.isCustom && /ubicac/i.test(normAlm(`${f.key} ${f.label}`))) || null,
+    [fieldDefs]
+  )
+  const ubicKey = ubicField?.key || ''
+
+  // Huecos con stock ahora mismo (para saber cuál es el óptimo libre)
+  const ocupadas = useMemo(() => clavesOcupadas(data.todosRegistros), [data.todosRegistros])
+
+  const esPalet = esC2EntradaPalet(c2)
+
+  // Al cambiar el CONCEPTO 2 se reactiva la asignación automática
+  useEffect(() => { ubicClearedRef.current = false }, [c2])
+
+  // Asignación: ENTRADA PALET + campo UBICACIÓN vacío → primer hueco libre
+  useEffect(() => {
+    if (!ubicKey || !esPalet || editingId || ubicClearedRef.current) return
+    const val = String(customValues[ubicKey] || '').trim()
+    if (val) return
+    const opt = huecoOptimo(almacenCfg, ocupadas)
+    if (!opt) return
+    autoUbicRef.current = opt.hueco
+    setCustomValue(ubicKey, opt.hueco)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ubicKey, esPalet, editingId, almacenCfg, ocupadas])
 
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
@@ -363,6 +416,8 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       showStatus('ok', 'Guardado en Registros ✓')
     }
     setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
+    autoUbicRef.current = ''
+    ubicClearedRef.current = false
     triggerBackup()
     loadData()
   }
@@ -386,6 +441,8 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   function handleCancelEdit() {
     setEditingId(null); setFecha(todayISO()); setClienteId(''); setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
+    autoUbicRef.current = ''
+    ubicClearedRef.current = false
   }
 
   async function handleTransfer() {
@@ -467,9 +524,13 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     }
     // Custom fields
     if (field.isCustom) {
+      const esUbic = field.key === ubicKey
       return (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}{field.required ? ' *' : ''}</Label></div>
+        <div className={`bg-white rounded-lg shadow-sm border overflow-hidden ${esUbic && esPalet ? 'border-teal-300' : 'border-gray-100'}`}>
+          <div className="px-3 pt-2 pb-0.5 flex items-center justify-between gap-2">
+            <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}{field.required ? ' *' : ''}</Label>
+            {esUbic && esPalet && <span className="text-[9px] font-bold text-teal-600 uppercase tracking-wider whitespace-nowrap">⚡ hueco auto</span>}
+          </div>
           <div className="px-3 pb-2">
             {field.type === 'textarea' ? (
               <textarea value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="w-full h-16 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none resize-none" />
@@ -477,14 +538,81 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
               <Input type="date" value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
             ) : field.type === 'number' ? (
               <Input type="number" step="0.01" value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
+            ) : esUbic ? (
+              <Input
+                value={customValues[field.key] || ''}
+                onChange={e => {
+                  const antes = String(customValues[field.key] || '').trim()
+                  const v = e.target.value
+                  // El usuario vació el campo a mano → respetar su decisión (no rellenar)
+                  if (antes && !v.trim()) ubicClearedRef.current = true
+                  if (v.trim()) ubicClearedRef.current = false
+                  setCustomValue(field.key, v)
+                }}
+                placeholder={field.placeholder || field.label}
+                className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none font-semibold"
+              />
             ) : (
               <Input value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
             )}
           </div>
+          {esUbic && esPalet && (
+            <div className="px-3 pb-2 pt-0 border-t border-dashed border-teal-100 bg-teal-50/40">
+              {chipUbicacion()}
+            </div>
+          )}
         </div>
       )
     }
     return null
+  }
+
+  // Línea de estado bajo el campo UBICACIÓN: hueco asignado automáticamente,
+  // sugerencia, o aviso de ocupado/fuera de configuración.
+  function chipUbicacion(): React.ReactNode {
+    if (!ubicKey) return null
+    const val = String(customValues[ubicKey] || '').trim()
+    const usar = (h: string) => { ubicClearedRef.current = false; setCustomValue(ubicKey, h) }
+    if (almacenCfg.length === 0) {
+      return (
+        <span className="text-[10px] text-gray-400 leading-tight">
+          Sin estanterías configuradas — defínelas en <b>Stock Almacén</b> y el hueco se asignará solo
+        </span>
+      )
+    }
+    if (!val) {
+      const opt = huecoOptimo(almacenCfg, ocupadas)
+      if (!opt) return <span className="text-[10px] text-red-600 font-semibold">Almacén lleno: no queda ningún hueco libre</span>
+      return (
+        <span className="text-[10px] text-teal-700 leading-tight">
+          Hueco óptimo: <b>{opt.hueco}</b>
+          <button type="button" onClick={() => usar(opt.hueco)} className="ml-1 underline font-semibold hover:text-teal-900">usar</button>
+        </span>
+      )
+    }
+    const esAuto = !!autoUbicRef.current && normAlm(val) === normAlm(autoUbicRef.current)
+    if (esAuto) {
+      return <span className="text-[10px] text-teal-600 font-semibold leading-tight">⚡ {val} — primer hueco libre (asignado solo)</span>
+    }
+    const estado = clasificarUbicacion(almacenCfg, ocupadas, val)
+    if (estado === 'ocupado') {
+      return <span className="text-[10px] text-amber-600 font-semibold leading-tight">{val} · ya hay stock en ese hueco</span>
+    }
+    if (estado === 'libre') {
+      return <span className="text-[10px] text-emerald-600 font-semibold leading-tight">{val} · libre</span>
+    }
+    // No está en la configuración: si es (o empieza por) una estantería,
+    // sugerir su primer hueco libre
+    const opt = huecoOptimo(almacenCfg, ocupadas, val)
+    if (opt && normAlm(opt.hueco) !== normAlm(val)) {
+      return (
+        <span className="text-[10px] text-gray-500 leading-tight">
+          Sugerido: <b className="text-teal-700">{opt.hueco}</b>
+          <button type="button" onClick={() => usar(opt.hueco)} className="ml-1 underline font-semibold text-teal-700 hover:text-teal-900">usar</button>
+        </span>
+      )
+    }
+    return <span className="text-[10px] text-gray-400 leading-tight">{val} no está en la configuración del almacén</span>
   }
 
   // Get custom field values from a registro for display
