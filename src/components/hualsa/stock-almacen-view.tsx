@@ -356,11 +356,6 @@ export function StockAlmacenView() {
 
   const clienteFiltro = cliFiltro === 'todos' ? '' : cliFiltro
 
-  const smurfitId = useMemo(
-    () => clientes.find(c => /smurfit/i.test(normAlm(c.nombre)))?.id || '',
-    [clientes]
-  )
-
   // El motor de stock depende de "now" para los días → key de recálculo
   const stock = useMemo(
     () => buildStock(registros, clienteFiltro),
@@ -459,16 +454,6 @@ export function StockAlmacenView() {
             <p className="text-xs text-gray-500">Control de palets en almacén y estanterías · lectura en vivo</p>
           </div>
         </div>
-
-        {/* Acceso rápido SMURFIT — solo si NO está ya seleccionado en el desplegable */}
-        {smurfitId && cliFiltro !== smurfitId && (
-          <button
-            onClick={() => setCliFiltro(smurfitId)}
-            className="h-9 px-3 rounded-lg text-xs font-bold border transition-colors bg-white border-teal-300 text-teal-700 hover:bg-teal-50"
-          >
-            SMURFIT
-          </button>
-        )}
 
         <Select value={cliFiltro} onValueChange={setCliFiltro}>
           <SelectTrigger className="w-[220px] h-9 bg-white text-sm">
