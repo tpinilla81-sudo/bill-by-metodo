@@ -1236,3 +1236,35 @@ Stage Summary:
 - El flujo queda: configuras estanterías → metes ENTRADA PALET → el sistema
   dice/asigna el hueco óptimo solo (form y grilla), con avisos si el hueco
   escrito está ocupado o fuera de configuración.
+
+---
+Task ID: QR-V12
+Agent: Main Agent
+Task: Metodo QR desde el origen: generar e imprimir etiqueta QR del palet al guardar ENTRADA (normal y grilla), no solo leerla en Stock
+
+Work Log:
+- Instalado paquete 'qrcode' (+ @types/qrcode) — genera QR como data-URL en cliente, carga dinamica solo al abrir el dialogo
+- Nuevo componente src/components/hualsa/qr-etiqueta.tsx: QrEtiquetaDialog
+  * QR codifica el LOTE/Nº PALET (ident fuerte); si no hay lote, la UBICACION. Busqueda del escaner compara con normAlm por ambos lados (mayus/minus da igual)
+  * Preview: QR + ubicacion grande + lote + cliente + fecha + "QR contiene X" + copias por linea (default = nº palets de la linea, editable 1-99)
+  * Impresion via iframe oculto (sin bloqueadores): etiquetas de 100mm con borde, QR 32mm, UBICACION 30pt, numeradas "PALET i/N" cuando hay varias copias
+- almacen.ts: nueva funcion identDeCustomValues(cv) — ident (palet|lote) desde los customValues del formulario, mismo criterio que extractIdents
+- entrada-view.tsx:
+  * Al guardar ENTRADA PALET nueva: abre QrEtiquetaDialog con los datos del formulario ANTES de limpiar (ident, ubicacion, cliente, fecha, cant)
+  * Boton QR por fila de la tabla (Acc.) para reimprimir la etiqueta cuando se quiera — getIdent/getUbicacion devuelven minusculas (normAlm), se pasan a toUpperCase() para la etiqueta
+- entrada-grilla.tsx: tras guardar la tanda, abre el dialogo con UNA etiqueta por linea de ENTRADA PALET (etiquetas preparadas en el mismo bucle del batch); tip en el footer avisando
+- stock-almacen-view.tsx: texto del dialogo del escaner ahora explica que las etiquetas se generan al guardar ENTRADAS
+- sidebar.tsx: build marker QR-V12-ETIQUETA-PALET · 2026-09-15
+- Dev DB (local, gitignored en este commit): añadidos campos custom_lote/custom_ubicacion a fieldsEntrada de Hualsa + conceptos ALMACEN/ENTRADA PALET y SALIDA PALET al catalogo para poder probar (produccion ya los tiene)
+
+Test (agent-browser, localhost:3000, sesion Hualsa admin):
+- Formulario normal: ENTRADA PALET L-TEST-001 cant=2 → hueco auto E1-01 → GUARDAR → dialogo ETIQUETA QR con QR (data-URL 6.5KB), IMPRIMIR 2 ETIQUETAS → iframe con 2 etiquetas "PALET 1/2"/"PALET 2/2", ubicacion E1-01, lote, cliente, fecha, QR en cada una ✓
+- Reimpresion desde fila: boton QR → dialogo con E1-03/L-TEST-003 en mayusculas ✓
+- Grilla: 2 filas ENTRADA PALET → huecos E1-02 y E1-03 (evitando el ocupado) → guardar → dialogo con 2 lineas de etiquetas → imprimir → 2 etiquetas correctas ✓
+- Stock Almacen: mapa 3/20 huecos (E1-01 x2, E1-02, E1-03), buscar "L-TEST-001" (contenido del QR) resalta la celda E1-01 — exactamente lo que hace el escaner tras leer el QR ✓
+- 0 errores de consola/pagina; eslint 0 errores; tsc: 0 errores nuevos; npm run build exit 0 ✓
+
+Stage Summary:
+- Cerrado el circulo QR: ENTRADA (etiqueta auto + imprimir) → pegar en palet → STOCK ALMACEN "Escanear QR" → localiza en el mapa
+- Commit: solo src + package*.json (db/custom.db con datos de prueba EXCLUIDO para no tocar el de VPS)
+- Deploy via git push (PAT intacto en remote URL)
