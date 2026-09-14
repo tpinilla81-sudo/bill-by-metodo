@@ -60,6 +60,20 @@ interface RackStock {
   celdas: CeldaStock[]
 }
 
+// ─── CONFIGURACIÓN DEL ALMACÉN ─────────────────────────────────────────
+// El almacén se define a partir de ESTANTERÍAS y sus HUECOS: cada estantería
+// tiene un nombre y un nº de huecos, y cada hueco se nombra automáticamente
+// (E1 con 12 huecos → E1-01, E1-02 … E1-12). El mapa del almacén se dibuja
+// a partir de esta configuración; los huecos sin palets se ven como LIBRE.
+interface EstanteriaCfg {
+  id: string        // id estable (keys de React)
+  nombre: string    // "E1" — prefijo con el que se nombran los huecos
+  huecos: number    // nº de huecos de la estantería
+  cap: number       // capacidad máx. de palets (0 = sin límite) — opcional
+  alias?: string[]  // nombres antiguos de la estantería: los palets registrados
+                    // con ellos siguen apareciendo en el mapa tras un renombrado
+}
+
 function normAlm(s: string): string {
   return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -108,6 +122,23 @@ function splitUbicacion(ub: string): { rack: string; pos: string } {
   return { rack: 'ALMACÉN', pos: t.toUpperCase() }
 }
 
+// Clave robusta para emparejar ubicaciones de los movimientos con huecos
+// configurados: "E1-03", "e1 3", "E1/03" → todas → "E-1-3" (bloques de
+// letras y números, sin acentos, sin ceros a la izquierda, sin separadores).
+function normHuecoKey(s: string): string {
+  const t = String(s || '').trim().toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  if (!t) return ''
+  return (t.match(/[A-Z]+|[0-9]+/g) || [])
+    .map(tok => (/^[0-9]+$/.test(tok) ? String(parseInt(tok, 10)) : tok))
+    .join('-')
+}
+
+// Número de hueco con ceros: hueco 3 de 12 → "03" · hueco 5 de 120 → "005"
+function padPos(n: number, total: number): string {
+  return String(n).padStart(Math.max(2, String(total).length), '0')
+}
+
 // Días que un palet lleva en almacén: fechaEntrada → ahora.
 // El día de entrada cuenta como 1 día (ambos inclusive), como en facturación.
 // Recibe `refNow` (ms) para forzar recálculo limpio cuando el reloj avanza.
@@ -126,7 +157,14 @@ function buildStock(registros: Registro[], clientesFiltro: string[]): LoteStock[
   const movs = registros
     .filter(r => isEntradaPalet(r) || isSalidaPalet(r))
     .filter(r => clientesFiltro.length === 0 || clientesFiltro.includes(r.clienteId || ''))
-    .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    // Orden cronológico: fecha, y dentro del mismo día por createdAt (la API
+    // devuelve desc por createdAt; sin este desempate una SALIDA creada después
+    // de su ENTRADA el mismo día se procesaría antes y consumiría FIFO.
+    .sort((a, b) =>
+      a.fecha.localeCompare(b.fecha) ||
+      String(a.createdAt || '').localeCompare(String(b.createdAt || '')) ||
+      a.id.localeCompare(b.id)
+    )
 
   const lotes: LoteStock[] = []
   for (const m of movs) {
@@ -169,107 +207,97 @@ function buildStock(registros: Registro[], clientesFiltro: string[]): LoteStock[
   return lotes.filter(l => l.cantRestante > 0)
 }
 
-function buildRacks(
-  stock: LoteStock[],
-  known: Map<string, { rack: string; pos: string; ubicacion: string }>,
-  refNow: number,
-  cfg: Record<string, { cap: number; pos: number }>
-): RackStock[] {
-  const porUb = new Map<string, CeldaStock>()
-  for (const l of stock) {
-    const key = normAlm(l.ubicacion) || '(sin ubicación)'
-    const { rack, pos } = splitUbicacion(l.ubicacion)
-    let c = porUb.get(key)
-    if (!c) {
-      c = { ubicacion: l.ubicacion || 'SIN UBICACIÓN', rack, pos, total: 0, dias: 0, lotes: [] }
-      porUb.set(key, c)
-    }
-    c.total += l.cantRestante
-    c.dias = Math.max(c.dias, diasEnAlmacen(l.fecha, refNow))
-    c.lotes.push(l)
-  }
-  // Ubicaciones conocidas (aparecieron en movimientos) sin stock actual → LIBRE
-  for (const [key, k] of known.entries()) {
-    if (!porUb.has(key)) {
-      porUb.set(key, { ubicacion: k.ubicacion, rack: k.rack, pos: k.pos, total: 0, dias: 0, lotes: [] })
-    }
-  }
-  // POSICIONES DEFINIDAS EN LA CONFIGURACIÓN DEL ALMACÉN: para cada estantería
-  // con nº de posiciones, generar RACK-01..N (las vacías se ven como LIBRE).
-  // También crea estanterías que todavía no tienen ningún movimiento.
-  const racksCfg = new Set<string>()
-  for (const [rawName, c] of Object.entries(cfg)) {
-    if (!c || !c.pos || c.pos <= 0) continue
-    const rackName = rawName.trim().toUpperCase()
-    if (!rackName) continue
-    racksCfg.add(rackName)
-    for (let n = 1; n <= c.pos; n++) {
-      const posStr = String(n).padStart(2, '0')
-      const ubic = `${rackName}-${posStr}`
-      const key = normAlm(ubic)
-      if (!porUb.has(key)) {
-        porUb.set(key, { ubicacion: ubic, rack: rackName, pos: posStr, total: 0, dias: 0, lotes: [] })
-      }
-    }
-  }
-  const racksMap = new Map<string, RackStock>()
-  for (const c of porUb.values()) {
-    let rk = racksMap.get(c.rack)
-    if (!rk) {
-      rk = { name: c.rack, total: 0, celdas: [] }
-      racksMap.set(c.rack, rk)
-    }
-    rk.total += c.total
-    rk.celdas.push(c)
-  }
-  // RELLENAR HUECOS NUMÉRICOS (solo estanterías SIN configurar): si en un rack
-  // hay posiciones 01, 02, 05, 07, añadir 03, 04, 06 como LIBRE. Las
-  // estanterías configuradas usan su layout definido tal cual.
-  for (const rk of racksMap.values()) {
-    if (!racksCfg.has(rk.name)) {
-      const nums = rk.celdas
-        .filter(c => /^\d{1,3}$/.test(c.pos))
-        .map(c => parseInt(c.pos, 10))
-      if (nums.length >= 2) {
-        const min = Math.min(...nums)
-        const max = Math.max(...nums)
-        const existentes = new Set(rk.celdas.map(c => c.pos))
-        for (let n = min; n <= max; n++) {
-          const posStr = String(n).padStart(2, '0')
-          if (!existentes.has(posStr) && !existentes.has(String(n))) {
-            rk.celdas.push({
-              ubicacion: `${rk.name}-${posStr}`,
-              rack: rk.name,
-              pos: posStr,
-              total: 0,
-              dias: 0,
-              lotes: [],
-            })
-          }
-        }
-      }
-    }
-    rk.celdas.sort((a, b) => a.pos.localeCompare(b.pos, 'es', { numeric: true }))
-  }
-  const racks = [...racksMap.values()]
-  racks.sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }))
-  return racks
+interface RacksResultado {
+  racks: RackStock[]       // estanterías configuradas, con TODOS sus huecos
+  fuera: CeldaStock[]      // stock en ubicaciones que no están en la configuración
+  totalHuecos: number      // nº total de huecos configurados
+  huecosOcupados: number   // huecos con al menos 1 palet
 }
 
-// Todas las ubicaciones que aparecen en CUALQUIER movimiento de palet
-// (con stock o sin él) para dibujar también las posiciones libres.
-function knownUbicaciones(registros: Registro[], clientesFiltro: string[]): Map<string, { rack: string; pos: string; ubicacion: string }> {
-  const known = new Map<string, { rack: string; pos: string; ubicacion: string }>()
+// El mapa se dibuja SOLO a partir de la configuración (estantería → nº de
+// huecos). Cada hueco se nombra automáticamente RACK-01…N; los que no tienen
+// palets se ven LIBRE. El stock que cae en ubicaciones fuera de la
+// configuración (o sin ubicación) se devuelve aparte para no perder nada.
+function buildRacks(stock: LoteStock[], cfg: EstanteriaCfg[], refNow: number): RacksResultado {
+  const racksMap = new Map<string, RackStock>()
+  const huecoPorClave = new Map<string, CeldaStock>()
+  for (const e of cfg) {
+    const nombre = String(e?.nombre || '').trim().toUpperCase()
+    if (!nombre || !e.huecos || e.huecos <= 0) continue
+    const rk: RackStock = { name: nombre, total: 0, celdas: [] }
+    racksMap.set(nombre, rk)
+    // Prefijos que reconocen los huecos: el nombre actual + alias antiguos
+    const prefijos = [nombre, ...(e.alias || []).map(a => String(a || '').trim().toUpperCase())]
+      .filter(p => p)
+      .filter((p, i, arr) => arr.indexOf(p) === i)
+    for (let n = 1; n <= e.huecos; n++) {
+      const pos = padPos(n, e.huecos)
+      const celda: CeldaStock = { ubicacion: `${nombre}-${pos}`, rack: nombre, pos, total: 0, dias: 0, lotes: [] }
+      rk.celdas.push(celda)
+      for (const pref of prefijos) {
+        huecoPorClave.set(normHuecoKey(`${pref}-${pos}`), celda)
+      }
+    }
+  }
+  const fueraMap = new Map<string, CeldaStock>()
+  for (const l of stock) {
+    const clave = normHuecoKey(l.ubicacion)
+    const celda = clave ? huecoPorClave.get(clave) : undefined
+    if (celda) {
+      celda.total += l.cantRestante
+      celda.dias = Math.max(celda.dias, diasEnAlmacen(l.fecha, refNow))
+      celda.lotes.push(l)
+      const rk = racksMap.get(celda.rack)
+      if (rk) rk.total += l.cantRestante
+    } else {
+      const key = clave || '(SIN UBICACIÓN)'
+      let f = fueraMap.get(key)
+      if (!f) {
+        f = { ubicacion: l.ubicacion || 'SIN UBICACIÓN', rack: 'FUERA', pos: (l.ubicacion || '—').toUpperCase(), total: 0, dias: 0, lotes: [] }
+        fueraMap.set(key, f)
+      }
+      f.total += l.cantRestante
+      f.dias = Math.max(f.dias, diasEnAlmacen(l.fecha, refNow))
+      f.lotes.push(l)
+    }
+  }
+  const racks = [...racksMap.values()].sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }))
+  const fuera = [...fueraMap.values()].sort((a, b) => a.ubicacion.localeCompare(b.ubicacion, 'es', { numeric: true }))
+  let totalHuecos = 0
+  let huecosOcupados = 0
+  for (const rk of racks) {
+    for (const c of rk.celdas) {
+      totalHuecos++
+      if (c.total > 0) huecosOcupados++
+    }
+  }
+  return { racks, fuera, totalHuecos, huecosOcupados }
+}
+
+// Nombres automáticos de los huecos de una estantería: E1 + 12 → E1-01…E1-12
+function nombresHuecos(nombre: string, huecos: number): string[] {
+  const n = String(nombre || '').trim().toUpperCase()
+  if (!n || huecos <= 0) return []
+  return Array.from({ length: huecos }, (_, i) => `${n}-${padPos(i + 1, huecos)}`)
+}
+
+// Estanterías detectadas en los movimientos (para sugerir su configuración):
+// rack → nº de hueco máximo visto y nº de movimientos.
+function detectarEstanterias(registros: Registro[]): { nombre: string; maxPos: number; movs: number }[] {
+  const acc = new Map<string, { maxPos: number; movs: number }>()
   for (const r of registros) {
     if (!isEntradaPalet(r) && !isSalidaPalet(r)) continue
-    if (clientesFiltro.length > 0 && !clientesFiltro.includes(r.clienteId || '')) continue
-    const ub = getUbicacion(r)
-    const key = normAlm(ub)
-    if (!key || known.has(key)) continue
-    const { rack, pos } = splitUbicacion(ub)
-    known.set(key, { rack, pos, ubicacion: ub })
+    const { rack, pos } = splitUbicacion(getUbicacion(r))
+    if (!rack || rack === 'SIN UBICACIÓN' || rack === 'ALMACÉN') continue
+    let a = acc.get(rack)
+    if (!a) { a = { maxPos: 0, movs: 0 }; acc.set(rack, a) }
+    a.movs++
+    const n = parseInt(pos, 10)
+    if (!isNaN(n) && n > a.maxPos) a.maxPos = n
   }
-  return known
+  return [...acc.entries()]
+    .map(([nombre, a]) => ({ nombre, maxPos: a.maxPos, movs: a.movs }))
+    .sort((x, y) => x.nombre.localeCompare(y.nombre, 'es', { numeric: true }))
 }
 
 function colorPorDias(dias: number): string {
@@ -282,6 +310,27 @@ function textoPorDias(dias: number): string {
   if (dias > 60) return 'text-red-700'
   if (dias > 30) return 'text-amber-700'
   return 'text-emerald-700'
+}
+
+// Input del nombre de una estantería con estado local — el commit se hace al
+// salir del campo (o Enter). Si el nombre es duplicado/vacío, se ignora.
+function NombreEstanteriaInput({ nombre, onCommit }: { nombre: string; onCommit: (nuevo: string) => void }) {
+  const [val, setVal] = useState(nombre)
+  useEffect(() => { setVal(nombre) }, [nombre])
+  return (
+    <Input
+      value={val}
+      onChange={e => setVal(e.target.value.toUpperCase())}
+      onBlur={() => {
+        const v = val.trim().toUpperCase()
+        if (v && v !== nombre) onCommit(v)
+        else setVal(nombre)
+      }}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+      className="h-8 w-28 text-sm font-bold"
+      title="Nombre de la estantería — los huecos se renombran solos"
+    />
+  )
 }
 
 export function StockAlmacenView() {
@@ -297,28 +346,93 @@ export function StockAlmacenView() {
   const [query, setQuery] = useState('')
   const queryNorm = normAlm(query.trim())
 
-  // Configuración del almacén por estantería: capacidad (max palets) +
-  // nº de posiciones (genera RACK-01..N en el dibujo, vacías = LIBRE).
-  // Persistida en localStorage; migra la antigua clave stock-capacidades.
-  const [almacenCfg, setAlmacenCfg] = useState<Record<string, { cap: number; pos: number }>>(() => {
-    if (typeof window === 'undefined') return {}
+  // Configuración del almacén: lista de estanterías con su nº de huecos.
+  // Cada hueco se nombra automáticamente y el mapa se dibuja a partir de
+  // esta lista. Persistida en localStorage ('stock-config-v2'); migra las
+  // claves antiguas 'stock-config' y 'stock-capacidades' si existen.
+  const [almacenCfg, setAlmacenCfg] = useState<EstanteriaCfg[]>(() => {
+    if (typeof window === 'undefined') return []
     try {
-      const raw = localStorage.getItem('stock-config')
-      if (raw) return JSON.parse(raw)
-      const old = JSON.parse(localStorage.getItem('stock-capacidades') || '{}') as Record<string, number>
-      const migrated: Record<string, { cap: number; pos: number }> = {}
-      for (const [k, v] of Object.entries(old)) migrated[k] = { cap: Number(v) || 0, pos: 0 }
-      return migrated
-    } catch { return {} }
+      const raw = localStorage.getItem('stock-config-v2')
+      if (raw) {
+        const arr = JSON.parse(raw) as EstanteriaCfg[]
+        return Array.isArray(arr)
+          ? arr.filter(e => e && String(e.nombre || '').trim()).map(e => ({
+              id: e.id || Math.random().toString(36).slice(2, 9),
+              nombre: String(e.nombre).trim().toUpperCase(),
+              huecos: Math.max(0, Math.min(200, Number(e.huecos) || 0)),
+              cap: Math.max(0, Number(e.cap) || 0),
+              alias: Array.isArray(e.alias) ? e.alias.map(a => String(a || '').trim().toUpperCase()).filter(Boolean).slice(0, 10) : [],
+            }))
+          : []
+      }
+      const nuevaId = () => Math.random().toString(36).slice(2, 9)
+      // Migración: formato anterior { nombre: { cap, pos } }
+      const old = JSON.parse(localStorage.getItem('stock-config') || '{}') as Record<string, { cap?: number; pos?: number }>
+      const migrado: EstanteriaCfg[] = Object.entries(old).map(([nombre, v]) => ({
+        id: nuevaId(),
+        nombre: nombre.trim().toUpperCase(),
+        huecos: Math.max(0, Math.min(200, Number(v?.pos) || 0)),
+        cap: Math.max(0, Number(v?.cap) || 0),
+      })).filter(e => e.nombre)
+      if (migrado.length > 0) return migrado
+      // Migración: formato original { nombre: capacidad }
+      const older = JSON.parse(localStorage.getItem('stock-capacidades') || '{}') as Record<string, number>
+      return Object.entries(older).map(([nombre, v]) => ({
+        id: nuevaId(),
+        nombre: nombre.trim().toUpperCase(),
+        huecos: 0,
+        cap: Math.max(0, Number(v) || 0),
+      })).filter(e => e.nombre)
+    } catch { return [] }
   })
-  const [showCapEditor, setShowCapEditor] = useState(false)
+  const [showCfgEditor, setShowCfgEditor] = useState(false)
   // Formulario "añadir estantería"
   const [newRackName, setNewRackName] = useState('')
-  const [newRackPos, setNewRackPos] = useState('')
+  const [newRackHuecos, setNewRackHuecos] = useState('')
   const [newRackCap, setNewRackCap] = useState('')
   useEffect(() => {
-    try { localStorage.setItem('stock-config', JSON.stringify(almacenCfg)) } catch { /* quota */ }
+    try { localStorage.setItem('stock-config-v2', JSON.stringify(almacenCfg)) } catch { /* quota */ }
   }, [almacenCfg])
+
+  // ── Helpers de configuración (estanterías → huecos) ──
+  function anadirEstanteria(nombre: string, huecos: number, cap: number): boolean {
+    const n = nombre.trim().toUpperCase()
+    const h = Math.max(1, Math.min(200, huecos || 0))
+    if (!n || huecos <= 0) return false
+    if (almacenCfg.some(e => e.nombre.trim().toUpperCase() === n)) return false
+    setAlmacenCfg(prev => prev.some(e => e.nombre.trim().toUpperCase() === n)
+      ? prev
+      : [...prev, { id: Math.random().toString(36).slice(2, 9), nombre: n, huecos: h, cap: Math.max(0, cap || 0) }])
+    return true
+  }
+  function quitarEstanteria(id: string) {
+    setAlmacenCfg(prev => prev.filter(e => e.id !== id))
+  }
+  function cambiarHuecos(id: string, v: number) {
+    setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, huecos: Math.max(1, Math.min(200, v || 0)) } : e)))
+  }
+  function cambiarCap(id: string, v: number) {
+    setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, cap: Math.max(0, v || 0) } : e)))
+  }
+  function renombrarEstanteria(id: string, nuevo: string) {
+    const n = nuevo.trim().toUpperCase()
+    if (!n) return
+    setAlmacenCfg(prev => {
+      if (prev.some(e => e.id !== id && e.nombre.trim().toUpperCase() === n)) return prev // duplicado: sin cambio
+      return prev.map(e => {
+        if (e.id !== id) return e
+        const viejo = e.nombre.trim().toUpperCase()
+        if (viejo === n) return e
+        // El nombre antiguo pasa a alias: el stock registrado con él sigue en el mapa
+        const alias = [viejo, ...(e.alias || [])]
+          .map(a => String(a || '').trim().toUpperCase())
+          .filter((a, i, arr) => a && a !== n && arr.indexOf(a) === i)
+          .slice(0, 10)
+        return { ...e, nombre: n, alias }
+      })
+    })
+  }
 
   // Escáner QR
   const [qrOpen, setQrOpen] = useState(false)
@@ -429,11 +543,29 @@ export function StockAlmacenView() {
     [registros, clienteFiltro, now]
   )
 
-  const racks = useMemo(
-    () => buildRacks(stock, knownUbicaciones(registros, clienteFiltro), now, almacenCfg),
+  // El mapa sale de la CONFIGURACIÓN (estanterías + huecos). El stock en
+  // ubicaciones no configuradas aparece en la lista "fuera de configuración".
+  const racksCalc = useMemo(
+    () => buildRacks(stock, almacenCfg, now),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stock, registros, clienteFiltro, now, almacenCfg]
+    [stock, almacenCfg, now]
   )
+  const racks = racksCalc.racks
+  const fueraCfg = racksCalc.fuera
+  const totalHuecos = racksCalc.totalHuecos
+  const huecosOcupados = racksCalc.huecosOcupados
+  const paletsFuera = useMemo(() => fueraCfg.reduce((s, c) => s + c.total, 0), [fueraCfg])
+
+  // Estanterías detectadas en los movimientos y aún sin configurar (sugerencias).
+  // No se sugieren nombres ya configurados ni antiguos (alias) de estanterías.
+  const sugerencias = useMemo(() => {
+    const yaCfg = new Set(almacenCfg.flatMap(e => [
+      e.nombre.trim().toUpperCase(),
+      ...(e.alias || []).map(a => String(a || '').trim().toUpperCase()),
+    ]))
+    return detectarEstanterias(registros).filter(s => !yaCfg.has(s.nombre))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registros, almacenCfg])
 
   const totalStock = useMemo(() => stock.reduce((s, l) => s + l.cantRestante, 0), [stock])
   const ubicOcupadas = useMemo(() => new Set(stock.map(l => normAlm(l.ubicacion) || '(sin ubicación)')).size, [stock])
@@ -484,7 +616,7 @@ export function StockAlmacenView() {
 
   // ¿La celda tiene capacidad agotada?
   function capInfo(rackName: string, total: number): { cap: number; pct: number; full: boolean } {
-    const cap = almacenCfg[rackName]?.cap || 0
+    const cap = almacenCfg.find(e => e.nombre.trim().toUpperCase() === rackName)?.cap || 0
     if (cap <= 0) return { cap: 0, pct: 0, full: false }
     const pct = Math.min(100, Math.round((total / cap) * 100))
     return { cap, pct, full: total >= cap }
@@ -610,131 +742,219 @@ export function StockAlmacenView() {
           variant="outline"
           size="sm"
           className="h-9 ml-auto"
-          onClick={() => setShowCapEditor(v => !v)}
-          title="Configurar estanterías, posiciones y capacidad"
+          onClick={() => setShowCfgEditor(v => !v)}
+          title="Definir estanterías y sus huecos — el mapa se genera solo"
         >
           <Settings2 className="h-4 w-4 mr-1" /> Configurar almacén
         </Button>
       </div>
 
-      {/* Editor del almacén: estanterías, posiciones y capacidad */}
-      {showCapEditor && (
+      {/* Editor del almacén: estanterías → huecos con nombre automático */}
+      {showCfgEditor && (
         <Card>
           <CardContent className="p-4">
-            <h3 className="font-bold text-gray-800 mb-3 text-sm flex items-center gap-2">
+            <h3 className="font-bold text-gray-800 mb-1 text-sm flex items-center gap-2">
               <Settings2 className="h-4 w-4 text-teal-600" /> CONFIGURAR ALMACÉN
             </h3>
             <p className="text-xs text-gray-500 mb-3">
-              <b>Posiciones</b>: cuántos huecos tiene la estantería (genera E1-01, E1-02… y se ven las vacías como LIBRE).
-              <b> Capacidad</b>: máx. palets (avisa en rojo al superarla). Se guarda en este navegador.
+              El mapa se genera a partir de las <b>estanterías</b> y sus <b>huecos</b>: defines la estantería con un nombre
+              y un nº de huecos, y cada hueco se nombra solo (<b>E1-01, E1-02…</b>). Los huecos sin palets se ven como LIBRE.
+              Se guarda en este navegador.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {[...new Set([...racks.map(rk => rk.name), ...Object.keys(almacenCfg)])].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })).map(name => {
-                const cfg = almacenCfg[name] || { cap: 0, pos: 0 }
-                const rk = racks.find(r => r.name === name)
+
+            {/* 1 · Añadir estantería */}
+            <div className="rounded-lg border-2 border-teal-100 bg-teal-50/40 p-3 mb-4">
+              <div className="text-[11px] font-bold text-teal-800 uppercase tracking-wide mb-2">1 · Añadir estantería</div>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="w-36">
+                  <Label className="text-[10px] font-semibold text-gray-400 uppercase">Nombre</Label>
+                  <Input
+                    type="text"
+                    value={newRackName}
+                    onChange={e => setNewRackName(e.target.value.toUpperCase())}
+                    placeholder="E1"
+                    className="h-8 mt-0.5 text-sm"
+                  />
+                </div>
+                <div className="w-28">
+                  <Label className="text-[10px] font-semibold text-gray-400 uppercase">Nº de huecos</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={newRackHuecos}
+                    onChange={e => setNewRackHuecos(e.target.value)}
+                    placeholder="12"
+                    className="h-8 mt-0.5 text-sm"
+                  />
+                </div>
+                <div className="w-28">
+                  <Label className="text-[10px] font-semibold text-gray-400 uppercase">Capacidad máx.</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={newRackCap}
+                    onChange={e => setNewRackCap(e.target.value)}
+                    placeholder="Opcional"
+                    className="h-8 mt-0.5 text-sm"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  className="h-8 bg-teal-600 hover:bg-teal-700 text-white"
+                  onClick={() => {
+                    const ok = anadirEstanteria(newRackName, parseInt(newRackHuecos, 10) || 0, parseInt(newRackCap, 10) || 0)
+                    if (ok) { setNewRackName(''); setNewRackHuecos(''); setNewRackCap('') }
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Añadir
+                </Button>
+              </div>
+              {/* Vista previa del nombrado automático */}
+              {(() => {
+                const n = newRackName.trim().toUpperCase()
+                const h = parseInt(newRackHuecos, 10) || 0
+                if (!n || h <= 0) return null
+                const nombres = nombresHuecos(n, h)
+                const muestra = h <= 4 ? nombres : [...nombres.slice(0, 3), `… (+${h - 4} más)`, nombres[nombres.length - 1]]
+                const dup = almacenCfg.some(e => e.nombre.trim().toUpperCase() === n)
                 return (
-                  <div key={name} className="rounded-lg border border-gray-200 p-2 bg-white">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs font-bold text-gray-700">{name}</Label>
-                      <button
-                        onClick={() => setAlmacenCfg(prev => { const next = { ...prev }; delete next[name]; return next })}
-                        className="text-gray-300 hover:text-red-500 transition-colors"
-                        title="Quitar configuración de esta estantería"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 mt-1">
-                      <div>
-                        <Label className="text-[10px] font-semibold text-gray-400 uppercase">Posiciones</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          max={200}
-                          value={cfg.pos || ''}
-                          onChange={e => {
-                            const v = parseInt(e.target.value, 10)
-                            setAlmacenCfg(prev => ({ ...prev, [name]: { cap: prev[name]?.cap || 0, pos: isNaN(v) ? 0 : Math.max(0, Math.min(200, v)) } }))
-                          }}
-                          placeholder="—"
-                          className="h-8 mt-0.5 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-[10px] font-semibold text-gray-400 uppercase">Capacidad</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          value={cfg.cap || ''}
-                          onChange={e => {
-                            const v = parseInt(e.target.value, 10)
-                            setAlmacenCfg(prev => ({ ...prev, [name]: { pos: prev[name]?.pos || 0, cap: isNaN(v) ? 0 : Math.max(0, v) } }))
-                          }}
-                          placeholder="Sin límite"
-                          className="h-8 mt-0.5 text-sm"
-                        />
-                      </div>
-                    </div>
-                    {rk && (
-                      <p className="text-[10px] text-gray-400 mt-1">
-                        {rk.total} palet(s) ahora · {rk.celdas.length} hueco(s) en el mapa
-                      </p>
-                    )}
+                  <div className="mt-2 text-xs">
+                    {dup && <div className="text-red-600 font-semibold mb-1">Ya existe una estantería llamada {n}.</div>}
+                    <span className="text-teal-800 font-semibold">Se nombrarán así: </span>
+                    <span className="inline-flex flex-wrap gap-1 mt-1">
+                      {muestra.map((m, i) => (
+                        <span key={`${m}-${i}`} className="px-1.5 py-0.5 rounded bg-white border border-teal-200 text-teal-700 font-mono text-[11px] font-bold">{m}</span>
+                      ))}
+                    </span>
                   </div>
                 )
-              })}
+              })()}
             </div>
 
-            {/* Añadir estantería nueva */}
-            <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap items-end gap-2">
-              <div className="w-32">
-                <Label className="text-[10px] font-semibold text-gray-400 uppercase">Estantería</Label>
-                <Input
-                  type="text"
-                  value={newRackName}
-                  onChange={e => setNewRackName(e.target.value.toUpperCase())}
-                  placeholder="E1"
-                  className="h-8 mt-0.5 text-sm"
-                />
+            {/* Sugerencias detectadas en los movimientos */}
+            {sugerencias.length > 0 && (
+              <div className="mb-4">
+                <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">
+                  Detectadas en los movimientos (sin configurar)
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {sugerencias.map(s => (
+                    <button
+                      key={s.nombre}
+                      onClick={() => anadirEstanteria(s.nombre, Math.max(1, s.maxPos), 0)}
+                      className="text-xs rounded-md border border-gray-200 bg-white px-2.5 py-1.5 hover:border-teal-400 hover:bg-teal-50 transition-colors"
+                      title={`Añadir estantería ${s.nombre} con ${s.maxPos || 1} huecos`}
+                    >
+                      <span className="font-bold text-gray-700">{s.nombre}</span>
+                      <span className="text-gray-400"> · hasta {s.maxPos || '?'} huecos en {s.movs} mov.</span>
+                      <span className="text-teal-700 font-bold ml-1">+ Añadir</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="w-28">
-                <Label className="text-[10px] font-semibold text-gray-400 uppercase">Posiciones</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={200}
-                  value={newRackPos}
-                  onChange={e => setNewRackPos(e.target.value)}
-                  placeholder="12"
-                  className="h-8 mt-0.5 text-sm"
-                />
-              </div>
-              <div className="w-28">
-                <Label className="text-[10px] font-semibold text-gray-400 uppercase">Capacidad</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={newRackCap}
-                  onChange={e => setNewRackCap(e.target.value)}
-                  placeholder="Opcional"
-                  className="h-8 mt-0.5 text-sm"
-                />
-              </div>
-              <Button
-                size="sm"
-                className="h-8 bg-teal-600 hover:bg-teal-700 text-white"
-                onClick={() => {
-                  const name = newRackName.trim().toUpperCase()
-                  const pos = parseInt(newRackPos, 10) || 0
-                  const cap = parseInt(newRackCap, 10) || 0
-                  if (!name || pos <= 0) return
-                  setAlmacenCfg(prev => ({ ...prev, [name]: { pos, cap } }))
-                  setNewRackName(''); setNewRackPos(''); setNewRackCap('')
-                }}
-              >
-                <Plus className="h-4 w-4 mr-1" /> Añadir
-              </Button>
+            )}
+
+            {/* 2 · Estanterías configuradas */}
+            <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">
+              2 · Tus estanterías
+              <span className="normal-case font-semibold text-gray-400">
+                {' '}· {almacenCfg.length} estantería(s) · {totalHuecos} huecos en el mapa
+              </span>
             </div>
+            {almacenCfg.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-center text-sm text-gray-500">
+                Todavía no hay estanterías. Añade la primera arriba: nombre + nº de huecos y el dibujo se crea solo.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {almacenCfg.map(e => {
+                  const huecosNombres = nombresHuecos(e.nombre, e.huecos)
+                  const rk = racks.find(r => r.name === e.nombre.trim().toUpperCase())
+                  const ocup = rk ? rk.celdas.filter(c => c.total > 0).length : 0
+                  return (
+                    <div key={e.id} className="rounded-lg border border-gray-200 p-3 bg-white">
+                      <div className="flex items-center gap-2">
+                        <NombreEstanteriaInput nombre={e.nombre} onCommit={n => renombrarEstanteria(e.id, n)} />
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ml-auto ${
+                          ocup > 0 ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-gray-50 text-gray-400 border-gray-200'
+                        }`}>
+                          {ocup}/{e.huecos} ocupados
+                        </span>
+                        <button
+                          onClick={() => quitarEstanteria(e.id)}
+                          className="text-gray-300 hover:text-red-500 transition-colors shrink-0"
+                          title="Eliminar esta estantería y sus huecos del mapa"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      {/* Huecos con nombre automático */}
+                      {huecosNombres.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-2 max-h-24 overflow-y-auto">
+                          {huecosNombres.map((h, i) => {
+                            const celda = rk?.celdas[i]
+                            const ocupado = (celda?.total || 0) > 0
+                            return (
+                              <span
+                                key={h}
+                                title={`${h}${ocupado ? ` · ${celda?.total} palet(s)` : ' · libre'}`}
+                                className={`px-1.5 py-0.5 rounded font-mono text-[10px] font-bold border ${
+                                  ocupado ? 'bg-teal-100 border-teal-300 text-teal-800' : 'bg-gray-50 border-gray-200 text-gray-400'
+                                }`}
+                              >
+                                {h}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-amber-600 mt-2">
+                          Sin nº de huecos: esta estantería no aparece en el mapa. Ponle huecos abajo.
+                        </p>
+                      )}
+                      <div className="flex flex-wrap items-end gap-2 mt-2 pt-2 border-t border-gray-100">
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => cambiarHuecos(e.id, e.huecos - 1)}
+                            className="h-7 w-7 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 font-bold"
+                            title="Un hueco menos"
+                          >−</button>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={200}
+                            value={e.huecos || ''}
+                            onChange={ev => cambiarHuecos(e.id, parseInt(ev.target.value, 10) || 0)}
+                            className="h-7 w-14 text-sm text-center"
+                          />
+                          <button
+                            onClick={() => cambiarHuecos(e.id, e.huecos + 1)}
+                            className="h-7 w-7 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 font-bold"
+                            title="Un hueco más (se nombra solo al final)"
+                          >+</button>
+                          <span className="text-[10px] font-semibold text-gray-400 uppercase ml-1">huecos</span>
+                        </div>
+                        <div className="flex items-center gap-1 ml-auto">
+                          <span className="text-[10px] font-semibold text-gray-400 uppercase">Cap. máx.</span>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={e.cap || ''}
+                            onChange={ev => cambiarCap(e.id, parseInt(ev.target.value, 10) || 0)}
+                            placeholder="—"
+                            className="h-7 w-16 text-sm text-center"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-1.5">
+                        {rk ? `${rk.total} palet(s) ahora` : 'Sin palets ahora'} · los huecos nuevos se nombran solos al final
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -772,8 +992,12 @@ export function StockAlmacenView() {
               <Layers className="h-5 w-5 text-sky-700" />
             </div>
             <div className="min-w-0">
-              <p className="text-2xl font-extrabold text-gray-800 leading-none">{ubicOcupadas}</p>
-              <p className="text-xs font-semibold text-gray-500 mt-1">UBICACIONES OCUPADAS</p>
+              <p className="text-2xl font-extrabold text-gray-800 leading-none">
+                {totalHuecos > 0 ? `${huecosOcupados}/${totalHuecos}` : ubicOcupadas}
+              </p>
+              <p className="text-xs font-semibold text-gray-500 mt-1">
+                {totalHuecos > 0 ? 'HUECOS OCUPADOS' : 'UBICACIONES OCUPADAS'}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -939,6 +1163,64 @@ export function StockAlmacenView() {
                 )
               })}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Palets en ubicaciones que no están en la configuración */}
+      {fueraCfg.length > 0 && (
+        <Card className="border-amber-300 print-card">
+          <CardContent className="p-4">
+            <h3 className="font-bold text-amber-700 mb-1 text-sm flex items-center gap-2">
+              <Settings2 className="h-4 w-4" /> PALETS FUERA DE LA CONFIGURACIÓN ({paletsFuera} palets)
+            </h3>
+            <p className="text-xs text-gray-500 mb-3 print-hide">
+              Están en ubicaciones que no existen en las estanterías configuradas (o sin ubicación).
+              Añade la estantería con esos huecos en <b>Configurar almacén</b> o revisa la ubicación del movimiento.
+            </p>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
+              {fueraCfg.map(c => {
+                const match = cellMatch(c)
+                return (
+                  <div
+                    key={c.ubicacion}
+                    title={`${c.ubicacion} · ${c.total} palet(s) · ${c.dias} días`}
+                    className={`rounded-md border-2 border-amber-300 bg-amber-50 p-2 ${match ? 'ring-4 ring-sky-500 ring-offset-1' : ''} ${queryNorm && !match ? 'opacity-30' : ''}`}
+                  >
+                    <div className="text-[10px] font-bold text-amber-700 uppercase truncate">{c.ubicacion}</div>
+                    <div className="text-xl font-extrabold text-amber-700 leading-tight">{c.total}</div>
+                    <div className="text-[8px] font-bold text-amber-600 uppercase">palets · {c.dias} días</div>
+                    {c.lotes.some(l => l.ident) && (
+                      <div className="text-[9px] font-semibold text-gray-500 mt-1 truncate">
+                        {c.lotes.map(l => l.ident).filter(Boolean).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Sin configuración: guía para empezar por estanterías/huecos */}
+      {racks.length === 0 && fueraCfg.length === 0 && !loading && (
+        <Card>
+          <CardContent className="p-6 text-center">
+            <Warehouse className="h-10 w-10 mx-auto text-teal-300 mb-3" />
+            <p className="font-semibold text-gray-700">Configura tu almacén para ver el dibujo</p>
+            <p className="text-sm text-gray-500 mt-2 max-w-lg mx-auto">
+              Empieza por las <b>estanterías</b>: en <b>Configurar almacén</b> añade cada estantería con su nº de
+              <b> huecos</b> (ej. E1 con 12 huecos → se nombran solos E1-01 … E1-12). El mapa se dibuja a partir de
+              esa configuración y los huecos sin palets aparecen como LIBRE.
+            </p>
+            <Button
+              size="sm"
+              className="mt-4 bg-teal-600 hover:bg-teal-700 text-white"
+              onClick={() => setShowCfgEditor(true)}
+            >
+              <Settings2 className="h-4 w-4 mr-1" /> Configurar almacén
+            </Button>
           </CardContent>
         </Card>
       )}
