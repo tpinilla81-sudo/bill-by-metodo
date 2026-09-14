@@ -750,3 +750,56 @@ Stage Summary:
 - Ya no importa si el catálogo se normalizó y los registros mantienen variantes
   de mayúsculas/espacios: todo se resuelve correctamente
 - Cero operaciones destructivas: nada se borra
+
+---
+Task ID: 23
+Agent: Main Agent
+Task: "TENGO UNA NUEVA MEJORA, RESULTA QEU HAY UN CLIENTE QEU SE NECESITA MENTER MAS DATOS PERO ESTOS CAMPOS SOLO SON PARA ESE CLIENTE. ENTONCES SE HABILITAN CUANDO SE ELIGE ESE CLIENTE. LOS CAMPOS LO CONFIGURA EL ADMINISTRADOR PERO LA FORMA DE QUE APAREZCAN O HABILITADOS SEGUN EL CLIENTE, COMO LO HACEMOS DESDE CONFIGURACION CAMPOS? HABRIA QEU METERLO ESTO DE ALGUNA FORMA EN EL SELECTOR"
+
+Diseño implementado: en lugar de meterlo en el selector de clientes (que
+sería mezclar lógica de datos con lógica de UI), se ha añadido un atributo
+`clientIds?: string[]` a `FieldDef`. El admin, desde Configuración → Campos →
+Clientes, abre el editor de cualquier campo personalizado y verá un control
+"Aplica a:" con dos opciones:
+  - "Todos los clientes" (por defecto — backward compatible)
+  - Multiselect con checkboxes de clientes específicos
+
+Cuando se edita un cliente con campos exclusivos, estos aparecen automáticamente
+en el formulario. Para clientes sin esos campos, no aparecen (ni siquiera vacíos).
+En la tabla, las celdas muestran "—" para no romper el grid.
+
+Cambios:
+- src/lib/config.tsx:
+  - Añadido `clientIds?: string[]` a FieldDef
+  - Helper `fieldAppliesToClient(field, clienteId)` — vacío/null = todos;
+    clienteId null (nuevo cliente) = solo campos sin clientIds
+
+- src/components/hualsa/configuracion-view.tsx:
+  - FieldsManager acepta `enableClientFilter?: boolean` y carga clientes vía
+    fetch('/api/clientes') cuando está activo
+  - FieldEditor: en modo edición, muestra "Aplica a:" con toggle de checkboxes
+    (solo cuando enableClientFilter && isCustom)
+  - En modo display, muestra badge "Solo N clientes" si aplica a específicos
+  - enableClientFilter={true} solo en CLIENTES (no en Entrada/Catálogo/etc.)
+
+- src/components/hualsa/clientes-view.tsx:
+  - formFields = visibleFields.filter(f => fieldAppliesToClient(f, editingId))
+  - El formulario renderiza solo formFields (en lugar de visibleFields)
+  - getDisplayValue: si field no aplica al cliente → devuelve "—"
+  - Banner ámbar cuando se edita un cliente con campos exclusivos habilitados
+  - Punto ámbar en cabecera de tabla para columnas condicionales
+
+- src/components/hualsa/sidebar.tsx:
+  - Build marker: CLIENT-FIELDS · 2026-09-14
+
+Build: OK (npx next build limpio). Commit 181d9be.
+
+Stage Summary:
+- El admin configura campos exclusivos desde Configuración → Campos → Clientes
+  sin tocar código. Marca "Aplica a" → elige clientes → Guardar todo.
+- Al editar esos clientes, los campos extra aparecen automáticamente.
+- Para otros clientes o al crear uno nuevo, los campos exclusivos no aparecen.
+- Cero migraciones de DB: reutiliza `customData` JSON (ya existente).
+- Compatible hacia atrás: campos sin `clientIds` siguen aplicando a todos.
+- PENDIENTE: push a GitHub → Vercel redeploy. Hace falta PAT (token anterior
+  caducó y fue scrubbed). El commit está listo en local.
