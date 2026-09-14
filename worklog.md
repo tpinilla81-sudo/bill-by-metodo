@@ -892,3 +892,56 @@ Stage Summary:
 - Seccion STOCK ALMACEN operativa: stock en vivo de palets por ubicacion con
   mapa visual de estanterias, antiguedad con semaforo de colores y graficos.
 - Sin migraciones ni APIs nuevas: calcula 100% en cliente desde /api/registros.
+---
+Task ID: 26
+Agent: Main Agent
+Task: "EN EL DIBUJO DE LA ESTANTERIA PONDREMOS LOS NUMEROS DE HUBICACIONES PARA EU APAREZCA SI ESTA OCUPADO Y EL TIEMPO QUE LLEVA" + "todas"
+
+Mejoras aplicadas al mapa de estanterías (stock-almacen-view.tsx):
+
+1. Nº DE PALET MÁS GRANDE QUE EL DE UBICACIÓN
+   - Ubicación (rack + pos) en text-base (cabecera de celda)
+   - Nº de palets en text-2xl font-extrabold (centro de celda)
+   - Lote/palet ident en text-[9px] (lista)
+
+2. DÍAS DESTACADOS
+   - Era un badge pequeño (text-[10px]) en la esquina
+   - Ahora: número grande (text-lg font-extrabold) con etiqueta "días"
+     en la parte inferior, color por antigüedad (verde/ambar/rojo)
+   - Es el MÁXIMO de días de los lotes en esa ubicación
+
+3. LISTA DE TODOS LOS LOTES
+   - Antes: una línea truncada con idents separados por coma
+   - Ahora: cada lote en su propia línea, con sus días individuales:
+     "L-123  12d" / "L-124   5d" → ident + días de ese lote concreto
+
+4. CÓDIGO DE COLORES OCUPADA/LIBRE + ANTIGÜEDAD
+   - Ocupada: borde sólido 2px + bg color por antigüedad (verde/ambar/rojo)
+   - Libre: borde dashed 2px + bg gris claro + texto "LIBRE"
+   - Leyenda actualizada con 4 estados (los 3 de antigüedad + LIBRE)
+
+5. IMPRIMIR / PDF
+   - Botón "Imprimir / PDF" en la cabecera del mapa
+   - CSS @media print en globals.css:
+     · body.printing-stock oculta todo excepto el mapa
+     · print-card / print-rack / print-racks quedan visibles
+     · break-inside: avoid para no cortar estanterías entre páginas
+     · print-color-adjust: exact para preservar colores en PDF
+   - El usuario puede elegir "Guardar como PDF" en el diálogo de impresión
+
+6. HUECOS NUMERADOS FIJOS
+   - Antes: solo aparecían las ubicaciones con movimientos
+   - Ahora: en cada rack, si las posiciones son numéricas (01, 02, 05, 07),
+     se rellenan automáticamente las posiciones intermedias (03, 04, 06)
+     como LIBRE. Así se ve el mapa completo del rack.
+   - Las posiciones alfabéticas o sin patrón numérico se mantienen como estaban.
+
+Build marker: STOCK-V2 · 2026-09-14 (sidebar.tsx)
+CSS nuevo en src/app/globals.css (@media print + body.printing-stock)
+Build OK. Commit 1a33169. Push -> Vercel redeploy automatico.
+
+Stage Summary:
+- Mapa de estanterías completado: cada hueco muestra nº de ubicación, nº de
+  palets grande, lista de lotes con días individuales, días totales destacados,
+  color por ocupación+antigüedad, y botón para imprimir/PDF.
+- Posiciones numéricas intermedias se rellenan como LIBRE automáticamente.
