@@ -387,7 +387,8 @@ export function StockAlmacenView() {
     } catch { return [] }
   })
   const [showCfgEditor, setShowCfgEditor] = useState(false)
-  // Formulario "añadir estantería"
+  // Formulario "añadir estantería" (tarjeta punteada al final de la lista)
+  const [addOpen, setAddOpen] = useState(false)
   const [newRackName, setNewRackName] = useState('')
   const [newRackHuecos, setNewRackHuecos] = useState('')
   const [newRackCap, setNewRackCap] = useState('')
@@ -757,86 +758,16 @@ export function StockAlmacenView() {
               <Settings2 className="h-4 w-4 text-teal-600" /> CONFIGURAR ALMACÉN
             </h3>
             <p className="text-xs text-gray-500 mb-3">
-              El mapa se genera a partir de las <b>estanterías</b> y sus <b>huecos</b>: defines la estantería con un nombre
-              y un nº de huecos, y cada hueco se nombra solo (<b>E1-01, E1-02…</b>). Los huecos sin palets se ven como LIBRE.
+              Todo el almacén son <b>estanterías</b>: cada una tiene un <b>nombre</b> (E1, E2…) y un <b>nº de huecos</b> —
+              los huecos se nombran solos (<b>E1-01, E1-02…</b>) y el mapa se dibuja con ellos; los vacíos se ven LIBRE.
               Se guarda en este navegador.
             </p>
-
-            {/* 1 · Añadir estantería */}
-            <div className="rounded-lg border-2 border-teal-100 bg-teal-50/40 p-3 mb-4">
-              <div className="text-[11px] font-bold text-teal-800 uppercase tracking-wide mb-2">1 · Añadir estantería</div>
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="w-36">
-                  <Label className="text-[10px] font-semibold text-gray-400 uppercase">Nombre</Label>
-                  <Input
-                    type="text"
-                    value={newRackName}
-                    onChange={e => setNewRackName(e.target.value.toUpperCase())}
-                    placeholder="E1"
-                    className="h-8 mt-0.5 text-sm"
-                  />
-                </div>
-                <div className="w-28">
-                  <Label className="text-[10px] font-semibold text-gray-400 uppercase">Nº de huecos</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={200}
-                    value={newRackHuecos}
-                    onChange={e => setNewRackHuecos(e.target.value)}
-                    placeholder="12"
-                    className="h-8 mt-0.5 text-sm"
-                  />
-                </div>
-                <div className="w-28">
-                  <Label className="text-[10px] font-semibold text-gray-400 uppercase">Capacidad máx.</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={newRackCap}
-                    onChange={e => setNewRackCap(e.target.value)}
-                    placeholder="Opcional"
-                    className="h-8 mt-0.5 text-sm"
-                  />
-                </div>
-                <Button
-                  size="sm"
-                  className="h-8 bg-teal-600 hover:bg-teal-700 text-white"
-                  onClick={() => {
-                    const ok = anadirEstanteria(newRackName, parseInt(newRackHuecos, 10) || 0, parseInt(newRackCap, 10) || 0)
-                    if (ok) { setNewRackName(''); setNewRackHuecos(''); setNewRackCap('') }
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-1" /> Añadir
-                </Button>
-              </div>
-              {/* Vista previa del nombrado automático */}
-              {(() => {
-                const n = newRackName.trim().toUpperCase()
-                const h = parseInt(newRackHuecos, 10) || 0
-                if (!n || h <= 0) return null
-                const nombres = nombresHuecos(n, h)
-                const muestra = h <= 4 ? nombres : [...nombres.slice(0, 3), `… (+${h - 4} más)`, nombres[nombres.length - 1]]
-                const dup = almacenCfg.some(e => e.nombre.trim().toUpperCase() === n)
-                return (
-                  <div className="mt-2 text-xs">
-                    {dup && <div className="text-red-600 font-semibold mb-1">Ya existe una estantería llamada {n}.</div>}
-                    <span className="text-teal-800 font-semibold">Se nombrarán así: </span>
-                    <span className="inline-flex flex-wrap gap-1 mt-1">
-                      {muestra.map((m, i) => (
-                        <span key={`${m}-${i}`} className="px-1.5 py-0.5 rounded bg-white border border-teal-200 text-teal-700 font-mono text-[11px] font-bold">{m}</span>
-                      ))}
-                    </span>
-                  </div>
-                )
-              })()}
-            </div>
 
             {/* Sugerencias detectadas en los movimientos */}
             {sugerencias.length > 0 && (
               <div className="mb-4">
                 <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">
-                  Detectadas en los movimientos (sin configurar)
+                  Estanterías detectadas en los movimientos (pulsa para añadirlas)
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {sugerencias.map(s => (
@@ -855,19 +786,14 @@ export function StockAlmacenView() {
               </div>
             )}
 
-            {/* 2 · Estanterías configuradas */}
+            {/* UNA sola lista: las estanterías existentes + tarjeta punteada para añadir más */}
             <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">
-              2 · Tus estanterías
+              Tus estanterías
               <span className="normal-case font-semibold text-gray-400">
                 {' '}· {almacenCfg.length} estantería(s) · {totalHuecos} huecos en el mapa
               </span>
             </div>
-            {almacenCfg.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-center text-sm text-gray-500">
-                Todavía no hay estanterías. Añade la primera arriba: nombre + nº de huecos y el dibujo se crea solo.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {almacenCfg.map(e => {
                   const huecosNombres = nombresHuecos(e.nombre, e.huecos)
                   const rk = racks.find(r => r.name === e.nombre.trim().toUpperCase())
@@ -876,11 +802,17 @@ export function StockAlmacenView() {
                     <div key={e.id} className="rounded-lg border border-gray-200 p-3 bg-white">
                       <div className="flex items-center gap-2">
                         <NombreEstanteriaInput nombre={e.nombre} onCommit={n => renombrarEstanteria(e.id, n)} />
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ml-auto ${
-                          ocup > 0 ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-gray-50 text-gray-400 border-gray-200'
-                        }`}>
-                          {ocup}/{e.huecos} ocupados
-                        </span>
+                        {e.huecos > 0 ? (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ml-auto ${
+                            ocup > 0 ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-gray-50 text-gray-400 border-gray-200'
+                          }`}>
+                            {ocup}/{e.huecos} ocupados
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border ml-auto bg-amber-50 text-amber-700 border-amber-200">
+                            importada · sin huecos
+                          </span>
+                        )}
                         <button
                           onClick={() => quitarEstanteria(e.id)}
                           className="text-gray-300 hover:text-red-500 transition-colors shrink-0"
@@ -910,7 +842,8 @@ export function StockAlmacenView() {
                         </div>
                       ) : (
                         <p className="text-[11px] text-amber-600 mt-2">
-                          Sin nº de huecos: esta estantería no aparece en el mapa. Ponle huecos abajo.
+                          Importada de la configuración anterior (capacidad). No aparece en el mapa hasta que
+                          le des un nº de huecos abajo — o elimínala con la papelera si no la necesitas.
                         </p>
                       )}
                       <div className="flex flex-wrap items-end gap-2 mt-2 pt-2 border-t border-gray-100">
@@ -953,8 +886,101 @@ export function StockAlmacenView() {
                     </div>
                   )
                 })}
+
+                {/* Tarjeta punteada: añadir una estantería nueva A ESTA MISMA LISTA */}
+                {addOpen ? (
+                  <div className="rounded-lg border-2 border-dashed border-teal-400 bg-teal-50/40 p-3">
+                    <div className="text-[11px] font-bold text-teal-800 uppercase tracking-wide mb-2">Nueva estantería</div>
+                    <div className="flex flex-wrap items-end gap-2">
+                      <div className="w-28">
+                        <Label className="text-[10px] font-semibold text-gray-400 uppercase">Nombre</Label>
+                        <Input
+                          type="text"
+                          value={newRackName}
+                          onChange={e => setNewRackName(e.target.value.toUpperCase())}
+                          placeholder="E2"
+                          className="h-8 mt-0.5 text-sm"
+                        />
+                      </div>
+                      <div className="w-24">
+                        <Label className="text-[10px] font-semibold text-gray-400 uppercase">Nº de huecos</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={200}
+                          value={newRackHuecos}
+                          onChange={e => setNewRackHuecos(e.target.value)}
+                          placeholder="12"
+                          className="h-8 mt-0.5 text-sm"
+                        />
+                      </div>
+                      <div className="w-24">
+                        <Label className="text-[10px] font-semibold text-gray-400 uppercase">Cap. máx.</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={newRackCap}
+                          onChange={e => setNewRackCap(e.target.value)}
+                          placeholder="Opcional"
+                          className="h-8 mt-0.5 text-sm"
+                        />
+                      </div>
+                      <Button
+                        size="sm"
+                        className="h-8 bg-teal-600 hover:bg-teal-700 text-white"
+                        onClick={() => {
+                          const ok = anadirEstanteria(newRackName, parseInt(newRackHuecos, 10) || 0, parseInt(newRackCap, 10) || 0)
+                          if (ok) { setNewRackName(''); setNewRackHuecos(''); setNewRackCap('') }
+                        }}
+                      >
+                        <Plus className="h-4 w-4 mr-1" /> Añadir
+                      </Button>
+                      <button
+                        onClick={() => setAddOpen(false)}
+                        className="text-[11px] text-gray-400 hover:text-gray-600 underline mb-1.5"
+                      >
+                        cancelar
+                      </button>
+                    </div>
+                    {/* Vista previa del nombrado automático */}
+                    {(() => {
+                      const n = newRackName.trim().toUpperCase()
+                      const h = parseInt(newRackHuecos, 10) || 0
+                      if (!n || h <= 0) return null
+                      const nombres = nombresHuecos(n, h)
+                      const muestra = h <= 4 ? nombres : [...nombres.slice(0, 3), `… (+${h - 4} más)`, nombres[nombres.length - 1]]
+                      const dup = almacenCfg.some(e => e.nombre.trim().toUpperCase() === n)
+                      return (
+                        <div className="mt-2 text-xs">
+                          {dup && <div className="text-red-600 font-semibold mb-1">Ya existe una estantería llamada {n}.</div>}
+                          <span className="text-teal-800 font-semibold">Se nombrarán así: </span>
+                          <span className="inline-flex flex-wrap gap-1 mt-1">
+                            {muestra.map((m, i) => (
+                              <span key={`${m}-${i}`} className="px-1.5 py-0.5 rounded bg-white border border-teal-200 text-teal-700 font-mono text-[11px] font-bold">{m}</span>
+                            ))}
+                          </span>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setAddOpen(true)}
+                    className={`rounded-lg border-2 border-dashed border-gray-300 p-3 hover:border-teal-400 hover:bg-teal-50/40 transition-colors flex flex-col items-center justify-center gap-1.5 text-gray-400 hover:text-teal-700 ${
+                      almacenCfg.length === 0 ? 'min-h-[150px]' : 'min-h-[110px]'
+                    }`}
+                    title="Añadir una estantería nueva a esta lista"
+                  >
+                    <Plus className="h-5 w-5" />
+                    <span className="text-xs font-bold uppercase tracking-wide">Añadir estantería</span>
+                    {almacenCfg.length === 0 && (
+                      <span className="text-[10px] normal-case text-gray-400 text-center max-w-[220px]">
+                        La primera: un nombre + un nº de huecos, y el dibujo se crea solo
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
-            )}
           </CardContent>
         </Card>
       )}

@@ -15,12 +15,13 @@ async function main() {
     process.exit(1)
   }
   const session = {
-    userId: user.id,
+    id: user.id,
     email: user.email,
     name: user.name,
     role: user.role,
     tenantId: user.tenantId,
     permissions: user.permissions || '',
+    exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
   }
   const payload = Buffer.from(JSON.stringify(session)).toString('base64url')
   const sig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url')
