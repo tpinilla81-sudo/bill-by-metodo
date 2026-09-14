@@ -1126,3 +1126,47 @@ Stage Summary:
 - El almacén se define por estanterías/huecos con nombrado automático; el
   dibujo se genera exactamente de esa configuración.
 - Renombrar no pierde stock (alias). Nada queda oculto (FUERA DE CONFIGURACIÓN).
+
+---
+Task ID: 32
+Agent: Main Agent
+Task: "NO ENTIENDO QUE ES AÑADIR ESTANTERIA Y POR OTRO LADO TUS ESTANTERIAS?" + screenshot
+
+Diagnóstico (screenshot analizado con VLM):
+- El editor V9 tenía DOS bloques separados que se leían como dos funciones distintas:
+  "1 · AÑADIR ESTANTERÍA" (formulario de alta) y "2 · TUS ESTANTERÍAS" (lista de las
+  ya creadas). Confuso.
+- La tarjeta misteriosa "ALMACÉN (0/0 ocupados)" venía de la MIGRACIÓN del antiguo
+  localStorage 'stock-capacidades' (capacidad sin huecos): el usuario nunca la creó.
+
+Rediseño (stock-almacen-view.tsx):
+1. UNA SOLA LISTA "Tus estanterías": tarjetas de estanterías + al final de la MISMA
+   lista una tarjeta punteada "+ Añadir estantería" que se despliega en formulario
+   inline (Nombre / Nº huecos / Cap. máx + vista previa de nombrado + cancelar).
+   Eliminado el bloque "1 ·" y la numeración de pasos.
+2. Estanterías migradas con 0 huecos (solo posibles vía migración): badge ámbar
+   "importada · sin huecos" + texto "Importada de la configuración anterior
+   (capacidad). No aparece en el mapa hasta que le des un nº de huecos — o
+   elimínala con la papelera."
+3. Sugerencias renombradas: "Estanterías detectadas en los movimientos (pulsa para
+   añadirlas)". Intro reescrita en una frase.
+4. Fix infra pruebas: gen-session-token.js usaba clave 'userId' pero verifySession
+   lee 'id' → /api/auth/me daba 500 (findUnique con id undefined). Corregido a 'id'
+   + exp. Nota: .zscripts/dev.sh (pid 907) auto-respawnea custom-server.js tras
+   matarlo; tras `npm run build` esperar su reinicio automático.
+
+Verificación (agent-browser, build producción, seed local 4 registros + --clean):
+- Lista unificada OK; tarjeta punteada con texto de ayuda cuando no hay estanterías.
+- Alta E1/12 huecos inline → tarjeta en la misma lista + mapa E1-01..E1-12 con
+  E1-03/E1-07 ocupados y 10 LIBRE; KPI 2/12.
+- Migración simulada (stock-capacidades {"ALMACÉN":50}) → tarjeta ALMACÉN con badge
+  ámbar y aviso correctos; borrado con papelera OK; persistencia OK.
+- Sin errores de consola en todo el flujo.
+
+Build marker: STOCK-V10-UNIFICADA · 2026-09-14 (sidebar.tsx)
+Commit 77c908b. Push -> Vercel OK (PAT en remote URL intacto).
+
+Stage Summary:
+- El editor ya no tiene dos secciones: una única lista con "+ Añadir" al final.
+- La estantería fantasma "ALMACÉN" queda explicada en la propia UI (importada) y
+  se puede eliminar con la papelera sin tocar nada más.
