@@ -997,3 +997,35 @@ Stage Summary:
 - Mapa de estanterias con capacidad configurable + barra de progreso.
 - Buscador por lote/ubicacion/estanteria con resaltado en el mapa.
 - Escaner QR con camara para localizar palets rapido (ideal en nave).
+---
+Task ID: 28
+Agent: Main Agent
+Task: "Application error: a client-side exception has occurred while loading bill-by-metodo.vercel.app"
+
+Causa raiz mas probable (no 100% confirmada, fix aplicado):
+- En STOCK-V3-QR importe estaticamente `import { Html5Qrcode } from 'html5-qrcode'`
+  en el top-level del componente. Aunque 'use client', Next.js empaqueta
+  html5-qrcode en el bundle inicial de STOCK ALMACÉN. La libreria puede
+  fallar en algunos entornos cuando se evalua el modulo (por ejemplo,
+  durante el SSR inicial o por accesor del bundler de Turbopack/Vercel
+  a `window`/`BarcodeDetector`).
+
+Fix aplicado:
+1. Import dinamico (lazy) dentro del useEffect que abre el QR:
+   `const mod = await import('html5-qrcode')`
+   Asi el modulo de la camara solo se descarga cuando el usuario abre
+   el modal — no afecta al render inicial de STOCK ALMACÉN.
+2. Tipo local Html5QrcodeLike para no acoplar el tipo de la libreria
+   al componente.
+3. Cleanup mas seguro: try/catch individual en stop() y clear().
+   Siempre se setea qrScannerRef.current = null primero para evitar
+   reentrancia.
+4. Flag `stopNeeded` para no llamar stopQr() si el modulo nunca llego
+   a cargarse (cancelacion antes del import).
+
+Build OK. Commit 6575b89. Push -> Vercel.
+
+Stage Summary:
+- Si el error persiste, el siguiente paso es pedir al usuario que abra
+  la consola del navegador (F12 > Console) y pegue el stack trace
+  real — el mensaje "client-side exception" es generico de Next.js.
