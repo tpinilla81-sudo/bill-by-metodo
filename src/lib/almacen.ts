@@ -340,6 +340,26 @@ export function saveAlmacenCfg(cfg: EstanteriaCfg[]): void {
   try { localStorage.setItem(ALMACEN_CFG_KEY, JSON.stringify(cfg)) } catch { /* quota */ }
 }
 
+// ─── Impresión de etiquetas QR al guardar ENTRADAS (localStorage) ──────
+// Interruptor compartido por el formulario y la grilla de ENTRADA (misma
+// clave, así el estado viaja entre ambos modos):
+//   ON  (por defecto) → al guardar una ENTRADA PALET se abre su etiqueta
+//                       QR lista para imprimir.
+//   OFF → no se abre nada al guardar. La etiqueta NO se pierde: se puede
+//         reimprimir con el botón QR de cada fila de la tabla de entradas.
+const QR_AUTO_KEY = 'entrada-qr-auto'
+
+// SSR-safe: en el servidor devuelve true (valor por defecto).
+export function isQrAuto(): boolean {
+  if (typeof window === 'undefined') return true
+  try { return localStorage.getItem(QR_AUTO_KEY) !== 'off' } catch { return true }
+}
+
+export function setQrAuto(on: boolean): void {
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem(QR_AUTO_KEY, on ? 'on' : 'off') } catch { /* quota */ }
+}
+
 // ─── HUECO ÓPTIMO (asignación automática en ENTRADA) ───────────────────
 // Claves (normHuecoKey) de las ubicaciones que tienen stock ahora mismo:
 // un hueco cuya clave está aquí está OCUPADO (los alias cuentan: si la

@@ -5,12 +5,14 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Trash2, Save, CheckCircle, AlertCircle, Table, Zap, QrCode } from 'lucide-react'
+import { Plus, Trash2, Save, CheckCircle, AlertCircle, Table, Zap, QrCode, Printer } from 'lucide-react'
 import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, parseCustomData, serializeCustomData, type FieldDef } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 import {
-  loadAlmacenCfg, huecoOptimo, clavesOcupadas, esC2EntradaPalet, normAlm, identDeCustomValues, type EstanteriaCfg,
+  loadAlmacenCfg, huecoOptimo, clavesOcupadas, esC2EntradaPalet, normAlm, identDeCustomValues,
+  isQrAuto, setQrAuto,
+  type EstanteriaCfg,
 } from '@/lib/almacen'
 import { QrEtiquetaDialog, type EtiquetaPalet } from '@/components/hualsa/qr-etiqueta'
 
@@ -76,6 +78,16 @@ export function EntradaGrilla() {
   // para imprimirlas y pegarlas (luego "Escanear QR" en Stock Almacén).
   const [qrOpen, setQrOpen] = useState(false)
   const [qrEtiquetas, setQrEtiquetas] = useState<EtiquetaPalet[]>([])
+  // Interruptor "impresión QR al guardar" — compartido con el formulario
+  // normal (misma clave de localStorage): permite apagar la apertura
+  // automática de las etiquetas tras guardar la tanda.
+  const [qrAuto, setQrAutoState] = useState(true)
+  useEffect(() => { setQrAutoState(isQrAuto()) }, [])
+  function toggleQrAuto() {
+    const v = !qrAuto
+    setQrAutoState(v)
+    setQrAuto(v)
+  }
 
   const fieldDefs = config?.fieldsEntrada || []
   const customFields = fieldDefs.filter(f => f.isCustom && f.visible)
@@ -398,8 +410,9 @@ export function EntradaGrilla() {
         return
       }
       showStatus('ok', `${result.count} entrada(s) guardada(s) ✓`)
-      // Etiquetas QR de la tanda: se abren justo tras guardar (imprimibles)
-      if (etiquetas.length > 0) { setQrEtiquetas(etiquetas); setQrOpen(true) }
+      // Etiquetas QR de la tanda: se abren justo tras guardar (imprimibles),
+      // salvo que el interruptor de impresión QR esté apagado.
+      if (etiquetas.length > 0 && qrAuto) { setQrEtiquetas(etiquetas); setQrOpen(true) }
       setRows([emptyRow()])
       autoUbicRowsRef.current.clear()
       prevC2Ref.current.clear()
@@ -444,6 +457,22 @@ export function EntradaGrilla() {
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5 items-center">
+          {/* Interruptor: ¿abrir las etiquetas QR al guardar? (compartido con el formulario normal) */}
+          <button
+            type="button"
+            onClick={toggleQrAuto}
+            aria-pressed={qrAuto}
+            title={qrAuto
+              ? 'ACTIVADO: al guardar, las líneas de ENTRADA PALET abren su etiqueta QR para imprimir. Clic para desactivar.'
+              : 'DESACTIVADO: no se abrirán las etiquetas QR al guardar. Clic para activar.'}
+            className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-md border text-xs font-bold transition-colors ${
+              qrAuto
+                ? 'border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100'
+                : 'border-gray-200 bg-gray-50 text-gray-400 hover:bg-gray-100'
+            }`}
+          >
+            <Printer className="h-4 w-4" /> QR al guardar: {qrAuto ? 'SÍ' : 'NO'}
+          </button>
           {ubicKey && (
             <Button variant="outline" size="sm" onClick={asignarHuecosManual} title="Asignar el primer hueco libre a las filas de ENTRADA PALET sin ubicación">
               <Zap className="h-4 w-4 mr-1 text-teal-600" /> Huecos
@@ -634,9 +663,11 @@ export function EntradaGrilla() {
       <div className="flex flex-wrap items-center justify-between gap-2 bg-white rounded-lg px-4 py-2.5 shadow-sm border">
         <div className="text-xs text-slate-500">
           💡 <b>Tip:</b> Al pulsar <b>+1</b> o <b>Filas</b>, se copian los datos de la última fila rellena · Enter baja a la siguiente · botón <b>+</b> duplica fila · el precio se autodetecta del catálogo{ubicKey ? <> · con <b>ENTRADA PALET</b> el <b>hueco</b> se asigna solo (⚡ primer libre)</> : null}
-          <span className="flex items-center gap-1 mt-1">
-            <QrCode className="h-3.5 w-3.5 text-teal-600 shrink-0" />
-            Al guardar, las líneas de <b>ENTRADA PALET</b> abren su <b>etiqueta QR</b> lista para imprimir.
+          <span className={`flex items-center gap-1 mt-1 ${qrAuto ? 'text-slate-500' : 'text-gray-400'}`}>
+            <QrCode className={`h-3.5 w-3.5 shrink-0 ${qrAuto ? 'text-teal-600' : 'text-gray-300'}`} />
+            {qrAuto
+              ? <>Al guardar, las líneas de <b>ENTRADA PALET</b> abren su <b>etiqueta QR</b> lista para imprimir.</>
+              : <>Etiquetas QR <b>desactivadas</b> al guardar (interruptor <b>QR al guardar: NO</b> de arriba).</>}
           </span>
         </div>
         <Button onClick={handleSave} disabled={saving || validCount === 0} className="bg-[#2bb24c] hover:bg-[#239a3f] text-white">

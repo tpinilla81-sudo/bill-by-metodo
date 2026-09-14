@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus, Table, QrCode } from 'lucide-react'
+import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus, Table, QrCode, Printer } from 'lucide-react'
 import { todayISO, fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData, fieldAppliesToClient } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
@@ -15,6 +15,7 @@ import { QrEtiquetaDialog, type EtiquetaPalet } from '@/components/hualsa/qr-eti
 import {
   loadAlmacenCfg, huecoOptimo, clasificarUbicacion, clavesOcupadas,
   esC2EntradaPalet, normAlm, getIdent, getUbicacion, identDeCustomValues,
+  isQrAuto, setQrAuto,
   type EstanteriaCfg,
 } from '@/lib/almacen'
 
@@ -218,6 +219,17 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   const [qrOpen, setQrOpen] = useState(false)
   const [qrEtiquetas, setQrEtiquetas] = useState<EtiquetaPalet[]>([])
 
+  // Interruptor "impresión QR al guardar": compartido con la grilla (misma
+  // clave de localStorage). Se lee al montar; al volver del modo grilla se
+  // relee más abajo (depende de grillaMode, declarado después).
+  const [qrAuto, setQrAutoState] = useState(true)
+  useEffect(() => { setQrAutoState(isQrAuto()) }, [])
+  function toggleQrAuto() {
+    const v = !qrAuto
+    setQrAutoState(v)
+    setQrAuto(v)
+  }
+
   function abrirQr(etiquetas: EtiquetaPalet[]) {
     if (etiquetas.length === 0) return
     setQrEtiquetas(etiquetas)
@@ -293,6 +305,10 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   const userCanSeePrices = canSeePrices(userRole)
   const userCanUseGrilla = canUseGrilla(userRole, userPermissions)
   const [grillaMode, setGrillaMode] = useState(false)
+
+  // Al volver del modo grilla, releer el interruptor QR (puede haberse
+  // cambiado allí — comparten la misma clave de localStorage).
+  useEffect(() => { setQrAutoState(isQrAuto()) }, [grillaMode])
 
   // ─── Precio / importe helpers (mirror of Registros view) ───
   function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
@@ -452,8 +468,9 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
         return
       }
       showStatus('ok', 'Guardado en Registros ✓')
-      // Etiqueta QR: se abre justo tras guardar el palet (imprimible)
-      if (etiquetaPalet) abrirQr([etiquetaPalet])
+      // Etiqueta QR: se abre justo tras guardar el palet (imprimible),
+      // salvo que el usuario haya apagado el interruptor de impresión QR.
+      if (etiquetaPalet && qrAuto) abrirQr([etiquetaPalet])
     }
     setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
     autoUbicRef.current = ''
@@ -753,7 +770,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
         )}
 
         {/* Action buttons */}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={handleSave} disabled={loading} className="flex-1 h-12 rounded-xl bg-[#2bb24c] hover:bg-[#23963e] active:scale-[0.98] transition-all text-white text-sm font-bold shadow-md shadow-green-200/50 disabled:opacity-50 flex items-center justify-center gap-2">
             <Save className="h-4 w-4" />{editingId ? 'ACTUALIZAR' : 'GUARDAR'}
           </button>
@@ -762,6 +779,27 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
               <ArrowRightCircle className="h-4 w-4" />{transferring ? 'Transfiriendo...' : 'PASAR AL REGISTRO'}
             </button>
           )}
+          {/* Interruptor: ¿abrir la etiqueta QR al guardar un palet? */}
+          <button
+            type="button"
+            onClick={toggleQrAuto}
+            aria-pressed={qrAuto}
+            title={qrAuto
+              ? 'ACTIVADO: al guardar una ENTRADA PALET se abre su etiqueta QR para imprimir. Clic para desactivar.'
+              : 'DESACTIVADO: no se abre la etiqueta QR al guardar (se puede reimprimir con el botón QR de cada fila). Clic para activar.'}
+            className={`h-12 px-3.5 rounded-xl border-2 transition-all flex flex-col items-center justify-center leading-tight ${
+              qrAuto
+                ? 'border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100'
+                : 'border-gray-200 bg-gray-50 text-gray-400 hover:bg-gray-100'
+            }`}
+          >
+            <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide">
+              <Printer className="h-3.5 w-3.5" /> QR al guardar
+            </span>
+            <span className={`text-[10px] font-bold ${qrAuto ? 'text-teal-600' : 'text-gray-400'}`}>
+              {qrAuto ? 'ACTIVADA' : 'DESACTIVADA'}
+            </span>
+          </button>
         </div>
 
         {/* Stats bar */}
