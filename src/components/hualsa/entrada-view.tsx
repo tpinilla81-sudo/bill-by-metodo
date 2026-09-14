@@ -181,7 +181,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   const { clientes } = data
 
-  const clienteVisible = false  // forced hidden in Entrada; auto-detected from catalog
+  const clienteVisible = fieldDefs.some(f => f.key === 'cliente' && f.visible)
 
   // Auto-detect client from catalog when field is hidden and c1+c2 are selected.
   const detectedCliente = useMemo(() => {
@@ -198,10 +198,10 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   // selected (when cliente field is visible) or auto-detected from c1+c2.
   const effectiveClientId = clienteId || detectedCliente?.id || ''
 
-  // visibleFields: hide 'cliente' (auto-detected) and apply client-specific
-  // field filter so exclusive fields only show for the right client.
+  // visibleFields: respect config visibility (including 'cliente' if admin enabled it)
+  // and apply client-specific filter so exclusive fields only show for the right client.
   const visibleFields = useMemo(
-    () => fieldDefs.filter(f => f.visible && f.key !== 'cliente' && fieldAppliesToClient(f, effectiveClientId || null)),
+    () => fieldDefs.filter(f => f.visible && fieldAppliesToClient(f, effectiveClientId || null)),
     [fieldDefs, effectiveClientId]
   )
 
