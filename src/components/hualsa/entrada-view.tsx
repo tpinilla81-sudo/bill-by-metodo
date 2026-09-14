@@ -135,41 +135,15 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
   }
 
-  // Auto-detect client from catalog when field is hidden and c1+c2 are selected.
-  // Moved up here so visibleFields can depend on it for client-specific filtering.
-  const detectedCliente = useMemo(() => {
-    if (clienteVisible || clienteId || !c1 || !c2) return null
-    const c1n2 = normStr(c1)
-    const c2n2 = normStr(c2)
-    const item = data.catalogo.find(x => normStr(x.c1) === c1n2 && normStr(x.c2) === c2n2 && x.clienteId)
-    if (!item) return null
-    const cli = data.clientes.find(c => c.id === item.clienteId)
-    return cli ? { id: cli.id, nombre: cli.nombre } : null
-  }, [data.catalogo, data.clientes, clienteVisible, clienteId, c1, c2])
-
-  // Effective client for filtering client-specific fields. Either explicitly
-  // selected (when cliente field is visible) or auto-detected from c1+c2.
-  const effectiveClientId = clienteId || detectedCliente?.id || ''
-
-  // visibleFields: hide 'cliente' (auto-detected) and apply client-specific
-  // field filter so exclusive fields only show for the right client.
-  const visibleFields = useMemo(
-    () => fieldDefs.filter(f => f.visible && f.key !== 'cliente' && fieldAppliesToClient(f, effectiveClientId || null)),
-    [fieldDefs, effectiveClientId]
-  )
-
   const transferMode = config?.transferMode || 'auto'
   const transferTime = config?.transferTime || '00:00'
-
-  const isVisible = (key: string) => visibleFields.some(f => f.key === key)
-  const getField = (key: string) => fieldDefs.find(f => f.key === key)
 
   const [localTransferMode, setLocalTransferMode] = useState(transferMode)
   const [localTransferTime, setLocalTransferTime] = useState(transferTime)
 
   useEffect(() => { setLocalTransferMode(transferMode); setLocalTransferTime(transferTime) }, [transferMode, transferTime])
 
-  // Core fields form state
+  // Core fields form state — must be declared BEFORE any useMemo that references them
   const [fecha, setFecha] = useState(todayISO())
   const [clienteId, setClienteId] = useState('')
   const [c1, setC1] = useState('')
@@ -208,6 +182,31 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   const { clientes } = data
 
   const clienteVisible = false  // forced hidden in Entrada; auto-detected from catalog
+
+  // Auto-detect client from catalog when field is hidden and c1+c2 are selected.
+  const detectedCliente = useMemo(() => {
+    if (clienteVisible || clienteId || !c1 || !c2) return null
+    const c1n2 = normStr(c1)
+    const c2n2 = normStr(c2)
+    const item = data.catalogo.find(x => normStr(x.c1) === c1n2 && normStr(x.c2) === c2n2 && x.clienteId)
+    if (!item) return null
+    const cli = data.clientes.find(c => c.id === item.clienteId)
+    return cli ? { id: cli.id, nombre: cli.nombre } : null
+  }, [data.catalogo, data.clientes, clienteVisible, clienteId, c1, c2])
+
+  // Effective client for filtering client-specific fields. Either explicitly
+  // selected (when cliente field is visible) or auto-detected from c1+c2.
+  const effectiveClientId = clienteId || detectedCliente?.id || ''
+
+  // visibleFields: hide 'cliente' (auto-detected) and apply client-specific
+  // field filter so exclusive fields only show for the right client.
+  const visibleFields = useMemo(
+    () => fieldDefs.filter(f => f.visible && f.key !== 'cliente' && fieldAppliesToClient(f, effectiveClientId || null)),
+    [fieldDefs, effectiveClientId]
+  )
+
+  const isVisible = (key: string) => visibleFields.some(f => f.key === key)
+  const getField = (key: string) => fieldDefs.find(f => f.key === key)
   const userCanTransfer = canTransfer(userRole, userPermissions)
   const userCanSeePrices = canSeePrices(userRole)
   const userCanUseGrilla = canUseGrilla(userRole, userPermissions)
