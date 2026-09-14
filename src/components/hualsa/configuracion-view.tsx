@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, ArrowRightLeft, Clock, Zap, Eye, EyeOff, LayoutList, Pencil, Trash2, Plus, X, GripVertical, ChevronUp, ChevronDown, Users, UserPlus, Shield, Lock } from 'lucide-react'
+import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, ArrowRightLeft, Clock, Zap, Eye, EyeOff, LayoutList, Pencil, Trash2, Plus, X, GripVertical, ChevronUp, ChevronDown, Users, UserPlus, Shield, Lock, Copy } from 'lucide-react'
 import {
   useConfig,
   DEFAULT_LABELS_ENTRADA,
@@ -422,6 +422,9 @@ function FieldEditor({
   isLast,
   clientes,
   enableClientFilter,
+  currentConfigKey,
+  sections,
+  onCopyTo,
 }: {
   field: FieldDef
   onUpdate: (updated: FieldDef) => void
@@ -432,12 +435,29 @@ function FieldEditor({
   isLast: boolean
   clientes?: { id: string; nombre: string }[]
   enableClientFilter?: boolean
+  currentConfigKey: string
+  sections?: { key: string; label: string }[]
+  onCopyTo?: (targetConfigKey: string) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<FieldDef>(field)
   const [showClientPicker, setShowClientPicker] = useState(false)
+  const [showCopyMenu, setShowCopyMenu] = useState(false)
+  const copyMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { setDraft(field) }, [field])
+
+  // Close copy menu when clicking outside
+  useEffect(() => {
+    if (!showCopyMenu) return
+    function onClickOutside(e: MouseEvent) {
+      if (copyMenuRef.current && !copyMenuRef.current.contains(e.target as Node)) {
+        setShowCopyMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [showCopyMenu])
 
   // Toggle a cliente id in the draft.clientIds array
   function toggleClientId(id: string) {
@@ -591,6 +611,38 @@ function FieldEditor({
             <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => setEditing(true)} title="Editar campo">
               <Pencil className="h-3.5 w-3.5" />
             </Button>
+            {/* Copy to another section */}
+            {sections && sections.length > 0 && onCopyTo && (
+              <div className="relative" ref={copyMenuRef}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-sky-600 hover:bg-sky-50"
+                  onClick={() => setShowCopyMenu(s => !s)}
+                  title="Copiar a otra sección"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+                {showCopyMenu && (
+                  <div className="absolute right-0 top-8 z-50 w-44 bg-white border border-gray-200 rounded-md shadow-lg py-1">
+                    <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Copiar a:</div>
+                    {sections.filter(s => s.key !== currentConfigKey).map(s => (
+                      <button
+                        key={s.key}
+                        type="button"
+                        className="block w-full text-left px-3 py-1.5 text-xs hover:bg-sky-50 text-gray-700"
+                        onClick={() => {
+                          onCopyTo(s.key)
+                          setShowCopyMenu(false)
+                        }}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {field.isCustom && (
               <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:bg-rose-50" onClick={onDelete} title="Eliminar campo">
                 <Trash2 className="h-3.5 w-3.5" />
@@ -612,6 +664,8 @@ function FieldsManager({
   configKey,
   onUpdate,
   enableClientFilter,
+  sections,
+  onCopyFieldTo,
 }: {
   title: string
   icon: React.ReactNode
@@ -620,6 +674,8 @@ function FieldsManager({
   configKey: string
   onUpdate: (configKey: string, fields: FieldDef[]) => void
   enableClientFilter?: boolean
+  sections?: { key: string; label: string }[]
+  onCopyFieldTo?: (sourceField: FieldDef, sourceConfigKey: string, targetConfigKey: string) => void
 }) {
   const [newFieldLabel, setNewFieldLabel] = useState('')
   const [newFieldType, setNewFieldType] = useState<FieldDef['type']>('text')
@@ -726,6 +782,9 @@ function FieldsManager({
               isLast={index === fields.length - 1}
               clientes={clientes}
               enableClientFilter={enableClientFilter}
+              currentConfigKey={configKey}
+              sections={sections}
+              onCopyTo={onCopyFieldTo ? (targetKey) => onCopyFieldTo(field, configKey, targetKey) : undefined}
             />
           ))}
         </div>
@@ -880,6 +939,61 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
       case 'fieldsFacturas': setFieldsFacturas(newFields); break
     }
   }
+
+  // Copy a field definition from one section to another.
+  // - Always creates a NEW custom field in the target (does not modify the source).
+  // - If a field with the same key already exists in target, appends a suffix.
+  // - Resets clientIds in the target (it's a different context — the admin can re-pick).
+  function handleCopyFieldTo(sourceField: FieldDef, _sourceConfigKey: string, targetConfigKey: string) {
+    if (_sourceConfigKey === targetConfigKey) return
+    // Get current target fields
+    let targetFields: FieldDef[] = []
+    switch (targetConfigKey) {
+      case 'fieldsEntrada': targetFields = fieldsEntrada; break
+      case 'fieldsClientes': targetFields = fieldsClientes; break
+      case 'fieldsCatalogo': targetFields = fieldsCatalogo; break
+      case 'fieldsRegistros': targetFields = fieldsRegistros; break
+      case 'fieldsFacturas': targetFields = fieldsFacturas; break
+    }
+    // Generate unique key
+    const baseKey = sourceField.key.startsWith('custom_')
+      ? sourceField.key
+      : 'custom_' + String(sourceField.label).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+    let finalKey = baseKey
+    let counter = 1
+    while (targetFields.some(f => f.key === finalKey)) {
+      finalKey = `${baseKey}_${counter++}`
+    }
+    const newField: FieldDef = {
+      ...sourceField,
+      key: finalKey,
+      // Always treat the copy as a custom field in the target section
+      isCustom: true,
+      // Reset client-specific scope — different section context
+      clientIds: undefined,
+      // Ensure it shows up
+      visible: true,
+    }
+    // Append to target's field list
+    const updatedTarget = [...targetFields, newField]
+    switch (targetConfigKey) {
+      case 'fieldsEntrada': setFieldsEntrada(updatedTarget); break
+      case 'fieldsClientes': setFieldsClientes(updatedTarget); break
+      case 'fieldsCatalogo': setFieldsCatalogo(updatedTarget); break
+      case 'fieldsRegistros': setFieldsRegistros(updatedTarget); break
+      case 'fieldsFacturas': setFieldsFacturas(updatedTarget); break
+    }
+    showStatus('ok', `Campo copiado a la sección destino ✓`)
+  }
+
+  // Sections available for copy-to functionality
+  const FIELD_SECTIONS = [
+    { key: 'fieldsEntrada', label: 'Entrada' },
+    { key: 'fieldsClientes', label: 'Clientes' },
+    { key: 'fieldsCatalogo', label: 'Catálogo' },
+    { key: 'fieldsRegistros', label: 'Registros' },
+    { key: 'fieldsFacturas', label: 'Facturas' },
+  ]
 
   function handleLogoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -1061,6 +1175,8 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             configKey="fieldsEntrada"
             onUpdate={handleFieldsUpdate}
             enableClientFilter={true}
+            sections={FIELD_SECTIONS}
+            onCopyFieldTo={handleCopyFieldTo}
           />
 
           <FieldsManager
@@ -1071,6 +1187,8 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             configKey="fieldsClientes"
             onUpdate={handleFieldsUpdate}
             enableClientFilter={true}
+            sections={FIELD_SECTIONS}
+            onCopyFieldTo={handleCopyFieldTo}
           />
 
           <FieldsManager
@@ -1081,6 +1199,8 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             configKey="fieldsCatalogo"
             onUpdate={handleFieldsUpdate}
             enableClientFilter={true}
+            sections={FIELD_SECTIONS}
+            onCopyFieldTo={handleCopyFieldTo}
           />
 
           <FieldsManager
@@ -1091,6 +1211,8 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             configKey="fieldsRegistros"
             onUpdate={handleFieldsUpdate}
             enableClientFilter={true}
+            sections={FIELD_SECTIONS}
+            onCopyFieldTo={handleCopyFieldTo}
           />
 
           <FieldsManager
@@ -1101,6 +1223,8 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
             configKey="fieldsFacturas"
             onUpdate={handleFieldsUpdate}
             enableClientFilter={true}
+            sections={FIELD_SECTIONS}
+            onCopyFieldTo={handleCopyFieldTo}
           />
         </TabsContent>
         )}
