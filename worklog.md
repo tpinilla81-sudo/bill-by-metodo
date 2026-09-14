@@ -1268,3 +1268,29 @@ Stage Summary:
 - Cerrado el circulo QR: ENTRADA (etiqueta auto + imprimir) → pegar en palet → STOCK ALMACEN "Escanear QR" → localiza en el mapa
 - Commit: solo src + package*.json (db/custom.db con datos de prueba EXCLUIDO para no tocar el de VPS)
 - Deploy via git push (PAT intacto en remote URL)
+
+---
+Task ID: QR-V13
+Agent: Main Agent
+Task: "poner en entrada boton para habilitar o no la impresion de qr" — interruptor para activar/desactivar la apertura automática de la etiqueta QR al guardar ENTRADAS
+
+Work Log:
+- src/lib/almacen.ts: nuevas isQrAuto()/setQrAuto() — localStorage 'entrada-qr-auto' (default ON, SSR-safe). Clave compartida por formulario y grilla.
+- entrada-view.tsx: botón "QR AL GUARDAR / ACTIVADA|DESACTIVADA" (teal/gris, aria-pressed, tooltip explicativo) junto a GUARDAR en la fila de acciones; handleSave solo abre QrEtiquetaDialog si qrAuto; se releé el interruptor al volver del modo grilla (useEffect [grillaMode], OJO: declarado DESPUÉS de grillaMode para evitar TDZ).
+- entrada-grilla.tsx: botón "QR al guardar: SÍ|NO" en la barra de herramientas (antes de Huecos); el guardado de la tanda solo abre el diálogo si qrAuto; footer refleja el estado (desactivado → avisa dónde reactivarlo).
+- sidebar.tsx: build marker QR-V13-TOGGLE-PRINT · 2026-09-15.
+- OFF no pierde la etiqueta: botón QR por fila de la tabla de entradas sigue permitiendo reimprimirla.
+- scripts/clean-qr-test.js: limpieza de registros de prueba L-TEST-* del dev DB.
+
+Verificación (agent-browser, servidor producción local rebuild):
+- OJO: `npm run build` con el custom-server en marcha mezcla artefactos → página en "Cargando..." infinito. Solución: kill + relanzar `node custom-server.js`.
+- Form OFF: ENTRADA PALET L-TEST-01 → hueco auto E1-04 → GUARDAR → registro creado, SIN diálogo QR ✓.
+- Form ON: L-TEST-02 → hueco auto E1-05 → GUARDAR → diálogo ETIQUETA QR con E1-05/LOTE-TEST-02/QR data-URL/IMPRIMIR ✓.
+- Toggle persiste (localStorage), grilla hereda el estado (SÍ/NO), cambio en grilla se refleja al volver a Normal ✓.
+- Grilla OFF: fila ENTRADA PALET → hueco auto E1-06 → GUARDAR 1 entrada → SIN diálogo ✓.
+- 0 errores de consola/página (solo warning aria preexistente). Test data L-TEST-* borrada (5 registros), browser storage limpio.
+- npm run build exit 0; tsc/eslint: solo errores/warnings preexistentes.
+
+Stage Summary:
+- El círculo QR queda configurable: activado por defecto; quien no quiera imprimir al guardar lo apaga con un clic (en formulario o grilla, misma preferencia) y puede reimprimir cuando quiera desde la fila.
+- Commit b009efa (solo src + scripts; db/custom.db excluido) → push OK, PAT intacto. Vercel despliega.
