@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus, Trash2, Save, CheckCircle, AlertCircle, Table, Zap, QrCode, Printer } from 'lucide-react'
 import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
-import { useConfig, parseCustomData, serializeCustomData, type FieldDef } from '@/lib/config'
+import { useConfig, parseCustomData, serializeCustomData, fieldAppliesToClient, getFieldLabel, type FieldDef } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 import {
   loadAlmacenCfg, huecoOptimo, clavesOcupadas, esC2EntradaPalet, normAlm, identDeCustomValues,
@@ -92,6 +92,28 @@ export function EntradaGrilla() {
   const fieldDefs = config?.fieldsEntrada || []
   const customFields = fieldDefs.filter(f => f.isCustom && f.visible)
   const clienteVisible = fieldDefs.some(f => f.key === 'cliente' && f.visible)
+
+  // ── CAMPOS OBLIGATORIOS (mismo criterio que el formulario normal) ──
+  // Según la configuración, todos los campos visibles son obligatorios
+  // (Obs. sigue siendo opcional, como allí). filaMissing() devuelve las
+  // etiquetas de lo que le falta a una fila: se usa para resaltarla en
+  // ámbar y para BLOQUEAR el guardado, igual que hace el formulario.
+  // Los campos exclusivos de un cliente solo se exigen en sus filas
+  // (fieldAppliesToClient, con el cliente autodetectado si está oculto).
+  function filaMissing(r: GrillaRow): string[] {
+    const missing: string[] = []
+    if (!r.fecha) missing.push(getFieldLabel(fieldDefs, 'fecha'))
+    if (!r.c1) missing.push(getFieldLabel(fieldDefs, 'c1'))
+    if (!r.c2) missing.push(getFieldLabel(fieldDefs, 'c2'))
+    if (clienteVisible && !r.clienteId) missing.push(getFieldLabel(fieldDefs, 'cliente'))
+    if (!String(r.cant || '').trim()) missing.push(getFieldLabel(fieldDefs, 'cantidad'))
+    const cliId = r.clienteId || (clienteVisible ? '' : lookupCliente(data.catalogo, r.c1, r.c2))
+    for (const f of customFields) {
+      if (!fieldAppliesToClient(f, cliId || null)) continue
+      if (!String(r.customValues[f.key] || '').trim()) missing.push(f.label)
+    }
+    return missing
+  }
 
   // Campo UBICACIÓN (mismo criterio que el motor de stock: nombre/clave con "ubicación")
   const ubicField = useMemo(
@@ -340,6 +362,18 @@ export function EntradaGrilla() {
       showStatus('err', 'No hay filas válidas (necesitan fecha, c1 y c2)')
       return
     }
+    // Campos obligatorios según la configuración (igual que el formulario
+    // normal): si a una fila con fecha+c1+c2 le falta alguno, se BLOQUEA el
+    // guardado indicando la fila y el campo — no se guarda nada a medias.
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]
+      if (!(r.fecha && r.c1 && r.c2)) continue // fila sin rellenar: se salta
+      const missing = filaMissing(r)
+      if (missing.length > 0) {
+        showStatus('err', `Fila ${i + 1}: ${missing.length === 1 ? 'falta' : 'faltan'} «${missing.join('», «')}»`)
+        return
+      }
+    }
 
     setSaving(true)
     try {
@@ -529,9 +563,13 @@ export function EntradaGrilla() {
             {rows.map((row, idx) => {
               const detectedClienteId = !clienteVisible && !row.clienteId ? lookupCliente(data.catalogo, row.c1, row.c2) : row.clienteId
               const precio = row.c1 && row.c2 ? lookupPrecio(data.catalogo, row.c1, row.c2, detectedClienteId) : 0
-              const isValid = row.fecha && row.c1 && row.c2
+              // Fila completa = todos los campos obligatorios cubiertos (mismo
+              // criterio que el formulario normal); las incompletas se
+              // resaltan en ámbar con tooltip de lo que falta.
+              const missing = filaMissing(row)
+              const isValid = missing.length === 0
               return (
-                <tr key={row.id} className={`border-t hover:bg-blue-50/30 ${!isValid ? 'bg-amber-50/30' : ''}`}>
+                <tr key={row.id} title={missing.length > 0 ? `Falta: ${missing.join(', ')}` : undefined} className={`border-t hover:bg-blue-50/30 ${!isValid ? 'bg-amber-50/30' : ''}`}>
                   <td className="px-2 py-1 text-center text-xs text-slate-400">{idx + 1}</td>
                   <td className="px-1 py-1">
                     <input
@@ -662,7 +700,7 @@ export function EntradaGrilla() {
       {/* Footer with save */}
       <div className="flex flex-wrap items-center justify-between gap-2 bg-white rounded-lg px-4 py-2.5 shadow-sm border">
         <div className="text-xs text-slate-500">
-          💡 <b>Tip:</b> Al pulsar <b>+1</b> o <b>Filas</b>, se copian los datos de la última fila rellena · Enter baja a la siguiente · botón <b>+</b> duplica fila · el precio se autodetecta del catálogo{ubicKey ? <> · con <b>ENTRADA PALET</b> el <b>hueco</b> se asigna solo (⚡ primer libre)</> : null}
+          💡 <b>Tip:</b> Al pulsar <b>+1</b> o <b>Filas</b>, se copian los datos de la última fila rellena · Enter baja a la siguiente · botón <b>+</b> duplica fila · el precio se autodetecta del catálogo · <b>todos los campos visibles son obligatorios</b> (igual que el formulario normal){ubicKey ? <> · con <b>ENTRADA PALET</b> el <b>hueco</b> se asigna solo (⚡ primer libre)</> : null}
           <span className={`flex items-center gap-1 mt-1 ${qrAuto ? 'text-slate-500' : 'text-gray-400'}`}>
             <QrCode className={`h-3.5 w-3.5 shrink-0 ${qrAuto ? 'text-teal-600' : 'text-gray-300'}`} />
             {qrAuto
