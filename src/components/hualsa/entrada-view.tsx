@@ -310,9 +310,10 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   }
 
   async function handleSave() {
-    // ALL visible fields in Entrada are mandatory (user requirement).
-    // Iterate visible fields and enforce a value for each one.
+    // ALL visible fields in Entrada are mandatory (user requirement),
+    // EXCEPT 'observaciones' which stays optional.
     for (const f of visibleFields) {
+      if (f.key === 'observaciones') continue  // optional
       let empty = false
       switch (f.key) {
         case 'fecha': empty = !fecha; break
@@ -320,7 +321,6 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
         case 'c1': empty = !c1; break
         case 'c2': empty = !c2; break
         case 'cantidad': empty = !cant; break
-        case 'observaciones': empty = !String(obs || '').trim(); break
         default:
           if (f.isCustom) empty = !String(customValues[f.key] || '').trim()
           else empty = false
