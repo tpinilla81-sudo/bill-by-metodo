@@ -1080,3 +1080,49 @@ Stage Summary:
 - Vista mas limpia sin graficos.
 - El usuario define el layout completo del almacen: cada estanteria con sus
   posiciones; el dibujo muestra todas las ubicaciones, ocupadas o LIBRE.
+
+---
+Task ID: 31
+Agent: Main Agent
+Task: "NO ME GUSTA LA CONFIGURACION DEL ALMACEN. EMPEZAR POR ESTANTERIA/HUECOS Y NOMBRAR CADA HUECO EN AUTOMATICO, EL DIBUJO EN RELACION A ESTO"
+
+Rediseño completo de la configuración de STOCK ALMACÉN (stock-almacen-view.tsx):
+
+1. NUEVO MODELO: EstanteriaCfg[] = { id, nombre, huecos, cap, alias? }
+   - Persistida en localStorage 'stock-config-v2' (migra stock-config y stock-capacidades)
+2. EDITOR "CONFIGURAR ALMACÉN" en 2 pasos:
+   - "1 · Añadir estantería": Nombre + Nº de huecos + Capacidad máx (opcional).
+     Vista previa en vivo del nombrado automático (E1-01, E1-02 … E1-12)
+   - "2 · Tus estanterías": tarjetas con chips de huecos (teal = ocupado),
+     stepper +/- huecos (se nombran solos al final), renombrar (los huecos
+     se renombran solos), capacidad, papelera
+   - Sugerencias: estanterías detectadas en los movimientos con 1 click
+3. MAPA 100% desde la configuración: solo se dibujan las estanterías
+   configuradas con sus huecos exactos; sin palets = LIBRE.
+   Stock en ubicaciones no configuradas → tarjeta ámbar "PALETS FUERA DE LA
+   CONFIGURACIÓN" (nada se pierde). Eliminado knownUbicaciones y auto-relleno.
+4. ALIAS automáticos al renombrar: el nombre viejo se guarda en alias[] y el
+   stock registrado con él sigue apareciendo en el mapa (probado E1→B1→E1→C1).
+5. KPI 2 = "HUECOS OCUPADOS x/y" cuando hay configuración.
+6. Fix preexistente: salida del mismo día consumía FIFO en vez de su lote
+   (la API devuelve createdAt desc; buildStock ahora desempata por createdAt asc).
+7. normHuecoKey: matching robusto "E1-03" / "e1 3" / "E1/03" → igual.
+
+Verificación (agent-browser + BD local):
+- BD local sin datos palet → scripts/seed-stock-test.js (4 registros ENTRADA/SALIDA
+  PALET con Lote/Ubicación customData; limpiados al terminar con --clean)
+- Probado: alta E1 con 12 huecos (preview chips), mapa con E1-03/E1-07 ocupados
+  y resto LIBRE, KPI 2/12, barra capacidad 2/24, sugerencias E1/NAVE,
+  +hueco→E1-13, -hueco, renombrado con alias, borrado NAVE→FUERA,
+  persistencia localStorage tras reload. Sin errores de consola.
+- NOTA infra: custom-server.js sirve build producción (dev:false); correr
+  `npm run build` con el server levantado rompe chunks (500). Reiniciar
+  custom-server.js tras cada build.
+
+Build marker: STOCK-V9-ESTANTERIA · 2026-09-14 (sidebar.tsx)
+Build OK. Commit 9bdda9a. Push -> Vercel.
+
+Stage Summary:
+- El almacén se define por estanterías/huecos con nombrado automático; el
+  dibujo se genera exactamente de esa configuración.
+- Renombrar no pierde stock (alias). Nada queda oculto (FUERA DE CONFIGURACIÓN).
