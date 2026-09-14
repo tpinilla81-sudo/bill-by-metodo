@@ -460,11 +460,11 @@ export function StockAlmacenView() {
           </div>
         </div>
 
-        {/* Acceso rápido SMURFIT */}
-        {smurfitId && (
+        {/* Acceso rápido SMURFIT — solo si NO está ya seleccionado en el desplegable */}
+        {smurfitId && cliFiltro !== smurfitId && (
           <button
             onClick={() => setCliFiltro(smurfitId)}
-            className={`h-9 px-3 rounded-lg text-xs font-bold border transition-colors ${cliFiltro === smurfitId ? 'bg-teal-600 border-teal-600 text-white' : 'bg-white border-teal-300 text-teal-700 hover:bg-teal-50'}`}
+            className="h-9 px-3 rounded-lg text-xs font-bold border transition-colors bg-white border-teal-300 text-teal-700 hover:bg-teal-50"
           >
             SMURFIT
           </button>
