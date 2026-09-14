@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
-import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, Layers, CalendarClock } from 'lucide-react'
+import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, Layers, CalendarClock, Printer, Map } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import { fmtDate, type Cliente, type Registro } from '@/lib/hualsa-utils'
 
@@ -177,8 +177,33 @@ function buildRacks(stock: LoteStock[], known: Map<string, { rack: string; pos: 
     rk.total += c.total
     rk.celdas.push(c)
   }
+  // RELLENAR HUECOS NUMÉRICOS: si en un rack hay posiciones 01, 02, 05, 07,
+  // añadir 03, 04, 06 como LIBRE para que se vea el mapa completo.
+  for (const rk of racksMap.values()) {
+    const nums = rk.celdas
+      .filter(c => /^\d{1,3}$/.test(c.pos))
+      .map(c => parseInt(c.pos, 10))
+    if (nums.length >= 2) {
+      const min = Math.min(...nums)
+      const max = Math.max(...nums)
+      const existentes = new Set(rk.celdas.map(c => c.pos))
+      for (let n = min; n <= max; n++) {
+        const posStr = String(n).padStart(2, '0')
+        if (!existentes.has(posStr) && !existentes.has(String(n))) {
+          rk.celdas.push({
+            ubicacion: `${rk.name}-${posStr}`,
+            rack: rk.name,
+            pos: posStr,
+            total: 0,
+            dias: 0,
+            lotes: [],
+          })
+        }
+      }
+    }
+    rk.celdas.sort((a, b) => a.pos.localeCompare(b.pos, 'es', { numeric: true }))
+  }
   const racks = [...racksMap.values()]
-  for (const rk of racks) rk.celdas.sort((a, b) => a.pos.localeCompare(b.pos, 'es', { numeric: true }))
   racks.sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }))
   return racks
 }
@@ -202,9 +227,9 @@ function knownUbicaciones(registros: Registro[], clienteFiltro: string): Map<str
 const PIE_COLORS = ['#14b8a6', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#22c55e', '#ef4444', '#6366f1', '#6b7280', '#0ea5e9']
 
 function colorPorDias(dias: number): string {
-  if (dias > 60) return 'bg-red-100 border-red-400'
-  if (dias > 30) return 'bg-amber-100 border-amber-400'
-  return 'bg-emerald-100 border-emerald-400'
+  if (dias > 60) return 'bg-red-100 border-red-400 border-b-red-500'
+  if (dias > 30) return 'bg-amber-100 border-amber-400 border-b-amber-500'
+  return 'bg-emerald-100 border-emerald-400 border-b-emerald-500'
 }
 
 function textoPorDias(dias: number): string {
@@ -416,24 +441,39 @@ export function StockAlmacenView() {
 
       {/* Mapa de estanterías */}
       {racks.length > 0 && (
-        <Card>
+        <Card className="print-card">
           <CardContent className="p-4">
             <div className="flex flex-wrap items-center gap-3 mb-3">
               <h3 className="font-bold text-gray-800 flex items-center gap-2">
                 <Warehouse className="h-4 w-4 text-teal-600" /> MAPA DE ESTANTERÍAS
               </h3>
-              <div className="flex flex-wrap items-center gap-2 ml-auto text-[11px] font-semibold">
+              <div className="flex flex-wrap items-center gap-2 ml-auto text-[11px] font-semibold print-hide">
                 <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-sm bg-emerald-200 border border-emerald-400 inline-block" /> ≤ 30 días</span>
                 <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-sm bg-amber-200 border border-amber-400 inline-block" /> 30–60 días</span>
                 <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-sm bg-red-200 border border-red-400 inline-block" /> +60 días</span>
+                <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-sm bg-gray-100 border-2 border-dashed border-gray-300 inline-block" /> LIBRE</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 ml-1 text-xs print-hide"
+                  onClick={() => {
+                    document.body.classList.add('printing-stock')
+                    setTimeout(() => {
+                      window.print()
+                      setTimeout(() => document.body.classList.remove('printing-stock'), 500)
+                    }, 50)
+                  }}
+                >
+                  <Printer className="h-3.5 w-3.5 mr-1" /> Imprimir / PDF
+                </Button>
               </div>
             </div>
-            <div className="flex flex-wrap gap-4">
+            <div className="flex flex-wrap gap-4 print-racks">
               {racks.map(rk => (
-                <div key={rk.name} className="rounded-xl border-2 border-gray-300 bg-gradient-to-b from-gray-50 to-white p-3 shadow-sm min-w-[250px] flex-1 max-w-full">
+                <div key={rk.name} className="rounded-xl border-2 border-gray-300 bg-gradient-to-b from-gray-50 to-white p-3 shadow-sm min-w-[250px] flex-1 max-w-full print-rack">
                   <div className="flex items-center justify-between mb-2 px-0.5">
                     <div className="font-bold text-gray-700 text-sm flex items-center gap-1.5">
-                      <Warehouse className="h-4 w-4 text-teal-600" /> {rk.name}
+                      <Warehouse className="h-4 w-4 text-teal-600" /> ESTANTERÍA {rk.name}
                     </div>
                     <span className="text-[11px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">
                       {rk.total} {rk.total === 1 ? 'palet' : 'palets'}
@@ -441,32 +481,68 @@ export function StockAlmacenView() {
                   </div>
                   {/* Postes laterales del estante + huecos */}
                   <div className="border-l-[6px] border-r-[6px] border-gray-400 rounded-sm bg-white p-1.5">
-                    <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-1.5">
-                      {rk.celdas.map(c => (
-                        <div
-                          key={`${c.rack}-${c.ubicacion}`}
-                          title={`${c.ubicacion} · ${c.total} palet(s) · ${c.dias} días${c.lotes.some(l => l.ident) ? ' · ' + [...new Set(c.lotes.map(l => l.ident))].join(', ') : ''}`}
-                          className={`rounded-md border-2 ${c.total > 0 ? colorPorDias(c.dias) : 'bg-gray-50 border-gray-200'} p-1.5 border-b-4 shadow-sm cursor-default`}
-                        >
-                          <div className="flex items-start justify-between gap-1">
-                            <span className={`text-[11px] font-bold truncate ${c.total > 0 ? 'text-gray-700' : 'text-gray-400'}`}>{c.pos || c.ubicacion}</span>
-                            {c.total > 0 && (
-                              <span className={`text-[10px] font-bold flex items-center gap-0.5 ${textoPorDias(c.dias)}`}>
-                                <CalendarClock className="h-2.5 w-2.5" />{c.dias}d
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(108px,1fr))] gap-1.5">
+                      {rk.celdas.map(c => {
+                        const ocupada = c.total > 0
+                        const lotesUnicos = [...new Map(c.lotes.map(l => [l.ident || l.id, l])).values()]
+                        const diasMax = c.dias
+                        return (
+                          <div
+                            key={`${c.rack}-${c.ubicacion}`}
+                            title={`${c.ubicacion}${ocupada ? ` · ${c.total} palet(s) · ${diasMax} días` : ' · LIBRE'}${lotesUnicos.some(l => l.ident) ? ' · ' + lotesUnicos.map(l => l.ident).join(', ') : ''}`}
+                            className={`rounded-md border-2 p-1.5 shadow-sm cursor-default ${
+                              ocupada
+                                ? colorPorDias(c.dias)
+                                : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'
+                            }`}
+                          >
+                            {/* Nº de UBICACIÓN — visible siempre, aunque esté libre */}
+                            <div className="flex items-center justify-between gap-1 pb-1 border-b border-gray-300">
+                              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide truncate">
+                                {c.rack}
                               </span>
+                              <span className={`text-base font-extrabold leading-none ${ocupada ? textoPorDias(c.dias) : 'text-gray-400'}`}>
+                                {c.pos || '—'}
+                              </span>
+                            </div>
+                            {/* Nº de PALETS — el más grande de la celda */}
+                            {ocupada ? (
+                              <>
+                                <div className={`text-2xl font-extrabold leading-tight ${textoPorDias(c.dias)}`}>
+                                  {c.total}
+                                </div>
+                                <div className="text-[8px] font-bold text-gray-500 uppercase tracking-wide -mt-0.5">
+                                  {c.total === 1 ? 'palet' : 'palets'}
+                                </div>
+                                {/* Lista de todos los lotes con sus días */}
+                                {lotesUnicos.length > 0 && (
+                                  <div className="mt-1 space-y-0.5">
+                                    {lotesUnicos.map(l => {
+                                      const dl = diasEnAlmacen(l.fecha)
+                                      return (
+                                        <div key={l.id} className="text-[9px] font-semibold text-gray-600 flex items-center justify-between gap-1">
+                                          <span className="truncate">{l.ident || '—'}</span>
+                                          <span className={`${textoPorDias(dl)} font-bold`}>{dl}d</span>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                                {/* DÍAS destacados (total del lote más antiguo) */}
+                                <div className={`mt-1 pt-1 border-t border-gray-300 flex items-baseline gap-1 ${textoPorDias(c.dias)}`}>
+                                  <span className="text-lg font-extrabold leading-none">{diasMax}</span>
+                                  <span className="text-[8px] font-bold uppercase tracking-wide">días</span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="py-2 flex flex-col items-center justify-center">
+                                <div className="text-base font-extrabold leading-tight text-gray-300">—</div>
+                                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Libre</div>
+                              </div>
                             )}
                           </div>
-                          <div className={`text-xl font-extrabold leading-tight ${c.total > 0 ? textoPorDias(c.dias) : 'text-gray-300'}`}>
-                            {c.total > 0 ? c.total : '·'}
-                          </div>
-                          {c.total > 0 && c.lotes.some(l => l.ident) && (
-                            <div className="text-[9px] font-semibold text-gray-500 truncate">
-                              {[...new Set(c.lotes.map(l => l.ident))].join(', ')}
-                            </div>
-                          )}
-                          {c.total <= 0 && <div className="text-[9px] font-bold text-gray-400">LIBRE</div>}
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                   {/* Base del estante */}

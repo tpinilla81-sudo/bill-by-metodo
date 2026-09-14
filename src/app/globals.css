@@ -120,3 +120,44 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ─── STOCK ALMACÉN: imprimir/PDF solo el mapa de estanterías ─── */
+@media print {
+  /* Cuando body tiene .printing-stock, ocultar todo excepto el mapa */
+  body.printing-stock * {
+    visibility: hidden;
+  }
+  body.printing-stock .print-card,
+  body.printing-stock .print-card *,
+  body.printing-stock .print-racks,
+  body.printing-stock .print-racks *,
+  body.printing-stock .print-rack,
+  body.printing-stock .print-rack * {
+    visibility: visible;
+  }
+  body.printing-stock .print-card {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+  }
+  body.printing-stock .print-hide {
+    display: none !important;
+  }
+  body.printing-stock .print-racks {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  body.printing-stock .print-rack {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* Color real (no el background-grayscale del navegador) */
+  body.printing-stock * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
