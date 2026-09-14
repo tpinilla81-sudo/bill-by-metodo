@@ -859,3 +859,36 @@ Build OK. Commit 2b6a05e. Push a GitHub -> Vercel redeploy automatico.
 Stage Summary:
 - Ciclo de palet SMURFIT completo: entrada + salida + dias, los tres al precio
   de su concepto del catalogo (precios editables por cliente en catalogo).
+---
+Task ID: 25
+Agent: Main Agent
+Task: Nueva seccion STOCK ALMACEN — control de stock con graficos/dibujos de estanterias (cliente SMURFIT)
+
+Nueva vista: src/components/hualsa/stock-almacen-view.tsx (solo lectura)
+- Motor de stock: ENTRADA PALET suma, SALIDA PALET resta. Salidas emparejadas
+  por prioridad: lote/palet identico -> misma ubicacion -> FIFO mas antiguo.
+  Stock actual = lotes abiertos (cantRestante > 0).
+- Ubicacion desde customData (keys con "ubicac"); ident desde "lote"/"palet".
+- Estanteria = primer token de la ubicacion ("E1-03" -> rack E1, pos 03).
+- MAPA DE ESTANTERIAS: dibujo CSS con postes laterales y base por estanteria;
+  celdas por ubicacion con nº palets, dias y color por antiguedad
+  (verde <=30, ambar 30-60, rojo >60); posiciones conocidas sin stock = LIBRE.
+- KPIs: palets en almacen, ubicaciones ocupadas, entradas/salidas del mes.
+- Graficos recharts: barras palets por estanteria + circular stock por cliente.
+- Tabla detalle de lotes abiertos ordenada por dias + ultimos 10 movimientos.
+- Filtro por cliente con boton rapido SMURFIT (detecta /smurfit/i en nombre).
+- Refresh de dias cada 60s sin recargar datos.
+
+Registro de la vista:
+- page.tsx: View 'stock', permiso 'stock', viewOrder, handleNavigate,
+  render en bloque scrollable, lista sin-permiso
+- sidebar.tsx: navItem STOCK ALMACEN (icono Warehouse, teal) tras REGISTROS
+- permissions.ts + configuracion-view.tsx: opcion 'Stock Almacen' para empleados
+- Build marker: STOCK-ALMACEN · 2026-09-14
+
+Build OK. Commit 16203c0. Push -> Vercel redeploy automatico.
+
+Stage Summary:
+- Seccion STOCK ALMACEN operativa: stock en vivo de palets por ubicacion con
+  mapa visual de estanterias, antiguedad con semaforo de colores y graficos.
+- Sin migraciones ni APIs nuevas: calcula 100% en cliente desde /api/registros.
