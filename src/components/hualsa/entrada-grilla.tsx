@@ -115,6 +115,21 @@ export function EntradaGrilla() {
     return missing
   }
 
+  // Fila "en blanco" = no se ha empezado a rellenar (no tiene c1, c2, obs
+  // ni ningún valor personalizado). Estas filas NO bloquean el guardado:
+  // se ignoran silenciosamente (como hace el formulario normal, donde no
+  // se guarda nada si no se rellena). Cualquier otra fila SÍ debe estar
+  // completa para que el botón GUARDAR se habilite (requisito del usuario:
+  // "no tiene que haber filas incompletas — guardar se habilita cuando
+  // está completa").
+  function isRowBlank(r: GrillaRow): boolean {
+    if (r.c1.trim() || r.c2.trim() || r.obs.trim()) return false
+    for (const v of Object.values(r.customValues)) {
+      if (String(v || '').trim()) return false
+    }
+    return true
+  }
+
   // Campo UBICACIÓN (mismo criterio que el motor de stock: nombre/clave con "ubicación")
   const ubicField = useMemo(
     () => customFields.find(f => /ubicac/i.test(normAlm(`${f.key} ${f.label}`))) || null,
@@ -357,23 +372,23 @@ export function EntradaGrilla() {
   }
 
   async function handleSave() {
-    const validRows = rows.filter(r => r.fecha && r.c1 && r.c2)
-    if (validRows.length === 0) {
-      showStatus('err', 'No hay filas válidas (necesitan fecha, c1 y c2)')
+    // El botón solo se habilita cuando todas las filas empezadas están
+    // completas (validado por `todasCompletas`); pero por seguridad
+    // volvemos a comprobar aquí: si alguna fila empezada está incompleta,
+    // bloqueamos y señalamos cuál/cuáles.
+    if (incompleteRows.length > 0) {
+      const firstIdx = rows.findIndex(r => !isRowBlank(r) && filaMissing(r).length > 0)
+      const missing = firstIdx >= 0 ? filaMissing(rows[firstIdx]) : []
+      showStatus('err',
+        `Fila ${firstIdx + 1}: ${missing.length === 1 ? 'falta' : 'faltan'} «${missing.join('», «')}» — completa la fila antes de guardar`
+      )
       return
     }
-    // Campos obligatorios según la configuración (igual que el formulario
-    // normal): si a una fila con fecha+c1+c2 le falta alguno, se BLOQUEA el
-    // guardado indicando la fila y el campo — no se guarda nada a medias.
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i]
-      if (!(r.fecha && r.c1 && r.c2)) continue // fila sin rellenar: se salta
-      const missing = filaMissing(r)
-      if (missing.length > 0) {
-        showStatus('err', `Fila ${i + 1}: ${missing.length === 1 ? 'falta' : 'faltan'} «${missing.join('», «')}»`)
-        return
-      }
+    if (completeRows.length === 0) {
+      showStatus('err', 'No hay filas para guardar — rellena al menos una')
+      return
     }
+    const validRows = completeRows
 
     setSaving(true)
     try {
@@ -461,9 +476,16 @@ export function EntradaGrilla() {
     }
   }
 
-  // Stats
-  const validCount = rows.filter(r => r.fecha && r.c1 && r.c2).length
-  const totalCant = rows.reduce((s, r) => s + (Number(r.cant) || 0), 0)
+  // Stats — distinción entre filas en blanco (no empezadas), filas
+  // completas (todas las obligatorias cubiertas) y filas incompletas
+  // (empezadas pero con campos obligatorios aún vacíos). El botón
+  // GUARDAR solo se habilita cuando NO hay filas incompletas.
+  const blankCount = rows.filter(r => isRowBlank(r)).length
+  const startedRows = rows.filter(r => !isRowBlank(r))
+  const incompleteRows = startedRows.filter(r => filaMissing(r).length > 0)
+  const completeRows = startedRows.filter(r => filaMissing(r).length === 0)
+  const todasCompletas = startedRows.length > 0 && incompleteRows.length === 0
+  const totalCant = completeRows.reduce((s, r) => s + (Number(r.cant) || 0), 0)
   const totalImporte = rows.reduce((s, r) => {
     if (!r.c1 || !r.c2) return s
     const cli = r.clienteId || (clienteVisible ? '' : lookupCliente(data.catalogo, r.c1, r.c2))
@@ -487,7 +509,7 @@ export function EntradaGrilla() {
           <Table className="h-5 w-5 text-[#005bb5]" />
           <h2 className="text-sm font-bold text-slate-700">Entrada Masiva</h2>
           <span className="text-xs text-slate-500">
-            {rows.length} filas · {validCount} válidas · {totalCant} unidades
+            {rows.length} filas{blankCount > 0 ? ` · ${blankCount} en blanco` : ''} · {completeRows.length} completas{incompleteRows.length > 0 ? ` · ${incompleteRows.length} incompleta(s)` : ''} · {totalCant} unidades
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5 items-center">
@@ -563,13 +585,15 @@ export function EntradaGrilla() {
             {rows.map((row, idx) => {
               const detectedClienteId = !clienteVisible && !row.clienteId ? lookupCliente(data.catalogo, row.c1, row.c2) : row.clienteId
               const precio = row.c1 && row.c2 ? lookupPrecio(data.catalogo, row.c1, row.c2, detectedClienteId) : 0
-              // Fila completa = todos los campos obligatorios cubiertos (mismo
-              // criterio que el formulario normal); las incompletas se
-              // resaltan en ámbar con tooltip de lo que falta.
-              const missing = filaMissing(row)
+              // Fila en blanco (sin empezar): sin resaltado.
+              // Fila incompleta (empezada pero con campos obligatorios
+              // pendientes): ámbar + tooltip de lo que falta.
+              // Fila completa: sin resaltado.
+              const isBlank = isRowBlank(row)
+              const missing = isBlank ? [] : filaMissing(row)
               const isValid = missing.length === 0
               return (
-                <tr key={row.id} title={missing.length > 0 ? `Falta: ${missing.join(', ')}` : undefined} className={`border-t hover:bg-blue-50/30 ${!isValid ? 'bg-amber-50/30' : ''}`}>
+                <tr key={row.id} title={missing.length > 0 ? `Falta: ${missing.join(', ')}` : undefined} className={`border-t hover:bg-blue-50/30 ${!isBlank && !isValid ? 'bg-amber-50/60' : ''} ${isBlank ? 'opacity-60' : ''}`}>
                   <td className="px-2 py-1 text-center text-xs text-slate-400">{idx + 1}</td>
                   <td className="px-1 py-1">
                     <input
@@ -707,9 +731,15 @@ export function EntradaGrilla() {
               ? <>Al guardar, las líneas de <b>ENTRADA PALET</b> abren su <b>etiqueta QR</b> lista para imprimir.</>
               : <>Etiquetas QR <b>desactivadas</b> al guardar (interruptor <b>QR al guardar: NO</b> de arriba).</>}
           </span>
+          {incompleteRows.length > 0 && (
+            <span className="flex items-center gap-1 mt-1 text-amber-700">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              {incompleteRows.length} fila(s) incompleta(s) — completa los campos obligatorios para habilitar GUARDAR (las filas en blanco se ignoran).
+            </span>
+          )}
         </div>
-        <Button onClick={handleSave} disabled={saving || validCount === 0} className="bg-[#2bb24c] hover:bg-[#239a3f] text-white">
-          <Save className="h-4 w-4 mr-1" /> {saving ? 'Guardando...' : `GUARDAR ${validCount} entrada(s)`}
+        <Button onClick={handleSave} disabled={saving || !todasCompletas} className={todasCompletas ? 'bg-[#2bb24c] hover:bg-[#239a3f] text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}>
+          <Save className="h-4 w-4 mr-1" /> {saving ? 'Guardando...' : todasCompletas ? `GUARDAR ${completeRows.length} entrada(s)` : 'COMPLETA LAS FILAS'}
         </Button>
       </div>
 
