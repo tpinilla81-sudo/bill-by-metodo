@@ -58,18 +58,20 @@ export function normAlm(s: string): string {
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
-// ¿El CONCEPTO 2 del registro es "ENTRADA PALET"? (en las vistas de entrada
-// se usa sobre el c2 del formulario)
+// ¿Algún concepto (c1 o c2) del registro es "ENTRADA PALET"?
+// Soporta DOS estructuras de catálogo:
+//   · Antigua: c1="ALMACEN"           c2="ENTRADA PALET"
+//   · Nueva  : c1="SMURFIT ENTRADA PALET"  c2="10F1027" (código de producto)
 export function esC2EntradaPalet(c2: string): boolean {
   return /entrada palet/.test(normAlm(c2))
 }
-
+// Versión flexible: busca "entrada palet" en c1 O c2 (registro completo).
 export function isEntradaPalet(r: Registro): boolean {
-  return esC2EntradaPalet(r.c2)
+  return /entrada palet/.test(normAlm(`${r.c1} ${r.c2}`))
 }
 
 export function isSalidaPalet(r: Registro): boolean {
-  return /salida palet/.test(normAlm(r.c2))
+  return /salida palet/.test(normAlm(`${r.c1} ${r.c2}`))
 }
 
 export function extractIdents(r: Registro): { strong: Record<string, string>; weak: Record<string, string> } {

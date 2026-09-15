@@ -37,9 +37,9 @@ type LineaFactura = { fecha: string; c1: string; c2: string; cant: number; clien
 // El matching ENTRADA↔SALIDA se hace por identificadores del customData:
 // "lote" o "palet" (fuertes) o "ubicac" (débil) con el mismo valor.
 // Convenciones (sin acentos, minúsculas, espacios colapsados):
-//  · ENTRADA: registro cuyo C2 contiene "entrada palet"
-//  · SALIDA:  registro cuyo C2 contiene "salida palet"
-//  · COSTE DIARIO: ítem del catálogo cuyo C2 contiene "coste diario"
+//  · ENTRADA: registro cuyo C1 o C2 contiene "entrada palet"
+//  · SALIDA:  registro cuyo C1 o C2 contiene "salida palet"
+//  · COSTE DIARIO: ítem del catálogo cuyo C1 o C2 contiene "coste diario"
 //    (prioridad: precio específico del cliente > precio general)
 //  · PORTE: ítem del catálogo cuyo C2 o C1 contiene "porte" (prioridad:
 //    específico del cliente > general). Si no existe, se omite y avisa.
@@ -57,12 +57,16 @@ function normAlm(s: string): string {
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
+// Reconoce ENTRADA/SALIDA PALET en c1 O c2 (registros) para soportar las
+// dos estructuras de catálogo:
+//   · Antigua: c1="ALMACEN"  c2="ENTRADA PALET"
+//   · Nueva  : c1="SMURFIT ENTRADA PALET"  c2="10F1027" (código de producto)
 function isEntradaPalet(r: Registro): boolean {
-  return /entrada palet/.test(normAlm(r.c2))
+  return /entrada palet/.test(normAlm(`${r.c1} ${r.c2}`))
 }
 
 function isSalidaPalet(r: Registro): boolean {
-  return /salida palet/.test(normAlm(r.c2))
+  return /salida palet/.test(normAlm(`${r.c1} ${r.c2}`))
 }
 
 function extractIdents(r: Registro): { strong: Record<string, string>; weak: Record<string, string> } {
@@ -126,9 +130,12 @@ function procesarAlmacenajePalets(
   const salidas = sel.filter(isSalidaPalet)
   if (!targetCliId || salidas.length === 0) return empty
 
-  // Coste diario en catálogo: específico del cliente primero, luego general
-  const cdItem = catalogo.find(x => /coste diari/.test(normAlm(x.c2)) && x.clienteId === targetCliId)
-    || catalogo.find(x => /coste diari/.test(normAlm(x.c2)) && !x.clienteId)
+  // Coste diario en catálogo: específico del cliente primero, luego general.
+  // Busca "coste diario" en c1 O c2 (en la nueva estructura de catálogo el
+  // c1 puede ser "SMURFIT COSTE DIARIO PALET" y el c2 "COSTE DIARIO PALET",
+  // mientras que en la antigua era c1="ALMACEN" c2="COSTE DIARIO PALET").
+  const cdItem = catalogo.find(x => /coste diari/.test(normAlm(`${x.c1} ${x.c2}`)) && x.clienteId === targetCliId)
+    || catalogo.find(x => /coste diari/.test(normAlm(`${x.c1} ${x.c2}`)) && !x.clienteId)
   const costeDiario = cdItem ? Number(cdItem.final) || 0 : 0
 
   // PORTE por salida de palet: item del catálogo cuyo c2 o c1 contiene "PORTE"
