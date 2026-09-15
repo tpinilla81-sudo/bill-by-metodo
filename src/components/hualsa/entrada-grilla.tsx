@@ -628,9 +628,17 @@ export function EntradaGrilla() {
                       rowId={row.id}
                       field="c1"
                       onChange={v => {
-                        // When c1 changes, clear c2 if it's no longer valid for the new c1.
-                        const validC2s = c2OptionsFor(v)
-                        const nextC2 = validC2s.includes(row.c2) ? row.c2 : ''
+                        // AUTO-DESCRIPCIÓN: al poner la REFERENCIA (c1), si el
+                        // catálogo tiene una única DESCRIPCIÓN (c2) para esa c1,
+                        // se rellena sola (igual que el formulario normal).
+                        // Si hay varias c2 distintas para esa c1, se mantiene
+                        // la actual solo si sigue siendo válida; si no, se limpia.
+                        const c2matches = v
+                          ? [...new Set(data.catalogo.filter(x => x.c1 === v && x.c2).map(x => x.c2))].sort()
+                          : []
+                        const nextC2 = c2matches.length === 1
+                          ? c2matches[0]
+                          : (c2matches.length > 1 && c2matches.includes(row.c2) ? row.c2 : '')
                         updateRow(row.id, { c1: v, c2: nextC2 })
                       }}
                       onKeyDown={e => handleKeyDown(e, idx, 'c1')}

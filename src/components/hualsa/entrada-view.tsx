@@ -551,7 +551,22 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-visible">
           <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
-          <div className="px-3 pb-2"><ComboInput value={c1} onChange={v => { setC1(v); setC2('') }} suggestions={c1Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
+          <div className="px-3 pb-2"><ComboInput value={c1} onChange={v => {
+            setC1(v)
+            // AUTO-DESCRIPCIÓN: al poner la REFERENCIA (c1), si el catálogo
+            // tiene una única DESCRIPCIÓN (c2) para esa c1, se rellena sola.
+            // Si hay varias c2 distintas para esa c1, se limpia y el usuario
+            // elige. Filtro: si el campo CLIENTE está visible y hay cliente
+            // seleccionado, se respeta el ámbito (igual que c2Options).
+            const vn = normStr(v)
+            const c2matches = [...new Set(
+              data.catalogo
+                .filter(x => (!clienteVisible || !clienteId || !x.clienteId || x.clienteId === clienteId) && normStr(x.c1) === vn)
+                .map(x => x.c2)
+                .filter(Boolean)
+            )].sort()
+            setC2(c2matches.length === 1 ? c2matches[0] : '')
+          }} suggestions={c1Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
         </div>
       )
     }
