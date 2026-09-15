@@ -24,6 +24,7 @@ export interface CeldaStock {
   total: number
   dias: number      // días del lote más antiguo
   lotes: LoteStock[]
+  cap: number       // ALTURA del hueco: nº máx. de palets apilables (0 = sin límite)
 }
 
 export interface RackStock {
@@ -41,6 +42,10 @@ export interface EstanteriaCfg {
   nombre: string    // "E1" — prefijo con el que se nombran los huecos
   huecos: number    // nº de huecos de la estantería
   cap: number       // capacidad máx. de palets (0 = sin límite) — opcional
+  caps?: number[]   // ALTURA por hueco (nº de palets apilables): caps[0] → hueco 01,
+                    // caps[1] → hueco 02… 0 o ausente = sin límite. Sirve para
+                    // estantería de bloque / apilado sin estantería, donde cada
+                    // posición del suelo puede tener una altura DISTINTA.
   alias?: string[]  // nombres antiguos de la estantería: los palets registrados
                     // con ellos siguen apareciendo en el mapa tras un renombrado
 }
@@ -111,6 +116,14 @@ export function identDeCustomValues(cv: Record<string, string>): string {
     if (s) return s
   }
   return ''
+}
+
+// Altura (nº de palets apilables) del hueco n (1-based) de una estantería.
+// caps[n-1] ausente o 0 → sin límite (0). Se usa en el mapa (mostrar "2/3"
+// y marcar LLENO) y en el hueco óptimo (no asignar columnas ya llenas).
+export function capDeHueco(e: EstanteriaCfg, n: number): number {
+  const c = Number(e?.caps?.[n - 1] ?? 0)
+  return c > 0 ? Math.min(20, Math.floor(c)) : 0
 }
 
 // "E1-03" → { rack: 'E1', pos: '03' } · "Nave 2 Paso B" → { rack: 'NAVE', pos: '2-PASO-B' }
@@ -226,7 +239,7 @@ export function buildRacks(stock: LoteStock[], cfg: EstanteriaCfg[], refNow: num
       .filter((p, i, arr) => arr.indexOf(p) === i)
     for (let n = 1; n <= e.huecos; n++) {
       const pos = padPos(n, e.huecos)
-      const celda: CeldaStock = { ubicacion: `${nombre}-${pos}`, rack: nombre, pos, total: 0, dias: 0, lotes: [] }
+      const celda: CeldaStock = { ubicacion: `${nombre}-${pos}`, rack: nombre, pos, total: 0, dias: 0, lotes: [], cap: capDeHueco(e, n) }
       rk.celdas.push(celda)
       for (const pref of prefijos) {
         huecoPorClave.set(normHuecoKey(`${pref}-${pos}`), celda)
@@ -247,7 +260,7 @@ export function buildRacks(stock: LoteStock[], cfg: EstanteriaCfg[], refNow: num
       const key = clave || '(SIN UBICACIÓN)'
       let f = fueraMap.get(key)
       if (!f) {
-        f = { ubicacion: l.ubicacion || 'SIN UBICACIÓN', rack: 'FUERA', pos: (l.ubicacion || '—').toUpperCase(), total: 0, dias: 0, lotes: [] }
+        f = { ubicacion: l.ubicacion || 'SIN UBICACIÓN', rack: 'FUERA', pos: (l.ubicacion || '—').toUpperCase(), total: 0, dias: 0, lotes: [], cap: 0 }
         fueraMap.set(key, f)
       }
       f.total += l.cantRestante
@@ -312,6 +325,9 @@ export function loadAlmacenCfg(): EstanteriaCfg[] {
             nombre: String(e.nombre).trim().toUpperCase(),
             huecos: Math.max(0, Math.min(200, Number(e.huecos) || 0)),
             cap: Math.max(0, Number(e.cap) || 0),
+            caps: Array.isArray(e.caps)
+              ? e.caps.map(c => Math.max(0, Math.min(20, Number(c) || 0))).slice(0, 200)
+              : undefined,
             alias: Array.isArray(e.alias) ? e.alias.map(a => String(a || '').trim().toUpperCase()).filter(Boolean).slice(0, 10) : [],
           }))
         : []
@@ -375,6 +391,28 @@ export function clavesOcupadas(registros: Registro[]): Set<string> {
   return s
 }
 
+// Contador de palets por clave de hueco: cuántos palets hay ahora en cada
+// ubicación (suma cantRestante de sus lotes). Es la versión con CUENTA de
+// clavesOcupadas: la usan el hueco óptimo y los avisos para respetar las
+// ALTURAS por hueco (un hueco con 1/3 palets aún admite 2 más; uno lleno
+// ya no se asigna).
+export function contadoresHuecos(registros: Registro[]): Map<string, number> {
+  const m = new Map<string, number>()
+  for (const l of buildStock(registros, [])) {
+    const k = normHuecoKey(l.ubicacion)
+    if (k) m.set(k, (m.get(k) || 0) + l.cantRestante)
+  }
+  return m
+}
+
+// Ocupación (nº de palets) que representa `ocupadas` para la clave k:
+// · Map  → el conteo exacto (respetando alturas)
+// · Set  → 1 si hay cualquier stock (comportamiento antiguo)
+function ocupacionDe(ocupadas: Set<string> | Map<string, number>, k: string): number {
+  if (ocupadas instanceof Map) return ocupadas.get(k) || 0
+  return ocupadas.has(k) ? 1 : 0
+}
+
 export interface HuecoOptimo {
   hueco: string     // nombre completo, p.ej. "E1-04"
   rack: string      // estantería, p.ej. "E1"
@@ -383,12 +421,13 @@ export interface HuecoOptimo {
 
 // Estanterías válidas de la configuración, saneadas y en su ORDEN de
 // configuración (el orden en que el usuario las creó = su orden físico).
-function estanteriasValidas(cfg: EstanteriaCfg[]): { nombre: string; huecos: number; alias: string[] }[] {
+function estanteriasValidas(cfg: EstanteriaCfg[]): { nombre: string; huecos: number; alias: string[]; est: EstanteriaCfg }[] {
   return cfg
     .map(e => ({
       nombre: String(e?.nombre || '').trim().toUpperCase(),
       huecos: Math.max(0, Math.min(200, Number(e.huecos) || 0)),
       alias: (e.alias || []).map(a => String(a || '').trim().toUpperCase()).filter(Boolean),
+      est: e,
     }))
     .filter(e => e.nombre && e.huecos > 0)
 }
@@ -402,23 +441,27 @@ function tokensRack(nombre: string): string[] {
 //    (en el orden en que están configuradas)
 //  · con prefijo ("E2", "e2-", "NAVE 2"…) → el primer hueco libre de ESA
 //    estantería (reconoce también los alias)
+//  · ALTURAS por hueco: si el hueco tiene altura configurada (p.ej. 3), se
+//    le pueden asignar palets hasta llenarla; sin altura (0) solo se asigna
+//    si no tiene ningún palet (comportamiento anterior). Para contar los
+//    palets por hueco, pasa un Map de contadoresHuecos(); un Set (cualquier
+//    stock) también se acepta por compatibilidad.
 //  · extraOcupadas → ubicaciones ya asignadas en la misma tanda (p.ej. otras
 //    filas de la grilla que aún no se han guardado) que no deben repetirse
 // Devuelve null si no hay configuración o si todo está lleno.
 export function huecoOptimo(
   cfg: EstanteriaCfg[],
-  ocupadas: Set<string>,
+  ocupadas: Set<string> | Map<string, number>,
   prefijo = '',
   extraOcupadas: string[] = []
 ): HuecoOptimo | null {
   const estanterias = estanteriasValidas(cfg)
   if (estanterias.length === 0) return null
 
-  const ocup = ocupadas
-  const extra = new Set<string>()
+  const extra = new Map<string, number>()
   for (const u of extraOcupadas) {
     const k = normHuecoKey(u)
-    if (k) extra.add(k)
+    if (k) extra.set(k, (extra.get(k) || 0) + 1)
   }
 
   // ¿Prefijo que apunta a una estantería concreta? "E2-0" → tokens [E,2,0];
@@ -447,25 +490,39 @@ export function huecoOptimo(
     const prefijos = [e.nombre, ...e.alias].filter(Boolean)
     for (let n = 1; n <= e.huecos; n++) {
       const pos = padPos(n, e.huecos)
-      // El hueco está ocupado si ALGUNA de sus claves (nombre actual o alias)
-      // tiene stock — así un renombrado nunca "libera" huecos con palets.
-      let libre = true
+      const altura = capDeHueco(e.est, n)
+      // Ocupación del hueco: el máximo entre sus claves (nombre actual o
+      // alias) contando también lo asignado en esta tanda (extra).
+      let ocupacion = 0
+      let enCfg = false
       for (const p of prefijos) {
         const k = normHuecoKey(`${p}-${pos}`)
         if (!k) continue
-        if (ocup.has(k) || extra.has(k)) { libre = false; break }
+        enCfg = true
+        const o = ocupacionDe(ocupadas, k) + (extra.get(k) || 0)
+        if (o > ocupacion) ocupacion = o
       }
+      if (!enCfg) continue
+      // Con altura: libre mientras no se haya llenado (1/3, 2/3…).
+      // Sin altura (0): solo libre si no hay ningún palet (como antes).
+      const libre = altura > 0 ? ocupacion < altura : ocupacion === 0
       if (libre) return { hueco: `${e.nombre}-${pos}`, rack: e.nombre, pos }
     }
   }
   return null
 }
 
-export type EstadoUbicacion = 'vacio' | 'no-config' | 'libre' | 'ocupado'
+export type EstadoUbicacion = 'vacio' | 'no-config' | 'libre' | 'con-stock' | 'ocupado'
 
-// Estado de una ubicación escrita a mano: ¿está en la configuración y tiene
-// stock? Se usa para los avisos junto al campo Ubicación en ENTRADA.
-export function clasificarUbicacion(cfg: EstanteriaCfg[], ocupadas: Set<string>, valor: string): EstadoUbicacion {
+// Estado de una ubicación escrita a mano: ¿está en la configuración, cuánto
+// stock tiene y le queda sitio? Se usa para los avisos junto al campo
+// Ubicación en ENTRADA. Con ALTURAS por hueco:
+//   · altura > 0 → 'ocupado' solo si la columna está LLENA; 'con-stock' si
+//     tiene palets pero aún cabe al menos uno
+//   · sin altura (0) → 'ocupado' si tiene cualquier stock (como antes)
+// Acepta un Map de contadoresHuecos() (cuenta exacta) o un Set de
+// clavesOcupadas() (cualquier stock), por compatibilidad.
+export function clasificarUbicacion(cfg: EstanteriaCfg[], ocupadas: Set<string> | Map<string, number>, valor: string): EstadoUbicacion {
   const v = String(valor || '').trim()
   if (!v) return 'vacio'
   const clave = normHuecoKey(v)
@@ -478,7 +535,14 @@ export function clasificarUbicacion(cfg: EstanteriaCfg[], ocupadas: Set<string>,
       const pos = padPos(n, e.huecos)
       for (const p of prefijos) {
         if (normHuecoKey(`${p}-${pos}`) === clave) {
-          return ocupadas.has(clave) ? 'ocupado' : 'libre'
+          const altura = capDeHueco(e.est, n)
+          const ocupacion = ocupacionDe(ocupadas, clave)
+          if (altura > 0) {
+            if (ocupacion >= altura) return 'ocupado'      // columna llena
+            if (ocupacion > 0) return 'con-stock'          // hay stock, queda sitio
+            return 'libre'
+          }
+          return ocupacion > 0 ? 'ocupado' : 'libre'
         }
       }
     }

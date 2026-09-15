@@ -89,6 +89,10 @@ export function StockAlmacenView() {
   // migración de las claves antiguas 'stock-config' y 'stock-capacidades'.
   const [almacenCfg, setAlmacenCfg] = useState<EstanteriaCfg[]>(() => loadAlmacenCfg())
   const [showCfgEditor, setShowCfgEditor] = useState(false)
+  // Editor de ALTURAS por hueco: qué estantería tiene el panel abierto +
+  // valor del campo rápido "Todas:" (solo hay un panel abierto a la vez).
+  const [alturasOpenId, setAlturasOpenId] = useState<string | null>(null)
+  const [todasAlturas, setTodasAlturas] = useState('')
   // Formulario "añadir estantería" (tarjeta punteada al final de la lista)
   const [addOpen, setAddOpen] = useState(false)
   const [newRackName, setNewRackName] = useState('')
@@ -115,6 +119,22 @@ export function StockAlmacenView() {
   }
   function cambiarCap(id: string, v: number) {
     setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, cap: Math.max(0, v || 0) } : e)))
+  }
+  // ── ALTURAS por hueco (apilado sin estantería) ──
+  // caps[idx] = nº de palets que se pueden apilar en el hueco idx+1
+  // (0 = sin límite). Cada posición de la estantería se configura INDEPENDIENTE.
+  function cambiarAlturaHueco(id: string, idx: number, v: number) {
+    setAlmacenCfg(prev => prev.map(e => {
+      if (e.id !== id) return e
+      const caps = Array.from({ length: Math.max(e.huecos, idx + 1) }, (_, i) => Math.max(0, Math.min(20, Number(e.caps?.[i]) || 0)))
+      caps[idx] = Math.max(0, Math.min(20, v || 0))
+      return { ...e, caps }
+    }))
+  }
+  // Poner la MISMA altura en todos los huecos de la estantería (atajo)
+  function aplicarAlturaTodos(id: string, v: number) {
+    const h = Math.max(0, Math.min(20, v || 0))
+    setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, caps: Array.from({ length: e.huecos }, () => h) } : e)))
   }
   function renombrarEstanteria(id: string, nuevo: string) {
     const n = nuevo.trim().toUpperCase()
@@ -460,7 +480,8 @@ export function StockAlmacenView() {
             <p className="text-xs text-gray-500 mb-3">
               Todo el almacén son <b>estanterías</b>: cada una tiene un <b>nombre</b> (E1, E2…) y un <b>nº de huecos</b> —
               los huecos se nombran solos (<b>E1-01, E1-02…</b>) y el mapa se dibuja con ellos; los vacíos se ven LIBRE.
-              Se guarda en este navegador.
+              Con <b>Alturas por hueco</b> defines cuántos palets se apilan en cada posición (apilado sin estantería,
+              alturas distintas en cada sitio). Se guarda en este navegador.
             </p>
 
             {/* Sugerencias detectadas en los movimientos */}
@@ -521,21 +542,22 @@ export function StockAlmacenView() {
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                      {/* Huecos con nombre automático */}
+                      {/* Huecos con nombre automático — muestran su altura (·N) si está definida */}
                       {huecosNombres.length > 0 ? (
                         <div className="flex flex-wrap gap-1 mt-2 max-h-24 overflow-y-auto">
                           {huecosNombres.map((h, i) => {
                             const celda = rk?.celdas[i]
                             const ocupado = (celda?.total || 0) > 0
+                            const altura = e.caps?.[i] || 0
                             return (
                               <span
                                 key={h}
-                                title={`${h}${ocupado ? ` · ${celda?.total} palet(s)` : ' · libre'}`}
+                                title={`${h}${altura > 0 ? ` · altura ${altura} (palets apilables)` : ''}${ocupado ? ` · ${celda?.total} palet(s)` : ' · libre'}`}
                                 className={`px-1.5 py-0.5 rounded font-mono text-[10px] font-bold border ${
                                   ocupado ? 'bg-teal-100 border-teal-300 text-teal-800' : 'bg-gray-50 border-gray-200 text-gray-400'
                                 }`}
                               >
-                                {h}
+                                {h}{altura > 0 && <span className="text-teal-600">·{altura}</span>}
                               </span>
                             )
                           })}
@@ -545,6 +567,58 @@ export function StockAlmacenView() {
                           Importada de la configuración anterior (capacidad). No aparece en el mapa hasta que
                           le des un nº de huecos abajo — o elimínala con la papelera si no la necesitas.
                         </p>
+                      )}
+                      {/* ALTURAS por hueco: editor independiente de cada posición */}
+                      {e.huecos > 0 && (
+                        <div className="mt-2">
+                          <button
+                            onClick={() => setAlturasOpenId(prev => (prev === e.id ? null : e.id))}
+                            className="text-[10px] font-bold uppercase tracking-wide text-teal-700 hover:text-teal-900 flex items-center gap-1"
+                            title="Configurar la altura de cada hueco: nº de palets que se apilan (para estantería de bloque o sin estantería)"
+                          >
+                            <Layers className="h-3.5 w-3.5" /> Alturas por hueco
+                            {e.caps?.some(c => c > 0) ? <span className="normal-case font-semibold text-gray-400">· definidas</span> : null}
+                          </button>
+                          {alturasOpenId === e.id && (
+                            <div className="mt-1.5 rounded-md border border-teal-200 bg-teal-50/40 p-2">
+                              <div className="flex flex-wrap items-center gap-2 mb-2">
+                                <span className="text-[10px] text-gray-600 leading-tight flex-1 min-w-[180px]">
+                                  Altura = nº de palets apilables en ese hueco (uno encima de otro). <b>Vacío / 0 = sin límite.</b>
+                                  El hueco óptimo llena cada columna hasta su altura y luego pasa a la siguiente.
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <span className="text-[10px] font-bold text-gray-500 uppercase">Todas:</span>
+                                  <Input
+                                    type="number" min={0} max={20}
+                                    value={todasAlturas}
+                                    onChange={ev => setTodasAlturas(ev.target.value)}
+                                    placeholder="—"
+                                    className="h-6 w-12 text-xs text-center px-1"
+                                  />
+                                  <button
+                                    onClick={() => aplicarAlturaTodos(e.id, parseInt(todasAlturas, 10) || 0)}
+                                    className="h-6 px-2 rounded bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold"
+                                    title="Poner esta altura en todos los huecos de la estantería"
+                                  >Aplicar</button>
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-1">
+                                {huecosNombres.map((h, i) => (
+                                  <label key={h} className="flex items-center gap-1 rounded border border-gray-200 bg-white px-1 py-0.5" title={`${h} · altura (palets apilables)`}>
+                                    <span className="font-mono text-[9px] font-bold text-gray-500 truncate">{h}</span>
+                                    <input
+                                      type="number" min={0} max={20}
+                                      value={e.caps?.[i] || ''}
+                                      placeholder="—"
+                                      onChange={ev => cambiarAlturaHueco(e.id, i, parseInt(ev.target.value, 10) || 0)}
+                                      className="w-9 h-6 text-xs text-center border-0 focus:ring-1 focus:ring-teal-500 rounded tabular-nums"
+                                    />
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
                       <div className="flex flex-wrap items-end gap-2 mt-2 pt-2 border-t border-gray-100">
                         <div className="flex items-center gap-1">
@@ -569,7 +643,7 @@ export function StockAlmacenView() {
                           <span className="text-[10px] font-semibold text-gray-400 uppercase ml-1">huecos</span>
                         </div>
                         <div className="flex items-center gap-1 ml-auto">
-                          <span className="text-[10px] font-semibold text-gray-400 uppercase">Cap. máx.</span>
+                          <span className="text-[10px] font-semibold text-gray-400 uppercase" title="Capacidad total de toda la estantería (opcional)">Cap. máx. total</span>
                           <Input
                             type="number"
                             min={0}
@@ -821,7 +895,7 @@ export function StockAlmacenView() {
                         return (
                           <div
                             key={`${c.rack}-${c.ubicacion}`}
-                            title={`${c.ubicacion}${ocupada ? ` · ${c.total} palet(s) · ${diasMax} días` : ' · LIBRE'}${lotesUnicos.some(l => l.ident) ? ' · ' + lotesUnicos.map(l => l.ident).join(', ') : ''}`}
+                            title={`${c.ubicacion}${c.cap > 0 ? ` · altura ${c.cap}` : ''}${ocupada ? ` · ${c.total}${c.cap > 0 ? `/${c.cap}` : ''} palet(s) · ${diasMax} días${c.cap > 0 && c.total >= c.cap ? ' · LLENO' : ''}` : ' · LIBRE'}${lotesUnicos.some(l => l.ident) ? ' · ' + lotesUnicos.map(l => l.ident).join(', ') : ''}`}
                             className={`rounded-md border-2 p-1.5 shadow-sm cursor-default transition-all ${
                               match
                                 ? 'ring-4 ring-sky-500 ring-offset-1 scale-105 z-10 relative'
@@ -832,7 +906,7 @@ export function StockAlmacenView() {
                               ocupada
                                 ? colorPorDias(c.dias)
                                 : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'
-                            }`}
+                            } ${c.cap > 0 && c.total >= c.cap ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
                           >
                             {/* Nº de UBICACIÓN — visible siempre, aunque esté libre */}
                             <div className="flex items-center justify-between gap-1 pb-1 border-b border-gray-300">
@@ -843,14 +917,15 @@ export function StockAlmacenView() {
                                 {c.pos || '—'}
                               </span>
                             </div>
-                            {/* Nº de PALETS — el más grande de la celda */}
+                            {/* Nº de PALETS — el más grande de la celda (con su altura: 2/3) */}
                             {ocupada ? (
                               <>
                                 <div className={`text-2xl font-extrabold leading-tight ${textoPorDias(c.dias)}`}>
                                   {c.total}
+                                  {c.cap > 0 && <span className="text-sm text-gray-400 font-bold">/{c.cap}</span>}
                                 </div>
-                                <div className="text-[8px] font-bold text-gray-500 uppercase tracking-wide -mt-0.5">
-                                  {c.total === 1 ? 'palet' : 'palets'}
+                                <div className={`text-[8px] font-bold uppercase tracking-wide -mt-0.5 ${c.cap > 0 && c.total >= c.cap ? 'text-red-600' : 'text-gray-500'}`}>
+                                  {c.cap > 0 && c.total >= c.cap ? 'lleno' : c.total === 1 ? 'palet' : 'palets'}
                                 </div>
                                 {/* Lista de todos los lotes con sus días */}
                                 {lotesUnicos.length > 0 && (
@@ -875,7 +950,9 @@ export function StockAlmacenView() {
                             ) : (
                               <div className="py-2 flex flex-col items-center justify-center">
                                 <div className="text-base font-extrabold leading-tight text-gray-300">—</div>
-                                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Libre</div>
+                                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                                  Libre{c.cap > 0 ? <span className="text-gray-300 normal-case"> ·{c.cap}</span> : ''}
+                                </div>
                               </div>
                             )}
                           </div>

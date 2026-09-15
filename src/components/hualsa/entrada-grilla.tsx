@@ -10,7 +10,7 @@ import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/
 import { useConfig, parseCustomData, serializeCustomData, fieldAppliesToClient, getFieldLabel, type FieldDef } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 import {
-  loadAlmacenCfg, huecoOptimo, clavesOcupadas, esC2EntradaPalet, normAlm, identDeCustomValues,
+  loadAlmacenCfg, huecoOptimo, contadoresHuecos, esC2EntradaPalet, normAlm, identDeCustomValues,
   isQrAuto, setQrAuto,
   type EstanteriaCfg,
 } from '@/lib/almacen'
@@ -137,8 +137,9 @@ export function EntradaGrilla() {
   )
   const ubicKey = ubicField?.key || ''
 
-  // Huecos con stock ahora mismo
-  const ocupadas = useMemo(() => clavesOcupadas(todosRegistros), [todosRegistros])
+  // Palets por hueco (con CUENTA): el hueco óptimo respeta las ALTURAS por
+  // hueco — una columna con 1/3 palets aún admite más; una llena se salta.
+  const ocupadas = useMemo(() => contadoresHuecos(todosRegistros), [todosRegistros])
 
   const loadData = useCallback(async () => {
     const [cRes, catRes, allRes] = await Promise.all([

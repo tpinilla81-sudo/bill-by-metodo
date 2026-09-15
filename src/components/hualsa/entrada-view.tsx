@@ -13,7 +13,7 @@ import { triggerBackup } from '@/lib/trigger-backup'
 import { EntradaGrilla } from '@/components/hualsa/entrada-grilla'
 import { QrEtiquetaDialog, type EtiquetaPalet } from '@/components/hualsa/qr-etiqueta'
 import {
-  loadAlmacenCfg, huecoOptimo, clasificarUbicacion, clavesOcupadas,
+  loadAlmacenCfg, huecoOptimo, clasificarUbicacion, contadoresHuecos,
   esC2EntradaPalet, normAlm, getIdent, getUbicacion, identDeCustomValues,
   isQrAuto, setQrAuto,
   type EstanteriaCfg,
@@ -190,8 +190,10 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   )
   const ubicKey = ubicField?.key || ''
 
-  // Huecos con stock ahora mismo (para saber cuál es el óptimo libre)
-  const ocupadas = useMemo(() => clavesOcupadas(data.todosRegistros), [data.todosRegistros])
+  // Palets que hay ahora mismo en cada hueco (con CUENTA, no solo "hay/no
+  // hay"): permite respetar las ALTURAS por hueco al sugerir el óptimo —
+  // una columna con 1/3 palets sigue admitiendo 2 más; una llena ya no.
+  const ocupadas = useMemo(() => contadoresHuecos(data.todosRegistros), [data.todosRegistros])
 
   const esPalet = esC2EntradaPalet(c2)
 
@@ -668,7 +670,10 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     }
     const estado = clasificarUbicacion(almacenCfg, ocupadas, val)
     if (estado === 'ocupado') {
-      return <span className="text-[10px] text-amber-600 font-semibold leading-tight">{val} · ya hay stock en ese hueco</span>
+      return <span className="text-[10px] text-red-600 font-semibold leading-tight">{val} · columna llena / ya hay stock</span>
+    }
+    if (estado === 'con-stock') {
+      return <span className="text-[10px] text-amber-600 font-semibold leading-tight">{val} · ya hay stock — aún queda sitio en la columna</span>
     }
     if (estado === 'libre') {
       return <span className="text-[10px] text-emerald-600 font-semibold leading-tight">{val} · libre</span>
