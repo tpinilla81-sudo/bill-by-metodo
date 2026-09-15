@@ -1335,3 +1335,21 @@ Stage Summary:
 - La grilla masiva respeta ahora la misma regla que el formulario normal:
   los campos que abre la configuración son obligatorios, con aviso claro
   de fila y campo, y bloqueo del guardado hasta completarlos.
+
+---
+Task ID: V19-ALTURAS
+Agent: main
+Task: Alturas independientes por hueco en CONFIGURAR ALMACÉN (apilado sin estantería)
+
+Work Log:
+- Leído almacen.ts (EstanteriaCfg, buildRacks, huecoOptimo, clasificarUbicacion) y stock-almacen-view.tsx (UI config)
+- almacen.ts: EstanteriaCfg.caps?: number[] (altura por hueco, 0=sin límite), capDeHueco(), contadoresHuecos() (Map clave→nº palets), huecoOptimo/clasificarUbicacion aceptan Set|Map y respetan alturas, buildRacks añade celda.cap, loadAlmacenCfg sanea caps
+- entrada-view.tsx / entrada-grilla.tsx: ocupadas ahora usa contadoresHuecos; chip nuevo estado 'con-stock' (queda sitio) y 'ocupado' = columna llena
+- stock-almacen-view.tsx: editor 'Alturas por hueco' por estantería (input por hueco + atajo Todas:N Aplicar), chips ·N, mapa celdas total/altura + 'lleno' rojo, 'Cap. máx.' → 'Cap. máx. total'
+- agent-browser: estantería P1 6 huecos alturas [3,1,2] → grilla 7 palets asigna P1-01×3, P1-02×1, P1-03×2, P1-04×1; mapa 3/3 lleno, 1/1, 2/2; óptimo siguiente P1-05; P1-01 manual → 'columna llena'
+- Test data limpiada (7 registros L-V19)
+
+Stage Summary:
+- Commit 4f8f14f 'V19-ALTURAS' pushed a origin/main (PAT intacto, db excluido)
+- Build marker: V19-ALTURAS · 2026-09-15
+- Formato storage: stock-config-v2 entries con caps?: number[] — retrocompatible
