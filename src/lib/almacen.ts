@@ -371,6 +371,55 @@ export function saveAlmacenCfg(cfg: EstanteriaCfg[]): void {
   try { localStorage.setItem(ALMACEN_CFG_KEY, JSON.stringify(cfg)) } catch { /* quota */ }
 }
 
+// ─── V25: sincronización con el SERVIDOR (por empresa) ────────────────
+// La configuración ya no vive solo en localStorage: se guarda en
+// Config.almacenCfg de la empresa para que el mapa se vea IGUAL en todos
+// los dispositivos (PC, móvil, tablet) del mismo tenant.
+
+// Carga la configuración del servidor. Estrategia:
+//  1. GET /api/almacen → si el servidor tiene zonas, las devuelve (y las
+//     cachea en localStorage para el arranque rápido de la próxima vez).
+//  2. Si el servidor está VACÍO pero el navegador tiene config local
+//     (migración de un PC que ya lo tenía configurado), la SUBE al
+//     servidor para que el resto de dispositivos la reciba.
+export async function fetchAlmacenCfg(): Promise<EstanteriaCfg[]> {
+  if (typeof window === 'undefined') return []
+  try {
+    const res = await fetch('/api/almacen', { cache: 'no-store' })
+    if (res.ok) {
+      const data = await res.json() as { cfg?: EstanteriaCfg[] }
+      const serverCfg = Array.isArray(data.cfg) ? data.cfg : []
+      if (serverCfg.length > 0) {
+        // Cachea en localStorage (arranque offline rápido)
+        try { localStorage.setItem(ALMACEN_CFG_KEY, JSON.stringify(serverCfg)) } catch { /* quota */ }
+        return serverCfg
+      }
+      // Servidor vacío → migra la config local si existe
+      const local = loadAlmacenCfg()
+      if (local.length > 0) {
+        pushAlmacenCfg(local)
+        return local
+      }
+      return []
+    }
+  } catch { /* red caída — usa localStorage */ }
+  return loadAlmacenCfg()
+}
+
+// Guarda la configuración en el servidor (fire-and-forget). Se llama
+// cada vez que cambia la config; los errores se ignoran silenciosamente
+// porque localStorage sigue siendo la fuente inmediata de la sesión.
+export function pushAlmacenCfg(cfg: EstanteriaCfg[]): void {
+  if (typeof window === 'undefined') return
+  try {
+    fetch('/api/almacen', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cfg }),
+    }).catch(() => { /* offline — la próxima edición reintentará */ })
+  } catch { /* ignore */ }
+}
+
 // ─── Impresión de etiquetas QR al guardar ENTRADAS (localStorage) ──────
 // Interruptor compartido por el formulario y la grilla de ENTRADA (misma
 // clave, así el estado viaja entre ambos modos):

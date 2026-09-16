@@ -10,7 +10,7 @@ import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/
 import { useConfig, parseCustomData, serializeCustomData, fieldAppliesToClient, getFieldLabel, type FieldDef } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 import {
-  loadAlmacenCfg, huecoOptimo, contadoresHuecos, esC2EntradaPalet, normAlm, identDeCustomValues,
+  loadAlmacenCfg, fetchAlmacenCfg, huecoOptimo, contadoresHuecos, esC2EntradaPalet, normAlm, identDeCustomValues,
   isQrAuto, setQrAuto,
   type EstanteriaCfg,
 } from '@/lib/almacen'
@@ -150,6 +150,8 @@ export function EntradaGrilla() {
     setData({ clientes: await cRes.json(), catalogo: await catRes.json() })
     setTodosRegistros(await allRes.json())
     setAlmacenCfg(loadAlmacenCfg())
+    // V25: config fresca del SERVIDOR (compartida con el móvil / otros PCs)
+    fetchAlmacenCfg().then(cfg => { if (cfg.length > 0) setAlmacenCfg(cfg) }).catch(() => {})
   }, [])
 
   useEffect(() => { loadData() }, [loadData])

@@ -13,7 +13,7 @@ import { triggerBackup } from '@/lib/trigger-backup'
 import { EntradaGrilla } from '@/components/hualsa/entrada-grilla'
 import { QrEtiquetaDialog, type EtiquetaPalet } from '@/components/hualsa/qr-etiqueta'
 import {
-  loadAlmacenCfg, huecoOptimo, clasificarUbicacion, contadoresHuecos,
+  loadAlmacenCfg, fetchAlmacenCfg, huecoOptimo, clasificarUbicacion, contadoresHuecos,
   esC2EntradaPalet, normAlm, getIdent, getUbicacion, identDeCustomValues,
   isQrAuto, setQrAuto,
   type EstanteriaCfg,
@@ -180,7 +180,14 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   // Refresca la configuración cada vez que se recargan los datos (la pestaña
   // puede recuperar el foco tras editarla en STOCK ALMACÉN en otra pestaña).
-  useEffect(() => { setAlmacenCfg(loadAlmacenCfg()) }, [data])
+  // V25: la config ahora vive en el SERVIDOR (compartida con el móvil) —
+  // local como arranque inmediato y async la versión fresca del servidor.
+  useEffect(() => {
+    setAlmacenCfg(loadAlmacenCfg())
+    let cancelado = false
+    fetchAlmacenCfg().then(cfg => { if (!cancelado && cfg.length > 0) setAlmacenCfg(cfg) }).catch(() => {})
+    return () => { cancelado = true }
+  }, [data])
 
   // Campo UBICACIÓN: cualquier campo personalizado cuyo nombre/clave contenga
   // "ubicación" (igual criterio que el motor de stock para leerlo luego).

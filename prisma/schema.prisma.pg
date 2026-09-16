@@ -197,6 +197,10 @@ model Config {
   fieldsCatalogo  String   @default("")   // JSON: FieldDef[]
   fieldsRegistros String   @default("")   // JSON: FieldDef[]
   fieldsFacturas  String   @default("")   // JSON: FieldDef[]
+  // Configuración del ALMACÉN (zonas/estanterías/paredes) — V25: se guarda por
+  // empresa en el servidor para que el mapa se vea igual en TODOS los
+  // dispositivos (PC, móvil, tablet). JSON: EstanteriaCfg[]
+  almacenCfg      String   @default("")   // JSON: EstanteriaCfg[]
   updatedAt       DateTime @updatedAt
 
   tenant          Tenant   @relation(fields: [tenantId], references: [id])

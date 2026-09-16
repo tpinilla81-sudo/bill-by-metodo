@@ -13,7 +13,7 @@ import { fmtDate, type Cliente, type Registro } from '@/lib/hualsa-utils'
 import {
   normAlm, isEntradaPalet, isSalidaPalet, getUbicacion, getIdent, splitUbicacion,
   diasEnAlmacen, buildStock, buildRacks, nombresHuecos, detectarEstanterias,
-  loadAlmacenCfg, saveAlmacenCfg, type EstanteriaCfg, type LoteStock, type CeldaStock,
+  loadAlmacenCfg, saveAlmacenCfg, fetchAlmacenCfg, pushAlmacenCfg, type EstanteriaCfg, type LoteStock, type CeldaStock,
 } from '@/lib/almacen'
 
 // Tipo minimo para el escáner QR — cargado dinamicamente para evitar
@@ -353,7 +353,34 @@ export function StockAlmacenView() {
       return next
     })
   }
-  useEffect(() => { saveAlmacenCfg(almacenCfg) }, [almacenCfg])
+  // V25: la config se guarda en localStorage (arranque rápido) Y en el
+  // servidor (para que el móvil/otros dispositivos vean el mismo mapa).
+  // ⚠️ No se pushea al servidor hasta que la config del SERVIDOR se ha
+  // cargado (serverCfgReadyRef): si no, el estado inicial vacío del
+  // primer render SOBRESCRIBIRÍA la config guardada (race condition).
+  const serverCfgReadyRef = useRef(false)
+  const initialCfgJsonRef = useRef('')   // config local al montar (¿ha editado el usuario?)
+  useEffect(() => {
+    saveAlmacenCfg(almacenCfg)
+    if (serverCfgReadyRef.current) pushAlmacenCfg(almacenCfg)
+  }, [almacenCfg])
+  // Al montar: carga la config del SERVIDOR (fuente compartida). Si el
+  // servidor está vacío pero este navegador tenía config local, se sube
+  // automáticamente (migración desde el PC donde se configuró).
+  useEffect(() => {
+    initialCfgJsonRef.current = JSON.stringify(almacenCfg)  // eslint-disable-line react-hooks/exhaustive-deps
+    let cancelado = false
+    fetchAlmacenCfg().then(cfg => {
+      if (cancelado) return
+      serverCfgReadyRef.current = true
+      // Solo reemplaza el estado si el usuario NO ha editado nada mientras
+      // llegaba la respuesta (si ya tocó algo, no se le pisa por encima).
+      setAlmacenCfg(prev =>
+        JSON.stringify(prev) === initialCfgJsonRef.current ? cfg : prev
+      )
+    }).catch(() => { serverCfgReadyRef.current = true })
+    return () => { cancelado = true }
+  }, [])
 
   // ── Helpers de configuración (zonas → filas de altura → huecos) ──
   // filas = nº de huecos de CADA nivel/altura (fila 1 = suelo). Ej:
