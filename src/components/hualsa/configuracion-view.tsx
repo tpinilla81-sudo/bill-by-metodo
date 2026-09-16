@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Settings, Building2, Upload, Save, Image as ImageIcon, RotateCcw, CheckCircle, Tag, ArrowRightLeft, Clock, Zap, Eye, EyeOff, LayoutList, Pencil, Trash2, Plus, X, GripVertical, ChevronUp, ChevronDown, Users, UserPlus, Shield, Lock, Copy } from 'lucide-react'
+import { Hint } from '@/components/hualsa/hint'
 import {
   useConfig,
   DEFAULT_LABELS_ENTRADA,
@@ -238,7 +239,7 @@ function UsersManager() {
       )}
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">Gestiona los usuarios de tu empresa y sus permisos de acceso.</p>
+        <Hint variant="subtle" className="mr-auto">Gestiona los usuarios de tu empresa y sus permisos de acceso.</Hint>
         {!showForm && (
           <Button onClick={() => { resetForm(); setShowForm(true) }} className="bg-[#005bb5] hover:bg-[#003d7a] text-white">
             <UserPlus className="h-4 w-4 mr-1.5" /> Nuevo Usuario
@@ -287,23 +288,14 @@ function UsersManager() {
             </div>
 
             {/* Role explanation */}
-            <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 space-y-2">
-              <div className="flex items-center gap-2 font-bold text-slate-700"><Shield className="h-3.5 w-3.5" /> Permisos por rol:</div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                <div className="flex items-start gap-2">
-                  <span className="font-bold text-blue-700 shrink-0">Administrador:</span>
-                  <span>Acceso completo a todas las secciones. Puede gestionar usuarios y configuración.</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="font-bold text-rose-700 shrink-0">Facturación:</span>
-                  <span>Acceso a Clientes, Pre-Factura y Facturas. Ideal para el equipo de facturación.</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="font-bold text-gray-700 shrink-0">Empleado:</span>
-                  <span>Acceso personalizado. El administrador elige qué pantallas puede ver.</span>
-                </div>
+            <Hint variant="info" className="block w-full">
+              <div className="flex items-center gap-1.5 font-bold mb-1"><Shield className="h-3 w-3" /> Permisos por rol:</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-1">
+                <div className="flex items-start gap-1.5"><span className="font-bold text-blue-700 shrink-0">Admin:</span><span>Acceso completo a todas las secciones. Gestiona usuarios y configuración.</span></div>
+                <div className="flex items-start gap-1.5"><span className="font-bold text-rose-700 shrink-0">Facturación:</span><span>Acceso a Clientes, Pre-Factura y Facturas.</span></div>
+                <div className="flex items-start gap-1.5"><span className="font-bold text-gray-700 shrink-0">Empleado:</span><span>Acceso personalizado. El admin elige qué pantallas ver.</span></div>
               </div>
-            </div>
+            </Hint>
 
             {/* Permissions Section - for "empleado" and "facturacion" roles */}
             {(formRole === 'user' || formRole === 'facturacion') && (
@@ -314,9 +306,9 @@ function UsersManager() {
                     ? 'Hemos pre-seleccionado los permisos típicos para Facturación. Puedes ajustarlos si lo necesitas.'
                     : 'Selecciona las pantallas a las que este usuario tendrá acceso. Si no seleccionas ninguna, tendrá acceso a todo.'}
                 </p>
-                <p className="text-[11px] text-blue-600 mb-3 bg-blue-50 border border-blue-200 rounded px-2 py-1.5">
-                  <b>Configuración:</b> Marca "Configuración" para dar acceso a la pantalla. Luego marca solo las pestañas que quieres permitir: <b>Empresa</b>, <b>Usuarios</b> y/o <b>Campos</b>. Las que no marques no serán visibles para el usuario.
-                </p>
+            <Hint variant="info" className="block w-full">
+              <b>Configuración:</b> Marca "Configuración" para dar acceso a la pantalla. Luego marca solo las pestañas permitidas: <b>Empresa</b>, <b>Usuarios</b> y/o <b>Campos</b>. Las no marcadas no serán visibles.
+            </Hint>
                 <div className="grid grid-cols-1 gap-1.5">
                   {SCREEN_OPTIONS.map(opt => {
                     const parentKey = (opt as any).parent as string | undefined
@@ -340,9 +332,7 @@ function UsersManager() {
               </div>
             )}
             {formRole !== 'user' && formRole !== 'facturacion' && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
-                Los administradores tienen acceso a todas las pantallas. No es necesario configurar permisos.
-              </div>
+              <Hint variant="info" className="block w-full">Los administradores tienen acceso a todas las pantallas. No es necesario configurar permisos.</Hint>
             )}
 
             <div className="flex gap-2">
@@ -764,10 +754,7 @@ function FieldsManager({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-xs text-gray-500">
-          Gestiona los campos de esta sección. Puedes mostrar/ocultar, editar etiquetas, reordenar y añadir campos personalizados.
-          Los campos base no se pueden eliminar, solo ocultar.
-        </p>
+        <Hint variant="subtle" className="block w-full">Gestiona los campos de esta sección: mostrar/ocultar, editar etiquetas, reordenar y añadir campos personalizados. Los campos base no se pueden eliminar, solo ocultar.</Hint>
 
         {/* Field list */}
         <div className="space-y-1.5">
@@ -1136,7 +1123,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><Tag className="h-4 w-4" /> Nombres de Secciones</CardTitle></CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-500 mb-4">Personaliza los nombres de las secciones en el menú lateral.</p>
+              <Hint variant="subtle" className="block w-full">Personaliza los nombres de las secciones en el menú lateral.</Hint>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Entrada</Label><Input value={sectionEntrada} onChange={e => setSectionEntrada(e.target.value)} /></div>
                 <div><Label className="text-xs uppercase font-bold text-slate-500">Sección Registros</Label><Input value={sectionRegistros} onChange={e => setSectionRegistros(e.target.value)} /></div>
@@ -1161,10 +1148,7 @@ export function ConfiguracionView({ tenant }: { tenant: TenantInfo | null }) {
         {/* ─── CAMPOS TAB (Full CRUD for fields) ────────── */}
         {canSeeCampos && (
         <TabsContent value="campos" className="space-y-4 mt-4">
-          <p className="text-sm text-gray-500">
-            Gestiona los campos de cada sección. Puedes añadir nuevos campos personalizados, editar los existentes, ocultarlos o eliminarlos.
-            Los campos base (verde) son esenciales y solo se pueden ocultar. Los campos personalizados (ámbar) se pueden eliminar.
-          </p>
+          <Hint variant="subtle" className="block w-full">Gestiona los campos de cada sección: añade campos personalizados, edita los existentes, oculta o elimínalos. Los campos base (verde) son esenciales y solo se pueden ocultar. Los personalizados (ámbar) se pueden eliminar.</Hint>
 
           <FieldsManager
             title="Campos — Entrada"

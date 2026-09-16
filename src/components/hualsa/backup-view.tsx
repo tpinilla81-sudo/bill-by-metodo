@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Download, Upload, Trash2, Database, Clock, RefreshCw, RotateCcw, Save } from 'lucide-react'
+import { Hint } from '@/components/hualsa/hint'
 import { useConfig } from '@/lib/config'
 import { backUpNow } from '@/lib/trigger-backup'
 
@@ -201,9 +202,7 @@ export function BackupView() {
               <Trash2 className="h-4 w-4 mr-1" /> BORRAR TODO
             </Button>
           </div>
-          <p className="text-sm text-gray-500">
-            Se guarda una copia automática cuando sales de la app (cambiar de pestaña, inactividad 5 min, cerrar navegador) y cada 30 min si hay cambios. <b>Las copias NO se borran solas</b> — se conservan todas. Solo tú puedes borrarlas manualmente.
-          </p>
+          <Hint variant="info" className="block w-full">Se guarda una copia automática al salir de la app (cambiar de pestaña, inactividad 5 min, cerrar navegador) y cada 30 min si hay cambios. <b>Las copias NO se borran solas</b> — solo tú puedes borrarlas manualmente.</Hint>
           {status && (
             <div className="text-sm font-bold text-green-600">{status}</div>
           )}

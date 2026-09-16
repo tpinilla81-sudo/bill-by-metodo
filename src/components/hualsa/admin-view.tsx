@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Building2, Users, Plus, Pencil, Trash2, CheckCircle, Shield, Copy, Eye, EyeOff, KeyRound, CreditCard, Zap, Clock, TrendingUp, Receipt } from 'lucide-react'
+import { Hint } from '@/components/hualsa/hint'
 
 // ─── Types ───────────────────────────────────────────────────
 interface Tenant {
@@ -283,7 +284,7 @@ function TenantsTab() {
       )}
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">Crea empresas con el nombre. Los datos, logo, etc. los completa el admin de cada empresa desde Configuración.</p>
+        <Hint variant="subtle" className="mr-auto">Crea empresas con el nombre. Los datos, logo, etc. los completa el admin de cada empresa desde Configuración.</Hint>
         <Button onClick={openCreate} className="bg-[#005bb5] hover:bg-[#004a94] text-white">
           <Plus className="h-4 w-4 mr-1" /> Nueva Empresa
         </Button>
@@ -580,7 +581,7 @@ function UsersTab() {
       )}
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">Gestiona los usuarios del sistema.</p>
+        <Hint variant="subtle" className="mr-auto">Gestiona los usuarios del sistema.</Hint>
         <Button onClick={openCreate} className="bg-[#005bb5] hover:bg-[#004a94] text-white">
           <Plus className="h-4 w-4 mr-1" /> Nuevo Usuario
         </Button>
@@ -747,9 +748,7 @@ function UsersTab() {
 
             {/* Info for admin/superadmin role */}
             {formRole !== 'user' && formRole !== 'facturacion' && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
-                Los administradores tienen acceso a todas las pantallas. No es necesario configurar permisos.
-              </div>
+              <Hint variant="info" className="block w-full">Los administradores tienen acceso a todas las pantallas. No es necesario configurar permisos.</Hint>
             )}
 
             {editId && (
@@ -854,7 +853,7 @@ function SubscriptionsTab() {
         </div>
       )}
 
-      <p className="text-sm text-gray-500">Gestiona los planes de suscripción de cada empresa. Al cambiar el plan se actualizan los límites automáticamente.</p>
+      <Hint variant="subtle" className="block mb-4 w-full">Gestiona los planes de suscripción de cada empresa. Al cambiar el plan se actualizan los límites automáticamente.</Hint>
 
       <div className="bg-white rounded-lg border overflow-auto shadow-sm">
         <table className="w-full text-sm">

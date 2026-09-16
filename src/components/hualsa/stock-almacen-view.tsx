@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2, Layers, ChevronDown, Plus, Trash2 } from 'lucide-react'
+import { Hint } from '@/components/hualsa/hint'
 import { fmtDate, type Cliente, type Registro } from '@/lib/hualsa-utils'
 import {
   normAlm, isEntradaPalet, isSalidaPalet, getUbicacion, getIdent, splitUbicacion,
@@ -787,12 +788,9 @@ export function StockAlmacenView() {
             <h3 className="font-bold text-gray-800 mb-1 text-sm flex items-center gap-2">
               <Settings2 className="h-4 w-4 text-teal-600" /> CONFIGURAR ALMACÉN
             </h3>
-            <p className="text-xs text-gray-500 mb-3">
-              Configura cada zona del almacén: primero elige si es <b>ESTANTERÍA</b> (rack con niveles) o <b>PARED</b>
-              (palets apilados en el suelo, uno encima de otro). Luego elige <b>cuántos niveles de altura</b> tiene y
-              los <b>huecos de cada uno</b> — <b>pueden ser distintos</b> (suelo 12, 2ª 12, 3ª 6…).
-              Los huecos se nombran solos (<b>E1-01, E1-02…</b>) y el mapa se dibuja con ellos. Se guarda en este navegador.
-            </p>
+            <Hint variant="info" className="block mb-3 w-full">
+              Configura cada zona: elige si es <b>ESTANTERÍA</b> (rack con niveles) o <b>PARED</b> (apilado en suelo), luego <b>cuántos niveles de altura</b> y los <b>huecos de cada uno</b> — pueden ser distintos. Los huecos se nombran solos (E1-01, E1-02…) y el mapa se dibuja con ellos.
+            </Hint>
 
             {/* Sugerencias detectadas en los movimientos */}
             {sugerencias.length > 0 && (
@@ -1104,11 +1102,9 @@ export function StockAlmacenView() {
           <CardContent className="p-6 text-center">
             <Package className="h-10 w-10 mx-auto text-gray-300 mb-3" />
             <p className="font-semibold text-gray-700">Todavía no hay movimientos de palets</p>
-            <p className="text-sm text-gray-500 mt-2 max-w-lg mx-auto">
-              El stock se calcula con los registros cuyo concepto (C2) contiene <b>&quot;ENTRADA PALET&quot;</b> (suma) o
-              <b> &quot;SALIDA PALET&quot;</b> (resta). Registra entradas y salidas con los campos personalizados
-              <b> Lote / Nº Palet / Ubicación</b> y aquí verás el stock en vivo, las estanterías y los días de almacenaje.
-            </p>
+            <Hint variant="subtle" className="mt-2 max-w-lg mx-auto w-full">
+              El stock se calcula con los registros cuyo concepto (C2) contiene <b>ENTRADA PALET</b> (suma) o <b>SALIDA PALET</b> (resta). Registra entradas y salidas con los campos <b>Lote / Nº Palet / Ubicación</b> y verás el stock en vivo.
+            </Hint>
           </CardContent>
         </Card>
       )}
@@ -1430,10 +1426,9 @@ export function StockAlmacenView() {
             <h3 className="font-bold text-amber-700 mb-1 text-sm flex items-center gap-2">
               <Settings2 className="h-4 w-4" /> PALETS FUERA DE LA CONFIGURACIÓN ({paletsFuera} palets)
             </h3>
-            <p className="text-xs text-gray-500 mb-3 print-hide">
-              Están en ubicaciones que no existen en las estanterías configuradas (o sin ubicación).
-              Añade la estantería con esos huecos en <b>Configurar almacén</b> o revisa la ubicación del movimiento.
-            </p>
+            <Hint variant="warning" className="block mb-3 w-full print-hide">
+              Palets en ubicaciones que no existen en la configuración (o sin ubicación). Añade la estantería con esos huecos en <b>Configurar almacén</b> o revisa la ubicación del movimiento.
+            </Hint>
             <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
               {fueraCfg.map(c => {
                 const match = cellMatch(c)
@@ -1465,11 +1460,9 @@ export function StockAlmacenView() {
           <CardContent className="p-6 text-center">
             <Warehouse className="h-10 w-10 mx-auto text-teal-300 mb-3" />
             <p className="font-semibold text-gray-700">Configura tu almacén para ver el dibujo</p>
-            <p className="text-sm text-gray-500 mt-2 max-w-lg mx-auto">
-              Empieza por las <b>estanterías</b>: en <b>Configurar almacén</b> añade cada estantería con su nº de
-              <b> huecos</b> (ej. E1 con 12 huecos → se nombran solos E1-01 … E1-12). El mapa se dibuja a partir de
-              esa configuración y los huecos sin palets aparecen como LIBRE.
-            </p>
+            <Hint variant="tip" className="mt-2 max-w-lg mx-auto w-full">
+              Empieza por las <b>estanterías</b>: en <b>Configurar almacén</b> añade cada una con su nº de <b>huecos</b> (ej. E1 con 12 → E1-01…E1-12). El mapa se dibuja a partir de esa configuración y los huecos sin palets aparecen como LIBRE.
+            </Hint>
             <Button
               size="sm"
               className="mt-4 bg-teal-600 hover:bg-teal-700 text-white"
@@ -1561,10 +1554,9 @@ export function StockAlmacenView() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-gray-500">
-              Apunta la cámara al QR del palet (las etiquetas se generan e imprimen al guardar
-              <b> ENTRADAS de palets</b>). Al leerlo, se buscará automáticamente en el mapa.
-            </p>
+            <Hint variant="info" className="w-full">
+              Apunta la cámara al QR del palet (las etiquetas se generan al guardar <b>ENTRADAS de palets</b>). Al leerlo, se buscará automáticamente en el mapa.
+            </Hint>
             <div
               id={qrRegionId}
               className="w-full aspect-square rounded-lg overflow-hidden bg-black border-2 border-gray-200"
