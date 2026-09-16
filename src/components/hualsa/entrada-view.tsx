@@ -13,10 +13,10 @@ import { triggerBackup } from '@/lib/trigger-backup'
 import { EntradaGrilla } from '@/components/hualsa/entrada-grilla'
 import { QrEtiquetaDialog, type EtiquetaPalet } from '@/components/hualsa/qr-etiqueta'
 import {
-  loadAlmacenCfg, fetchAlmacenCfg, huecoOptimo, clasificarUbicacion, contadoresHuecos,
+  loadAlmacenCfg, fetchAlmacenCfg, huecoOptimo, clasificarUbicacion, contadoresHuecos, listadoHuecos,
   esC2EntradaPalet, normAlm, getIdent, getUbicacion, identDeCustomValues,
   isQrAuto, setQrAuto,
-  type EstanteriaCfg,
+  type EstanteriaCfg, type HuecoInfo,
 } from '@/lib/almacen'
 
 interface EntradaViewData {
@@ -100,6 +100,143 @@ function ComboInput({
           {filtered.map((s, i) => (
             <button key={s} className={`w-full text-left px-4 py-2.5 text-base transition-colors ${i === highlight ? 'bg-[#005bb5] text-white' : 'hover:bg-gray-50'} ${s.toLowerCase() === value.toLowerCase() ? 'font-bold' : ''}`} onMouseDown={e => { e.preventDefault(); onChange(s); setOpen(false) }} onMouseEnter={() => setHighlight(i)}>
               {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── UbicacionCombo: input de UBICACIÓN que OFRECE los huecos del almacén ───
+// Desplegable con TODAS las ubicaciones configuradas (agrupadas por zona, en
+// su orden físico) y su estado: LIBRE · N/M (queda sitio) · LLENO · N/∞.
+// Se puede seguir escribiendo a mano (filtra sobre la marcha); el hueco
+// óptimo va marcado con ⚡ para usarlo con un clic. Igual patrón que
+// ComboInput (teclado ↑↓/Enter/Esc, clic fuera cierra).
+function UbicacionCombo({
+  value,
+  onChange,
+  huecos,
+  optimo,
+  placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  huecos: HuecoInfo[]
+  optimo: string
+  placeholder: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(-1)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  // Filtro sobre la marcha (normalizado, sin acentos). Si lo escrito coincide
+  // EXACTAMENTE con un hueco ya puesto, se muestra la lista COMPLETA: el
+  // usuario quiere VER las demás opciones para poder cambiarlo.
+  const q = normAlm(value)
+  const exacto = !!q && huecos.some(h => normAlm(h.hueco) === q)
+  const filtrados = !q || exacto ? huecos : huecos.filter(h => normAlm(h.hueco).includes(q))
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) { setOpen(false); setHighlight(-1) }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!open || filtrados.length === 0) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(h => Math.min(h + 1, filtrados.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => Math.max(h - 1, 0)) }
+    else if (e.key === 'Enter' && highlight >= 0) { e.preventDefault(); onChange(filtrados[highlight].hueco); setOpen(false); setHighlight(-1) }
+    else if (e.key === 'Escape') { setOpen(false); setHighlight(-1) }
+  }
+
+  function elegir(hueco: string) {
+    onChange(hueco)
+    setOpen(false)
+    setHighlight(-1)
+  }
+
+  // Chip de estado de cada hueco: LIBRE (verde) · N/M con sitio (ámbar) ·
+  // LLENO (rojo) · N/∞ sin límite de altura (azul grisáceo)
+  function chipHueco(h: HuecoInfo): { text: string; cls: string } {
+    if (h.altura === 0) return h.ocupacion > 0
+      ? { text: `${h.ocupacion}/∞`, cls: 'bg-sky-100 text-sky-700' }
+      : { text: 'LIBRE', cls: 'bg-emerald-100 text-emerald-700' }
+    if (h.ocupacion === 0) return { text: 'LIBRE', cls: 'bg-emerald-100 text-emerald-700' }
+    if (h.ocupacion >= h.altura) return { text: `LLENO ${h.ocupacion}/${h.altura}`, cls: 'bg-red-100 text-red-600' }
+    return { text: `${h.ocupacion}/${h.altura}`, cls: 'bg-amber-100 text-amber-700' }
+  }
+
+  // Filas a pintar: cabecera de zona cuando cambia + huecos con índice plano
+  type Fila = { tipo: 'header'; rack: string; esPared: boolean } | { tipo: 'hueco'; h: HuecoInfo; i: number }
+  const filas: Fila[] = []
+  let rackActual: string | null = null
+  let idx = 0
+  for (const h of filtrados) {
+    if (h.rack !== rackActual) {
+      filas.push({ tipo: 'header', rack: h.rack, esPared: h.tipo === 'pared' })
+      rackActual = h.rack
+    }
+    filas.push({ tipo: 'hueco', h, i: idx++ })
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <div className="relative">
+        <Input
+          value={value}
+          onChange={e => { onChange(e.target.value); setOpen(true); setHighlight(-1) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          className="h-9 text-sm border-0 bg-transparent p-0 pr-6 focus:ring-0 focus:outline-none font-semibold"
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => { setOpen(o => !o); setHighlight(-1) }}
+          aria-label="Ver ubicaciones del almacén"
+          title="Ver las ubicaciones del almacén"
+          className="absolute right-0 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-[#005bb5]"
+        >
+          <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+      {open && (
+        <div className="absolute z-50 left-0 top-full mt-1 w-[300px] max-w-[85vw] bg-white border border-gray-200 rounded-xl shadow-lg max-h-[260px] overflow-auto">
+          {optimo && (
+            <button
+              type="button"
+              onMouseDown={e => { e.preventDefault(); elegir(optimo) }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left bg-teal-50 border-b border-teal-100 hover:bg-teal-100"
+            >
+              <Zap className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+              <span className="text-sm font-bold text-teal-800 font-mono">{optimo}</span>
+              <span className="ml-auto text-[9px] font-extrabold uppercase tracking-wider text-teal-600">hueco óptimo</span>
+            </button>
+          )}
+          {filas.length === 0 && (
+            <div className="px-3 py-3 text-xs text-gray-400">Sin huecos que coincidan con «{value}»</div>
+          )}
+          {filas.map((f, i) => f.tipo === 'header' ? (
+            <div key={`h-${i}`} className="px-3 pt-2 pb-1 text-[9px] font-extrabold uppercase tracking-wider text-gray-400 bg-gray-50 border-b border-gray-100">
+              {f.rack} · {f.esPared ? 'pared' : 'estantería'}
+            </div>
+          ) : (
+            <button
+              key={f.h.hueco}
+              type="button"
+              onMouseDown={e => { e.preventDefault(); elegir(f.h.hueco) }}
+              onMouseEnter={() => setHighlight(f.i)}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${f.i === highlight ? 'bg-[#005bb5] text-white' : 'hover:bg-gray-50'} ${exacto && normAlm(f.h.hueco) === q ? 'font-bold' : ''}`}
+            >
+              <span className="text-sm font-mono">{f.h.hueco}</span>
+              {optimo === f.h.hueco && <Zap className="h-3 w-3 text-amber-500 shrink-0" />}
+              <span className={`ml-auto text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${chipHueco(f.h).cls}`}>{chipHueco(f.h).text}</span>
             </button>
           ))}
         </div>
@@ -201,6 +338,11 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   // hay"): permite respetar las ALTURAS por hueco al sugerir el óptimo —
   // una columna con 1/3 palets sigue admitiendo 2 más; una llena ya no.
   const ocupadas = useMemo(() => contadoresHuecos(data.todosRegistros), [data.todosRegistros])
+
+  // V26: listado de TODOS los huecos configurados (con su estado) y el hueco
+  // óptimo actual — lo OFRECE el desplegable de UBICACIÓN al meter palets.
+  const huecosLista = useMemo(() => listadoHuecos(almacenCfg, ocupadas), [almacenCfg, ocupadas])
+  const huecoOptimoActual = useMemo(() => (almacenCfg.length > 0 ? huecoOptimo(almacenCfg, ocupadas)?.hueco || '' : ''), [almacenCfg, ocupadas])
 
   const esPalet = esC2EntradaPalet(c2)
 
@@ -606,8 +748,9 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     // Custom fields
     if (field.isCustom) {
       const esUbic = field.key === ubicKey
+      const ofreceHuecos = esUbic && almacenCfg.length > 0
       return (
-        <div className={`bg-white rounded-lg shadow-sm border overflow-hidden ${esUbic && esPalet ? 'border-teal-300' : 'border-gray-100'}`}>
+        <div className={`bg-white rounded-lg shadow-sm border ${ofreceHuecos ? 'overflow-visible' : 'overflow-hidden'} ${esUbic && esPalet ? 'border-teal-300' : 'border-gray-100'}`}>
           <div className="px-3 pt-2 pb-0.5 flex items-center justify-between gap-2">
             <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}{field.required ? ' *' : ''}</Label>
             {esUbic && esPalet && <span className="text-[9px] font-bold text-teal-600 uppercase tracking-wider whitespace-nowrap">⚡ hueco auto</span>}
@@ -619,6 +762,23 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
               <Input type="date" value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
             ) : field.type === 'number' ? (
               <Input type="number" step="0.01" value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
+            ) : ofreceHuecos ? (
+              // V26: el campo UBICACIÓN OFRECE las ubicaciones del almacén
+              // (desplegable con todos los huecos y su estado). Sigue siendo
+              // editable a mano y mantiene la asignación automática (⚡).
+              <UbicacionCombo
+                value={customValues[field.key] || ''}
+                onChange={v => {
+                  const antes = String(customValues[field.key] || '').trim()
+                  // El usuario vació el campo a mano → respetar su decisión (no rellenar)
+                  if (antes && !v.trim()) ubicClearedRef.current = true
+                  if (v.trim()) ubicClearedRef.current = false
+                  setCustomValue(field.key, v)
+                }}
+                huecos={huecosLista}
+                optimo={esPalet ? huecoOptimoActual : ''}
+                placeholder={field.placeholder || 'Elige o escribe el hueco…'}
+              />
             ) : esUbic ? (
               <Input
                 value={customValues[field.key] || ''}

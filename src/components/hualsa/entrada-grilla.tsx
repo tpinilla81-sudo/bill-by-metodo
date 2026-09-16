@@ -10,7 +10,7 @@ import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/
 import { useConfig, parseCustomData, serializeCustomData, fieldAppliesToClient, getFieldLabel, type FieldDef } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 import {
-  loadAlmacenCfg, fetchAlmacenCfg, huecoOptimo, contadoresHuecos, esC2EntradaPalet, normAlm, identDeCustomValues,
+  loadAlmacenCfg, fetchAlmacenCfg, huecoOptimo, contadoresHuecos, listadoHuecos, esC2EntradaPalet, normAlm, identDeCustomValues,
   isQrAuto, setQrAuto,
   type EstanteriaCfg,
 } from '@/lib/almacen'
@@ -140,6 +140,10 @@ export function EntradaGrilla() {
   // Palets por hueco (con CUENTA): el hueco óptimo respeta las ALTURAS por
   // hueco — una columna con 1/3 palets aún admite más; una llena se salta.
   const ocupadas = useMemo(() => contadoresHuecos(todosRegistros), [todosRegistros])
+
+  // V26: huecos configurados para OFRECER en la celda UBICACIÓN (datalist
+  // nativo: sugerencias al escribir, sin estorbar la edición de la celda).
+  const huecosLista = useMemo(() => listadoHuecos(almacenCfg, ocupadas), [almacenCfg, ocupadas])
 
   const loadData = useCallback(async () => {
     const [cRes, catRes, allRes] = await Promise.all([
@@ -498,6 +502,12 @@ export function EntradaGrilla() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 space-y-3">
+      {/* V26: catálogo de huecos del almacén para la celda UBICACIÓN — el
+          navegador los OFRECE como sugerencias al escribir (datalist nativo,
+          funciona también en móvil). Se rellena desde la config del almacén. */}
+      <datalist id="hualsa-huecos">
+        {huecosLista.map(h => <option key={h.hueco} value={h.hueco} />)}
+      </datalist>
       {/* Status */}
       {statusMsg && (
         <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${statusMsg.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
@@ -696,7 +706,8 @@ export function EntradaGrilla() {
                             updateRow(row.id, { customValues: { ...row.customValues, [f.key]: e.target.value } })
                           }}
                           onKeyDown={e => handleKeyDown(e, idx, f.key)}
-                          title={esUbic ? (autoUbic ? '⚡ Hueco asignado automáticamente — primer hueco libre' : 'Ubicación del palet (hueco), p.ej. E1-04') : undefined}
+                          list={esUbic && huecosLista.length > 0 ? 'hualsa-huecos' : undefined}
+                          title={esUbic ? (autoUbic ? '⚡ Hueco asignado automáticamente — primer hueco libre' : 'Ubicación del palet (hueco) — elige de la lista o escribe, p.ej. E1-04') : undefined}
                           className={`w-full h-8 px-1 text-sm bg-transparent border border-transparent hover:border-gray-200 focus:border-[#005bb5] focus:outline-none rounded ${autoUbic ? 'text-teal-700 font-semibold' : ''}`}
                         />
                       </td>

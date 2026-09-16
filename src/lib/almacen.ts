@@ -611,3 +611,43 @@ export function clasificarUbicacion(cfg: EstanteriaCfg[], ocupadas: Set<string> 
   }
   return 'no-config'
 }
+
+// ─── V26: LISTADO DE HUECOS para OFRECER en ENTRADA ────────────────────
+// Todos los huecos del almacén configurado, en su ORDEN FÍSICO (zonas en
+// el orden en que se crearon, huecos 01…N) y con su ocupación actual. Lo
+// usan el desplegable de UBICACIÓN del formulario de ENTRADA y el datalist
+// de la grilla: al meter un palet, el sistema OFRECE estas ubicaciones.
+export interface HuecoInfo {
+  hueco: string     // nombre completo, p.ej. "E1-04"
+  rack: string      // zona, p.ej. "E1"
+  pos: string       // nº de hueco, p.ej. "04"
+  tipo: 'estanteria' | 'pared'
+  altura: number    // nº de palets apilables (0 = sin límite)
+  ocupacion: number // palets que hay ahora mismo
+  estado: EstadoUbicacion  // 'libre' | 'con-stock' | 'ocupado'
+}
+
+export function listadoHuecos(cfg: EstanteriaCfg[], ocupadas: Set<string> | Map<string, number>): HuecoInfo[] {
+  const out: HuecoInfo[] = []
+  for (const e of estanteriasValidas(cfg)) {
+    const prefijos = [e.nombre, ...e.alias].filter(Boolean)
+    for (let n = 1; n <= e.huecos; n++) {
+      const pos = padPos(n, e.huecos)
+      const altura = capDeHueco(e.est, n)
+      // Ocupación del hueco: el máximo entre sus claves (nombre actual o
+      // alias de la zona) — mismo criterio que huecoOptimo().
+      let ocupacion = 0
+      for (const p of prefijos) {
+        const k = normHuecoKey(`${p}-${pos}`)
+        if (!k) continue
+        const o = ocupacionDe(ocupadas, k)
+        if (o > ocupacion) ocupacion = o
+      }
+      const estado: EstadoUbicacion = altura > 0
+        ? (ocupacion >= altura ? 'ocupado' : ocupacion > 0 ? 'con-stock' : 'libre')
+        : (ocupacion > 0 ? 'ocupado' : 'libre')
+      out.push({ hueco: `${e.nombre}-${pos}`, rack: e.nombre, pos, tipo: e.est.tipo === 'pared' ? 'pared' : 'estanteria', altura, ocupacion, estado })
+    }
+  }
+  return out
+}
