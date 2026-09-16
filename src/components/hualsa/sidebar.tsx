@@ -263,7 +263,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
             {reloading ? 'Actualizando…' : 'Actualizar app'}
           </button>
           {displayName}
-          <div className="mt-1 text-[9px] text-green-700 font-mono">build: V22-HUECOS-POR-NIVEL · 2026-09-16</div>
+          <div className="mt-1 text-[9px] text-green-700 font-mono">build: V23-MAPA-POR-NIVELES · 2026-09-16</div>
         </div>
       </aside>
     </>

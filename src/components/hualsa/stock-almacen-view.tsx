@@ -12,7 +12,7 @@ import { fmtDate, type Cliente, type Registro } from '@/lib/hualsa-utils'
 import {
   normAlm, isEntradaPalet, isSalidaPalet, getUbicacion, getIdent, splitUbicacion,
   diasEnAlmacen, buildStock, buildRacks, nombresHuecos, detectarEstanterias,
-  loadAlmacenCfg, saveAlmacenCfg, type EstanteriaCfg, type LoteStock,
+  loadAlmacenCfg, saveAlmacenCfg, type EstanteriaCfg, type LoteStock, type CeldaStock,
 } from '@/lib/almacen'
 
 // Tipo minimo para el escáner QR — cargado dinamicamente para evitar
@@ -46,6 +46,19 @@ function textoPorDias(dias: number): string {
   if (dias > 60) return 'text-red-700'
   if (dias > 30) return 'text-amber-700'
   return 'text-emerald-700'
+}
+
+// Palets de una COLUMNA de abajo arriba: cada lote ocupa tantos puestos
+// como palets tenga (cantRestante), en orden FIFO (el más antiguo abajo).
+// Lo usa el ALZADO del mapa para pintar cada nivel/altura con SU palet
+// (ident + días), porque el motor solo guarda la ubicación de columna.
+function paletsDeColumna(c: CeldaStock): LoteStock[] {
+  const out: LoteStock[] = []
+  for (const l of [...c.lotes].sort((a, b) => a.fecha.localeCompare(b.fecha))) {
+    const n = Math.max(1, Math.round(l.cantRestante || 0))
+    for (let i = 0; i < n; i++) out.push(l)
+  }
+  return out
 }
 
 // Input del nombre de una estantería con estado local — el commit se hace al
@@ -1165,6 +1178,9 @@ export function StockAlmacenView() {
                 <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-sm bg-amber-200 border border-amber-400 inline-block" /> 30–60 días</span>
                 <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-sm bg-red-200 border border-red-400 inline-block" /> +60 días</span>
                 <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-sm bg-gray-100 border-2 border-dashed border-gray-300 inline-block" /> LIBRE</span>
+                {racks.some(rk => rk.celdas.some(c => c.cap > 1)) && (
+                  <span className="text-gray-400 font-semibold">filas = niveles/alturas · cada casilla = 1 palet</span>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -1184,13 +1200,31 @@ export function StockAlmacenView() {
             <div className="flex flex-wrap gap-4 print-racks">
               {racks.map(rk => {
                 const cap = capInfo(rk.name, rk.total)
-                const tipoRack = almacenCfg.find(c => c.nombre.trim().toUpperCase() === rk.name)?.tipo
+                const cfgRack = almacenCfg.find(c => c.nombre.trim().toUpperCase() === rk.name)
+                const tipoRack = cfgRack?.tipo
+                const esParedRack = tipoRack === 'pared'
+                // Nº de niveles/alturas que se dibujan en el alzado: la altura
+                // máxima de las columnas (cap). ≥ 2 → una fila por nivel (se
+                // ve TODO lo configurado); si no → fila única (apilado libre).
+                const kNiveles = rk.celdas.reduce((m, c) => Math.max(m, c.cap > 0 ? c.cap : 0), 0)
+                // Columnas del alzado: palets de abajo arriba + altura dibujada
+                // (cap 0 = sin límite → llega hasta el nivel más alto dibujado)
+                const columnas = rk.celdas.map(c => ({
+                  c,
+                  palets: paletsDeColumna(c),
+                  altura: c.cap > 0 ? c.cap : Math.max(1, kNiveles),
+                }))
                 return (
                 <div key={rk.name} className="rounded-xl border-2 border-gray-300 bg-gradient-to-b from-gray-50 to-white p-3 shadow-sm min-w-[250px] flex-1 max-w-full print-rack">
                   <div className="flex items-center justify-between mb-1 px-0.5">
                     <div className="font-bold text-gray-700 text-sm flex items-center gap-1.5">
                       <Warehouse className="h-4 w-4 text-teal-600" />
                       {tipoRack === 'pared' ? 'PARED' : 'ESTANTERÍA'} {rk.name}
+                      {kNiveles >= 2 && (
+                        <span className="text-[10px] font-bold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5">
+                          {kNiveles} {esParedRack ? 'alturas' : 'niveles'}
+                        </span>
+                      )}
                     </div>
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
                       cap.cap > 0
@@ -1213,8 +1247,97 @@ export function StockAlmacenView() {
                       />
                     </div>
                   )}
-                  {/* Postes laterales del estante + huecos */}
+                  {/* Postes laterales + huecos — ALZADO POR NIVELES/ALTURAS:
+                      se dibuja TODO lo configurado: una fila por nivel (la más
+                      alta arriba, columnas alineadas) y cada casilla = 1 palet
+                      (de abajo arriba, FIFO). Sin niveles definidos → fila
+                      única como antes. */}
                   <div className="border-l-[6px] border-r-[6px] border-gray-400 rounded-sm bg-white p-1.5">
+                    {kNiveles >= 2 ? (
+                    <div className="overflow-x-auto">
+                      <div className="min-w-full w-max">
+                        {Array.from({ length: kNiveles }, (_, idx) => kNiveles - idx).map(j => {
+                          const visibles = columnas.filter(col => col.altura >= j).length
+                          return (
+                            <div key={j} className="flex items-stretch gap-1 mb-1 last:mb-0">
+                              <div className="w-[4.4rem] shrink-0 flex flex-col items-end justify-center pr-1 text-right leading-tight">
+                                <span className="text-[9px] font-extrabold text-gray-500 uppercase tracking-wide">
+                                  {j === 1 ? 'Suelo' : `${j}${esParedRack ? 'ª altura' : 'º nivel'}`}
+                                </span>
+                                <span className="text-[8px] font-bold text-gray-400">{visibles} huecos</span>
+                              </div>
+                              <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${rk.celdas.length}, minmax(56px, 1fr))` }}>
+                                {columnas.map((col, i) => {
+                                  if (col.altura < j) {
+                                    return (
+                                      <div key={i} className="rounded-md border-2 border-dashed border-gray-200/70 bg-gray-50/40" title="A esta altura no llega esta columna" />
+                                    )
+                                  }
+                                  const { c, palets, altura } = col
+                                  const palet = palets[j - 1]
+                                  const ocupada = j <= palets.length
+                                  const dias = palet ? diasEnAlmacen(palet.fecha, now) : 0
+                                  const esTope = j === altura
+                                  const llena = c.cap > 0 && c.total >= c.cap
+                                  const desborda = esTope && c.total > altura
+                                  const match = cellMatch(c)
+                                  return (
+                                    <div
+                                      key={i}
+                                      title={`${c.ubicacion} · ${j === 1 ? 'suelo' : `${j}${esParedRack ? 'ª altura' : 'º nivel'}`}${ocupada ? ` · palet ${palet?.ident || '—'} · ${dias} días` : ' · LIBRE'}${llena ? ' · LLENO' : ''}`}
+                                      className={`rounded-md border-2 p-1 shadow-sm min-h-[3.2rem] flex flex-col ${
+                                        match
+                                          ? 'ring-4 ring-sky-500 ring-offset-1 relative z-10'
+                                          : queryNorm
+                                            ? 'opacity-30'
+                                            : ''
+                                      } ${ocupada ? colorPorDias(dias) : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'} ${llena && esTope && !match ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
+                                    >
+                                      <div className="flex items-center justify-between gap-0.5 pb-0.5 border-b border-gray-300/70">
+                                        <span className="text-[8px] font-bold text-gray-400 truncate">{c.rack}</span>
+                                        <span className={`text-[11px] font-extrabold leading-none ${ocupada ? textoPorDias(dias) : 'text-gray-300'}`}>{c.pos}</span>
+                                      </div>
+                                      {ocupada ? (
+                                        <>
+                                          <div className={`text-[10px] font-bold truncate mt-0.5 ${textoPorDias(dias)}`}>{palet?.ident || '—'}</div>
+                                          <div className="mt-auto flex items-baseline justify-between gap-0.5">
+                                            <span className={`text-sm font-extrabold leading-none ${textoPorDias(dias)}`}>{dias}<span className="text-[8px] ml-px">d</span></span>
+                                            {desborda ? (
+                                              <span className="text-[8px] font-extrabold text-red-600" title={`Hay ${c.total} palets y la columna llega a ${altura}`}>+{c.total - altura}</span>
+                                            ) : llena && esTope ? (
+                                              <span className="text-[8px] font-extrabold text-red-600">LLENO</span>
+                                            ) : c.cap === 0 && esTope ? (
+                                              <span className="text-[10px] font-bold text-gray-300" title="Columna sin límite de altura">∞</span>
+                                            ) : null}
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <div className="flex-1 flex flex-col items-center justify-center">
+                                          <span className="text-sm font-extrabold text-gray-300 leading-none">—</span>
+                                          <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Libre</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })}
+                        {/* Totales por columna: palets / altura */}
+                        <div className="flex items-center gap-1 mt-1">
+                          <div className="w-[4.4rem] shrink-0 text-right pr-1 text-[8px] font-extrabold text-gray-400 uppercase tracking-wide">Total</div>
+                          <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${rk.celdas.length}, minmax(56px, 1fr))` }}>
+                            {columnas.map(({ c }, i) => (
+                              <div key={i} className="text-center text-[9px] font-extrabold tabular-nums text-gray-600">
+                                {c.total}{c.cap > 0 ? <span className="text-gray-400 font-bold">/{c.cap}</span> : <span className="text-gray-300 font-bold">/∞</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    ) : (
                     <div className="grid grid-cols-[repeat(auto-fill,minmax(108px,1fr))] gap-1.5">
                       {rk.celdas.map(c => {
                         const ocupada = c.total > 0
@@ -1288,6 +1411,7 @@ export function StockAlmacenView() {
                         )
                       })}
                     </div>
+                    )}
                   </div>
                   {/* Base del estante */}
                   <div className="h-2 bg-gray-400 rounded-b-lg -mx-1.5 mt-0" />
