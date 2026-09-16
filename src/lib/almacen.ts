@@ -46,6 +46,11 @@ export interface EstanteriaCfg {
   tipo?: 'estanteria' | 'pared'  // V21: estantería (rack por niveles) o pared (apilado en suelo).
                     // Afecta a las etiquetas/ayuda de la configuración; para el
                     // motor ambas se modelan igual (huecos en suelo + altura por hueco)
+  orientacion?: 'izq' | 'der'   // V24: desde DÓNDE se empiezan a numerar los huecos
+                    // al dibujar el mapa. 'izq' (por defecto) → el hueco 01 a la
+                    // izquierda; 'der' → el hueco 01 a la derecha (orden invertido).
+                    // No afecta a los nombres (E1-01…E1-N) ni al motor — solo al
+                    // orden visual de las columnas del alzado.
   huecos: number    // nº de huecos de la fila del SUELO (fila de altura 1)
   cap: number       // capacidad máx. de palets (0 = sin límite) — opcional
   caps?: number[]   // ALTURA por hueco (nº de palets apilables): caps[0] → hueco 01,
@@ -330,6 +335,7 @@ export function loadAlmacenCfg(): EstanteriaCfg[] {
             id: e.id || Math.random().toString(36).slice(2, 9),
             nombre: String(e.nombre).trim().toUpperCase(),
             tipo: e.tipo === 'pared' ? 'pared' : 'estanteria',
+            orientacion: e.orientacion === 'der' ? 'der' : 'izq',
             huecos: Math.max(0, Math.min(200, Number(e.huecos) || 0)),
             cap: Math.max(0, Number(e.cap) || 0),
             caps: Array.isArray(e.caps)

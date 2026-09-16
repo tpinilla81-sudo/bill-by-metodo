@@ -323,6 +323,9 @@ export function StockAlmacenView() {
   const [addOpen, setAddOpen] = useState(false)
   const [newRackTipo, setNewRackTipo] = useState<'estanteria' | 'pared'>('estanteria')
   const [newRackName, setNewRackName] = useState('')
+  // V24: orientación — desde dónde se numeran los huecos al dibujar el mapa.
+  // 'izq' (por defecto): hueco 01 a la izquierda · 'der': hueco 01 a la derecha.
+  const [newRackOrientacion, setNewRackOrientacion] = useState<'izq' | 'der'>('izq')
   // Formulario en 2 pasos: PRIMERO el nº de niveles/alturas (incluye el
   // suelo) y LUEGO un input de huecos por cada fila. Las filas nuevas
   // empiezan con el valor de la última; los valores escritos se conservan.
@@ -356,14 +359,14 @@ export function StockAlmacenView() {
   // filas = nº de huecos de CADA nivel/altura (fila 1 = suelo). Ej:
   // [12, 10, 6] → suelo 12 huecos, 2º nivel 10, 3º nivel 6. La pirámide
   // (una fila nunca supera a la de abajo) se aplica en capsDesdeNiveles.
-  function anadirEstanteria(nombre: string, filas: number[], cap: number, tipo: 'estanteria' | 'pared' = 'estanteria'): boolean {
+  function anadirEstanteria(nombre: string, filas: number[], cap: number, tipo: 'estanteria' | 'pared' = 'estanteria', orientacion: 'izq' | 'der' = 'izq'): boolean {
     const n = nombre.trim().toUpperCase()
     const { caps, suelo } = capsDesdeNiveles(filas)
     if (!n || suelo <= 0) return false
     if (almacenCfg.some(e => e.nombre.trim().toUpperCase() === n)) return false
     setAlmacenCfg(prev => prev.some(e => e.nombre.trim().toUpperCase() === n)
       ? prev
-      : [...prev, { id: Math.random().toString(36).slice(2, 9), nombre: n, tipo, huecos: suelo, cap: Math.max(0, cap || 0), caps }])
+      : [...prev, { id: Math.random().toString(36).slice(2, 9), nombre: n, tipo, orientacion, huecos: suelo, cap: Math.max(0, cap || 0), caps }])
     return true
   }
   function quitarEstanteria(id: string) {
@@ -376,6 +379,11 @@ export function StockAlmacenView() {
   // Solo cambia etiquetas/ayuda — el motor es el mismo (huecos + altura por hueco).
   function cambiarTipo(id: string) {
     setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, tipo: e.tipo === 'pared' ? 'estanteria' : 'pared' } : e)))
+  }
+  // V24: cambiar la ORIENTACIÓN de la zona (de dónde se numeran los huecos al
+  // dibujar el mapa). 'izq' ↔ 'der'. No afecta al motor — solo al orden visual.
+  function cambiarOrientacion(id: string) {
+    setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, orientacion: e.orientacion === 'der' ? 'izq' : 'der' } : e)))
   }
 
   // ── FILAS DE ALTURA (configuración principal V21) ──
@@ -846,6 +854,21 @@ export function StockAlmacenView() {
                         >
                           {esPared ? 'PARED' : 'ESTANTERÍA'}
                         </button>
+                        {/* ORIENTACIÓN: clicable para cambiar izq ↔ der.
+                            Indica desde DÓNDE se numeran los huecos en el mapa. */}
+                        <button
+                          onClick={() => cambiarOrientacion(e.id)}
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${
+                            e.orientacion === 'der'
+                              ? 'bg-indigo-50 text-indigo-700 border-indigo-300 hover:bg-indigo-100'
+                              : 'bg-teal-50 text-teal-700 border-teal-300 hover:bg-teal-100'
+                          }`}
+                          title={e.orientacion === 'der'
+                            ? 'DERECHA: el hueco 01 se dibuja a la derecha — pulsa para cambiar a IZQUIERDA'
+                            : 'IZQUIERDA: el hueco 01 se dibuja a la izquierda — pulsa para cambiar a DERECHA'}
+                        >
+                          {e.orientacion === 'der' ? '→ Der' : '← Izq'}
+                        </button>
                         {e.huecos > 0 ? (
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ml-auto ${
                             ocup > 0 ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-gray-50 text-gray-400 border-gray-200'
@@ -927,7 +950,7 @@ export function StockAlmacenView() {
                 {addOpen ? (
                   <div className="rounded-lg border-2 border-dashed border-teal-400 bg-teal-50/40 p-3">
                     <div className="text-[11px] font-bold text-teal-800 uppercase tracking-wide mb-2">Nueva zona</div>
-                    {/* 1º — TIPO de zona: estantería o pared */}
+                    {/* 1º — TIPO de zona: estantería o pared + orientación */}
                     <div className="mb-2">
                       <Label className="text-[10px] font-semibold text-gray-400 uppercase">Tipo de zona</Label>
                       <div className="flex gap-1 mt-0.5">
@@ -946,6 +969,24 @@ export function StockAlmacenView() {
                         >
                           <span className={`block text-[11px] font-bold ${newRackTipo === 'pared' ? 'text-amber-800' : 'text-gray-600'}`}>PARED</span>
                           <span className="block text-[9px] leading-tight text-gray-500">apilado en suelo · uno encima de otro</span>
+                        </button>
+                      </div>
+                      {/* Orientación: desde DÓNDE se numeran los huecos (01…N) en el mapa */}
+                      <div className="flex items-center gap-1 mt-1.5">
+                        <Label className="text-[10px] font-semibold text-gray-400 uppercase shrink-0">Empieza en</Label>
+                        <button
+                          onClick={() => setNewRackOrientacion('izq')}
+                          className={`h-6 px-2 rounded-md border text-[10px] font-bold transition-colors ${newRackOrientacion === 'izq' ? 'bg-teal-100 border-teal-400 text-teal-800' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                          title="El hueco 01 se dibuja a la izquierda (orden natural: 01, 02, 03… de izquierda a derecha)"
+                        >
+                          ← Izquierda
+                        </button>
+                        <button
+                          onClick={() => setNewRackOrientacion('der')}
+                          className={`h-6 px-2 rounded-md border text-[10px] font-bold transition-colors ${newRackOrientacion === 'der' ? 'bg-teal-100 border-teal-400 text-teal-800' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                          title="El hueco 01 se dibuja a la derecha (orden invertido: 01, 02, 03… de derecha a izquierda) — útil para paredes vistas desde el otro lado"
+                        >
+                          Derecha →
                         </button>
                       </div>
                     </div>
@@ -992,8 +1033,8 @@ export function StockAlmacenView() {
                         className="h-8 bg-teal-600 hover:bg-teal-700 text-white"
                         onClick={() => {
                           const filas = newRackFilas.slice(0, numNewNiveles).map(s => parseInt(s, 10) || 0)
-                          const ok = anadirEstanteria(newRackName, filas, parseInt(newRackCap, 10) || 0, newRackTipo)
-                          if (ok) { setNewRackName(''); setNewRackNiveles(''); setNewRackFilas(['']); setNewRackCap('') }
+                          const ok = anadirEstanteria(newRackName, filas, parseInt(newRackCap, 10) || 0, newRackTipo, newRackOrientacion)
+                          if (ok) { setNewRackName(''); setNewRackNiveles(''); setNewRackFilas(['']); setNewRackCap(''); setNewRackOrientacion('izq') }
                         }}
                       >
                         <Plus className="h-4 w-4 mr-1" /> Añadir
@@ -1207,6 +1248,10 @@ export function StockAlmacenView() {
                   palets: paletsDeColumna(c),
                   altura: c.cap > 0 ? c.cap : Math.max(1, kNiveles),
                 }))
+                // V24: ORIENTACIÓN — si la zona está marcada como 'der', el
+                // hueco 01 se dibuja a la derecha (orden invertido).
+                const orientacionRack = cfgRack?.orientacion === 'der' ? 'der' : 'izq'
+                const columnasVis = orientacionRack === 'der' ? [...columnas].reverse() : columnas
                 return (
                 <div key={rk.name} className="rounded-xl border-2 border-gray-300 bg-gradient-to-b from-gray-50 to-white p-3 shadow-sm min-w-[250px] flex-1 max-w-full print-rack">
                   <div className="flex items-center justify-between mb-1 px-0.5">
@@ -1218,6 +1263,10 @@ export function StockAlmacenView() {
                           {kNiveles} {esParedRack ? 'alturas' : 'niveles'}
                         </span>
                       )}
+                      {/* Badge de orientación visible en el mapa */}
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-1.5 py-0.5" title={orientacionRack === 'der' ? 'Empieza en la derecha' : 'Empieza en la izquierda'}>
+                        {orientacionRack === 'der' ? '→ Der' : '← Izq'}
+                      </span>
                     </div>
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
                       cap.cap > 0
@@ -1250,7 +1299,7 @@ export function StockAlmacenView() {
                     <div className="overflow-x-auto">
                       <div className="min-w-full w-max">
                         {Array.from({ length: kNiveles }, (_, idx) => kNiveles - idx).map(j => {
-                          const visibles = columnas.filter(col => col.altura >= j).length
+                          const visibles = columnasVis.filter(col => col.altura >= j).length
                           return (
                             <div key={j} className="flex items-stretch gap-1 mb-1 last:mb-0">
                               <div className="w-[4.4rem] shrink-0 flex flex-col items-end justify-center pr-1 text-right leading-tight">
@@ -1260,7 +1309,7 @@ export function StockAlmacenView() {
                                 <span className="text-[8px] font-bold text-gray-400">{visibles} huecos</span>
                               </div>
                               <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${rk.celdas.length}, minmax(56px, 1fr))` }}>
-                                {columnas.map((col, i) => {
+                                {columnasVis.map((col, i) => {
                                   if (col.altura < j) {
                                     return (
                                       <div key={i} className="rounded-md border-2 border-dashed border-gray-200/70 bg-gray-50/40" title="A esta altura no llega esta columna" />
@@ -1321,7 +1370,7 @@ export function StockAlmacenView() {
                         <div className="flex items-center gap-1 mt-1">
                           <div className="w-[4.4rem] shrink-0 text-right pr-1 text-[8px] font-extrabold text-gray-400 uppercase tracking-wide">Total</div>
                           <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${rk.celdas.length}, minmax(56px, 1fr))` }}>
-                            {columnas.map(({ c }, i) => (
+                            {columnasVis.map(({ c }, i) => (
                               <div key={i} className="text-center text-[9px] font-extrabold tabular-nums text-gray-600">
                                 {c.total}{c.cap > 0 ? <span className="text-gray-400 font-bold">/{c.cap}</span> : <span className="text-gray-300 font-bold">/∞</span>}
                               </div>
@@ -1332,7 +1381,7 @@ export function StockAlmacenView() {
                     </div>
                     ) : (
                     <div className="grid grid-cols-[repeat(auto-fill,minmax(108px,1fr))] gap-1.5">
-                      {rk.celdas.map(c => {
+                      {(orientacionRack === 'der' ? [...rk.celdas].reverse() : rk.celdas).map(c => {
                         const ocupada = c.total > 0
                         const lotesUnicos = [...new Map(c.lotes.map(l => [l.ident || l.id, l])).values()]
                         const diasMax = c.dias
