@@ -1500,3 +1500,60 @@ Stage Summary:
 - El mapa del almacén ahora se ve en TODOS los dispositivos de la empresa (config por tenant en BD)
 - Migración transparente: al abrir STOCK ALMACÉN en el PC donde estaba configurado, la config sube sola al servidor
 - Deploy: commit b8d3a67, build kJbVNltXUe6sncuuthCtR (17:25 UTC)
+---
+Task ID: V26-UBIC-OFRECIDAS
+Agent: main
+Task: "ok, estas ubicaciones son las qeu tiene qeu ofrecer en entradas cuando se metan" — el campo UBICACIÓN de ENTRADAS debe OFRECER las ubicaciones configuradas del almacén (zonas/huecos de STOCK ALMACÉN, V21-V25) al meter datos
+
+Work Log:
+- almacen.ts: nueva listadoHuecos(cfg, ocupadas) → HuecoInfo[] — todos los
+  huecos configurados en orden físico (zonas en orden de creación, huecos
+  01…N) con tipo de zona, altura, ocupación y estado (libre/con-stock/
+  ocupado). Mismo criterio de claves (alias incluidos) que huecoOptimo.
+- entrada-view.tsx:
+  * Nuevo componente UbicacionCombo (patrón ComboInput): input + chevron
+    "Ver ubicaciones del almacén" + desplegable con TODOS los huecos
+    agrupados por zona (cabecera "E1 · estantería" / "P1 · pared"), chip de
+    estado por hueco (LIBRE verde · N/M ámbar · LLENO N/M rojo · N/∞ azul
+    sin límite de altura), filtro al escribir (normalizado; si lo escrito
+    coincide exacto con un hueco muestra la lista COMPLETA para poder
+    cambiar), teclado ↑↓/Enter/Esc, clic fuera cierra, y botón superior
+    "⚡ E1-01 HUECO ÓPTIMO" (solo con concepto ENTRADA PALET).
+  * renderFieldInput: esUbic + almacénCfg>0 → UbicacionCombo (card pasa a
+    overflow-visible para que el desplegable no se recorte); sin config →
+    input de texto libre de siempre. La lógica ubicClearedRef (vaciar a
+    mano se respeta) se conserva en el onChange del combo.
+  * Memos huecosLista y huecoOptimoActual (almacenCfg + ocupadas).
+- entrada-grilla.tsx: <datalist id="hualsa-huecos"> con todos los huecos +
+  atributo list= en la celda UBICACIÓN (sugerencias nativas al escribir,
+  también en móvil); tooltip actualizado. Auto-asignación ⚡ intacta.
+- sidebar.tsx: build marker V26-UBIC-OFRECIDAS · 2026-09-17.
+
+Verificación (agent-browser, localhost rebuild):
+- OJO servidor: hay supervisor .zscripts/dev.sh que RELANZA custom-server
+  al matarlo (mi nohup daba EADDRINUSE y quedaba zombi); tras rebuild basta
+  pkill y esperar al hijo nuevo del supervisor — sirvió todos los chunks.
+- Login dev: transporteshualsa@gmail.com / hualsa2024 (reseteada con
+  scripts/set-admin-password.js). Browser viejo con chunks cacheados →
+  cerrar sesión de navegador y reabrir (ChunkLoadError).
+- Config test E1 estantería 12 huecos niveles [12,10,6] + P1 pared [8,8,3]
+  subida por PUT /api/almacen + localStorage. Form: desplegable ofrece
+  E1-01…E1-12 + P1-01…P1-08 con cabeceras de zona ✓. Seleccionar E1-05 →
+  valor + chip "E1-05 · libre" ✓. Escribir "P1" filtra a la zona P1 ✓.
+- Con stock (E1-01×2, E1-07×2, P1-02×1 vía API): chips "E1-01 2/3",
+  "E1-07 LLENO 2/2", "P1-02 1/3", resto LIBRE ✓. Vaciar a mano → NO se
+  reasigna (by design) y chip "Hueco óptimo: E1-01 usar" ✓. Concepto
+  ENTRADA PALET → botón "⚡ E1-01 HUECO ÓPTIMO" arriba del desplegable,
+  clic lo pone ✓.
+- Grilla: datalist con 20 opciones ✓, auto-asignación E1-01 (2/3 aún admite
+  1) ✓. Móvil 375px: desplegable 300px encaja ✓ (VLM: sin glitches).
+- 0 errores consola/página. tsc/eslint: solo preexistentes. npm run build OK.
+- Limpieza: 3 registros TEST-V26 borrados, cfg servidor reseteada a [],
+  localStorage del browser limpiada.
+
+Stage Summary:
+- Commit fab687c V26-UBIC-OFRECIDAS pushed a origin/main (Vercel auto-deploy).
+- Al meter ENTRADAS el sistema ahora OFRECE las ubicaciones del almacén:
+  formulario normal con desplegable completo (estado en vivo de cada hueco y
+  ⚡ óptimo) y grilla con sugerencias al escribir. La config sale del
+  servidor (V25) → mismo listado en PC y móvil de la empresa.
