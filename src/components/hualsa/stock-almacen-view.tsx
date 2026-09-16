@@ -69,6 +69,143 @@ function NombreEstanteriaInput({ nombre, onCommit }: { nombre: string; onCommit:
   )
 }
 
+// ─── Editor "Por altura" (vista complementaria al editor "Por hueco") ───
+// En lugar de definir la altura de CADA hueco individual (modo 'hueco'),
+// el usuario define CUÁNTOS huecos hay en cada nivel (suelo, 2º, 3º…).
+// Pensado para zonas SIN estantería donde se apila en el suelo: "tengo 10
+// palets en el suelo, de esos 8 apilados a 2, y de esos 8 hay 3 que llegan a 3".
+// internally → caps[] se rellena como pirámide: primeros N_k → altura k, etc.
+function PorAlturaEditor({
+  huecos,
+  niveles,
+  onChangeNiveles,
+  onAplicarPiramide,
+  onReset,
+}: {
+  huecos: number
+  niveles: number[]
+  onChangeNiveles: (niveles: number[]) => void
+  onAplicarPiramide: (huecosSuelo: number, numNiveles: number) => void
+  onReset: () => void
+}) {
+  // Borrador local del nº de niveles (separado de niveles[] para que el
+  // usuario pueda escribir un número antes de pulsar "Generar")
+  const [numNivelesInput, setNumNivelesInput] = useState<string>(
+    niveles.length > 0 ? String(niveles.length) : ''
+  )
+  const k = niveles.length
+  const totalSuelo = niveles[0] || 0
+  const totalCapacidad = niveles.reduce((s, n) => s + Math.max(0, n), 0)
+
+  function setNivel(idx: number, v: number) {
+    const next = [...niveles]
+    next[idx] = Math.max(0, Math.min(200, Math.floor(v) || 0))
+    // Forzar pirámide: niveles[i] >= niveles[i+1] (no puede haber más huecos
+    // arriba que abajo — si no, no tendrían dónde apoyarse).
+    for (let i = 0; i < next.length - 1; i++) {
+      if (next[i] < next[i + 1]) next[i] = next[i + 1]
+    }
+    onChangeNiveles(next)
+  }
+
+  function generarK(k: number) {
+    // Inicializa k niveles con pirámide decreciente: suelo = huecos actuales,
+    // cada nivel superior = 80% del anterior (mínimo 0).
+    const N1 = huecos > 0 ? huecos : Math.max(0, niveles[0] || 0)
+    if (k <= 0 || N1 <= 0) { onChangeNiveles([]); return }
+    const arr: number[] = []
+    let n = N1
+    for (let i = 0; i < k; i++) {
+      arr.push(Math.max(0, Math.round(n)))
+      n = Math.floor(n * 0.8)
+    }
+    onChangeNiveles(arr)
+  }
+
+  return (
+    <div>
+      <p className="text-[10px] text-gray-600 leading-tight mb-2">
+        Define cuántos huecos llegan a cada <b>nivel</b> (de abajo a arriba).
+        Ej: 10 en suelo, 8 a 2ª altura, 3 a 3ª → 3 palets apilados a 3, 5 a 2, 2 sueltos.
+        Se aplica como <b>pirámide</b>: nunca más arriba que abajo (necesitan apoyo).
+      </p>
+
+      {/* Generar k niveles de golpe */}
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[10px] font-bold text-gray-500 uppercase">Niveles</span>
+        <Input
+          type="number" min={0} max={20}
+          value={numNivelesInput}
+          onChange={e => setNumNivelesInput(e.target.value)}
+          placeholder="—"
+          className="h-6 w-12 text-xs text-center px-1"
+        />
+        <button
+          onClick={() => generarK(Math.max(1, Math.min(20, parseInt(numNivelesInput, 10) || 0)))}
+          className="h-6 px-2 rounded bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold"
+          title="Crear este nº de niveles con una pirámide por defecto (cada nivel 80% del anterior). Después ajusta manualmente."
+        >Generar pirámide</button>
+        <button
+          onClick={() => { setNumNivelesInput(''); onReset() }}
+          className="h-6 px-2 rounded text-gray-500 hover:text-red-600 text-[10px] font-bold underline ml-auto"
+          title="Quitar todas las alturas — sin límite de apilado"
+        >Limpiar</button>
+      </div>
+
+      {/* Lista de niveles: de ABAJO arriba (1=suelo, 2=encima...) */}
+      {k > 0 ? (
+        <div className="space-y-1">
+          {niveles.map((n, i) => {
+            const nivel = i + 1  // 1 = suelo, 2 = encima, etc.
+            const label = nivel === 1 ? 'Suelo' : nivel === 2 ? '2ª altura' : `${nivel}ª altura`
+            // Visualización: barra horizontal proporcional al suelo
+            const pct = totalSuelo > 0 ? Math.round((n / totalSuelo) * 100) : 0
+            return (
+              <label
+                key={i}
+                className="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1"
+                title={`${label}: ${n} huecos que llegan a esta altura`}
+              >
+                <span className="text-[10px] font-bold text-gray-600 w-20 shrink-0">{label}</span>
+                <div className="flex-1 min-w-[60px] h-2 rounded-full bg-gray-100 overflow-hidden">
+                  <div
+                    className="h-full bg-teal-500 transition-all"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <Input
+                  type="number" min={0} max={200}
+                  value={n || ''}
+                  onChange={ev => setNivel(i, parseInt(ev.target.value, 10) || 0)}
+                  placeholder="0"
+                  className="h-6 w-14 text-xs text-center tabular-nums px-1"
+                />
+                <span className="text-[10px] text-gray-400 w-8 text-right">hcs</span>
+              </label>
+            )
+          })}
+          {/* Resumen: total de huecos en suelo + capacidad total de palets */}
+          <div className="flex items-center gap-3 pt-1 text-[10px] text-gray-600">
+            <span className="font-bold text-teal-700">{totalSuelo} huecos en suelo</span>
+            <span className="text-gray-400">·</span>
+            <span className="font-bold text-gray-700">{totalCapacidad} palets caben en total</span>
+            {totalSuelo !== huecos && (
+              <span className="text-amber-600 font-semibold ml-auto">
+                ⚠ cambia nº de huecos a {totalSuelo} al aplicar
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <p className="text-[10px] text-gray-500 italic">
+          Sin alturas definidas — pulsa <b>Generar pirámide</b> o cambia a modo <b>Por hueco</b> para definir una por una.
+          Una estantería sin alturas no tiene límite de apilado (cualquier nº de palets en una posición).
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function StockAlmacenView() {
   const [registros, setRegistros] = useState<Registro[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -93,6 +230,15 @@ export function StockAlmacenView() {
   // valor del campo rápido "Todas:" (solo hay un panel abierto a la vez).
   const [alturasOpenId, setAlturasOpenId] = useState<string | null>(null)
   const [todasAlturas, setTodasAlturas] = useState('')
+  // Modo del editor de alturas por estantería: 'hueco' (un input por posición,
+  // el modo original de V19) o 'altura' (un input por NIVEL — nº de huecos
+  // que llegan a esa altura). El modo 'altura' es más natural para zonas sin
+  // estantería: "tengo 10 palets en el suelo, 8 apilados a 2, 3 apilados a 3".
+  // Ambos modos editan el mismo campo `caps[]` de la estantería.
+  const [alturasModo, setAlturasModo] = useState<'hueco' | 'altura'>('hueco')
+  // Borrador local de nº de niveles en modo 'altura' (por estantería id).
+  // Cuando se abre el panel, se inicializa desde caps[] con alturasDesdeCaps.
+  const [nivelesDraft, setNivelesDraft] = useState<Record<string, number[]>>({})
   // Formulario "añadir estantería" (tarjeta punteada al final de la lista)
   const [addOpen, setAddOpen] = useState(false)
   const [newRackName, setNewRackName] = useState('')
@@ -135,6 +281,68 @@ export function StockAlmacenView() {
   function aplicarAlturaTodos(id: string, v: number) {
     const h = Math.max(0, Math.min(20, v || 0))
     setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, caps: Array.from({ length: e.huecos }, () => h) } : e)))
+  }
+
+  // ── ALTURAS por NIVEL (vista complementaria) ──
+  // Lee la configuración actual (caps[]) y la convierte en conteo por nivel:
+  //   · alturas[0] = nº de huecos que llegan a altura 1 (suelo)
+  //   · alturas[1] = nº de huecos que llegan a altura 2 (apilado 1 nivel)
+  //   · alturas[k-1] = nº de huecos que llegan a altura k (cima)
+  // Ej: caps = [3,3,3,2,2,2,2,2,1,1] (10 huecos) → [10,8,3]
+  //   (los 10 llegan al suelo, 8 se apilan a 2, 3 llegan a 3)
+  function alturasDesdeCaps(e: EstanteriaCfg): number[] {
+    const huecos = e.huecos || 0
+    if (huecos <= 0) return []
+    const slice = (e.caps || []).slice(0, huecos)
+    let k = 0
+    for (const c of slice) if ((c || 0) > k) k = c || 0
+    if (k === 0) return []
+    const alturas = new Array<number>(k).fill(0)
+    for (let i = 0; i < huecos; i++) {
+      const c = Math.min(20, Math.max(0, slice[i] || 0))
+      for (let nivel = 1; nivel <= c; nivel++) alturas[nivel - 1]++
+    }
+    return alturas
+  }
+  // Inversa: dadas las cuentas por nivel (pirámide: N1 >= N2 >= ... >= Nk),
+  // genera caps[]: los primeros N_k huecos tienen altura k, los siguientes
+  // N_{k-1} - N_k tienen altura k-1, etc. Reparte de izquierda a derecha.
+  // También ajusta `e.huecos` al total (= alturas[0]) para que los nombres
+  // automáticos coincidan con las posiciones realmente configuradas.
+  function aplicarAlturasPorNivel(id: string, alturas: number[]) {
+    const k = alturas.length
+    const N1 = k > 0 ? Math.max(0, Math.min(200, Math.floor(alturas[0]) || 0)) : 0
+    if (N1 === 0) {
+      setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, caps: [], huecos: 0 } : e)))
+      return
+    }
+    const caps = new Array<number>(N1).fill(0)
+    for (let i = 0; i < N1; i++) {
+      let a = 0
+      for (let nivel = 0; nivel < k; nivel++) {
+        if ((alturas[nivel] || 0) > i) a = nivel + 1
+      }
+      caps[i] = a
+    }
+    setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, caps, huecos: N1 } : e)))
+  }
+  // Añadir o quitar niveles en el borrador (modo 'altura')
+  function setNivelDraft(id: string, niveles: number[]) {
+    setNivelesDraft(prev => ({ ...prev, [id]: niveles }))
+  }
+  // Abrir/cerrar el panel de alturas: al abrir, inicializa el borrador
+  // 'altura' desde el estado actual de caps[] para que ambos modos estén
+  // sincronizados desde el principio.
+  function toggleAlturasPanel(id: string) {
+    setAlturasOpenId(prev => {
+      const abre = prev !== id
+      if (abre) {
+        const est = almacenCfg.find(e => e.id === id)
+        setNivelesDraft(d => ({ ...d, [id]: est ? alturasDesdeCaps(est) : [] }))
+        setAlturasModo('hueco')  // modo por defecto al abrir
+      }
+      return abre ? id : null
+    })
   }
   function renombrarEstanteria(id: string, nuevo: string) {
     const n = nuevo.trim().toUpperCase()
@@ -572,7 +780,7 @@ export function StockAlmacenView() {
                       {e.huecos > 0 && (
                         <div className="mt-2">
                           <button
-                            onClick={() => setAlturasOpenId(prev => (prev === e.id ? null : e.id))}
+                            onClick={() => toggleAlturasPanel(e.id)}
                             className="text-[10px] font-bold uppercase tracking-wide text-teal-700 hover:text-teal-900 flex items-center gap-1"
                             title="Configurar la altura de cada hueco: nº de palets que se apilan (para estantería de bloque o sin estantería)"
                           >
@@ -581,41 +789,93 @@ export function StockAlmacenView() {
                           </button>
                           {alturasOpenId === e.id && (
                             <div className="mt-1.5 rounded-md border border-teal-200 bg-teal-50/40 p-2">
-                              <div className="flex flex-wrap items-center gap-2 mb-2">
-                                <span className="text-[10px] text-gray-600 leading-tight flex-1 min-w-[180px]">
-                                  Altura = nº de palets apilables en ese hueco (uno encima de otro). <b>Vacío / 0 = sin límite.</b>
-                                  El hueco óptimo llena cada columna hasta su altura y luego pasa a la siguiente.
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <span className="text-[10px] font-bold text-gray-500 uppercase">Todas:</span>
-                                  <Input
-                                    type="number" min={0} max={20}
-                                    value={todasAlturas}
-                                    onChange={ev => setTodasAlturas(ev.target.value)}
-                                    placeholder="—"
-                                    className="h-6 w-12 text-xs text-center px-1"
-                                  />
-                                  <button
-                                    onClick={() => aplicarAlturaTodos(e.id, parseInt(todasAlturas, 10) || 0)}
-                                    className="h-6 px-2 rounded bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold"
-                                    title="Poner esta altura en todos los huecos de la estantería"
-                                  >Aplicar</button>
+                              {/* Switch de modo: 'hueco' (input por posición) o 'altura' (input por nivel) */}
+                              <div className="flex items-center gap-1 mb-2">
+                                <button
+                                  onClick={() => setAlturasModo('hueco')}
+                                  className={`px-2 h-6 rounded-l-md text-[10px] font-bold border ${alturasModo === 'hueco' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                                  title="Un input por cada hueco (E1-01, E1-02…) — define la altura de cada posición individual"
+                                >Por hueco</button>
+                                <button
+                                  onClick={() => {
+                                    // Al cambiar a modo 'altura', re-sincroniza el borrador
+                                    // desde caps[] por si cambió en modo 'hueco'
+                                    setNivelesDraft(d => ({ ...d, [e.id]: alturasDesdeCaps(e) }))
+                                    setAlturasModo('altura')
+                                  }}
+                                  className={`px-2 h-6 rounded-r-md text-[10px] font-bold border-t border-r border-b ${alturasModo === 'altura' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                                  title="Un input por nivel (suelo, 2º, 3º…) — cuántos huecos llegan a cada altura. Ideal para zonas sin estantería donde se apila en el suelo"
+                                >Por altura</button>
+                                <span className="ml-auto text-[10px] text-gray-400 normal-case font-semibold">
+                                  {alturasModo === 'hueco'
+                                    ? `${e.huecos} huecos · ${e.caps?.filter(c => c > 0).length || 0} con altura`
+                                    : `${(nivelesDraft[e.id] || []).length} niveles · ${e.huecos} huecos en suelo`}
                                 </span>
                               </div>
-                              <div className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-1">
-                                {huecosNombres.map((h, i) => (
-                                  <label key={h} className="flex items-center gap-1 rounded border border-gray-200 bg-white px-1 py-0.5" title={`${h} · altura (palets apilables)`}>
-                                    <span className="font-mono text-[9px] font-bold text-gray-500 truncate">{h}</span>
-                                    <input
-                                      type="number" min={0} max={20}
-                                      value={e.caps?.[i] || ''}
-                                      placeholder="—"
-                                      onChange={ev => cambiarAlturaHueco(e.id, i, parseInt(ev.target.value, 10) || 0)}
-                                      className="w-9 h-6 text-xs text-center border-0 focus:ring-1 focus:ring-teal-500 rounded tabular-nums"
-                                    />
-                                  </label>
-                                ))}
-                              </div>
+
+                              {alturasModo === 'hueco' ? (
+                                <>
+                                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                                    <span className="text-[10px] text-gray-600 leading-tight flex-1 min-w-[180px]">
+                                      Altura = nº de palets apilables en ese hueco (uno encima de otro). <b>Vacío / 0 = sin límite.</b>
+                                      El hueco óptimo llena cada columna hasta su altura y luego pasa a la siguiente.
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <span className="text-[10px] font-bold text-gray-500 uppercase">Todas:</span>
+                                      <Input
+                                        type="number" min={0} max={20}
+                                        value={todasAlturas}
+                                        onChange={ev => setTodasAlturas(ev.target.value)}
+                                        placeholder="—"
+                                        className="h-6 w-12 text-xs text-center px-1"
+                                      />
+                                      <button
+                                        onClick={() => aplicarAlturaTodos(e.id, parseInt(todasAlturas, 10) || 0)}
+                                        className="h-6 px-2 rounded bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold"
+                                        title="Poner esta altura en todos los huecos de la estantería"
+                                      >Aplicar</button>
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-1">
+                                    {huecosNombres.map((h, i) => (
+                                      <label key={h} className="flex items-center gap-1 rounded border border-gray-200 bg-white px-1 py-0.5" title={`${h} · altura (palets apilables)`}>
+                                        <span className="font-mono text-[9px] font-bold text-gray-500 truncate">{h}</span>
+                                        <input
+                                          type="number" min={0} max={20}
+                                          value={e.caps?.[i] || ''}
+                                          placeholder="—"
+                                          onChange={ev => cambiarAlturaHueco(e.id, i, parseInt(ev.target.value, 10) || 0)}
+                                          className="w-9 h-6 text-xs text-center border-0 focus:ring-1 focus:ring-teal-500 rounded tabular-nums"
+                                        />
+                                      </label>
+                                    ))}
+                                  </div>
+                                </>
+                              ) : (
+                                <PorAlturaEditor
+                                  huecos={e.huecos}
+                                  niveles={nivelesDraft[e.id] || alturasDesdeCaps(e)}
+                                  onChangeNiveles={niveles => {
+                                    setNivelDraft(e.id, niveles)
+                                    aplicarAlturasPorNivel(e.id, niveles)
+                                  }}
+                                  onAplicarPiramide={(N1, k) => {
+                                    // Genera pirámide completa: N1 en suelo, escalonado hasta k
+                                    // Cada nivel tiene N1 * (k - nivel + 1) / k  huecos — redondeado
+                                    // En realidad, dejamos que el usuario rellene manualmente;
+                                    // este atajo crea k niveles con pirámide por defecto: 100%, 80%, 60%...
+                                    const niveles = Array.from({ length: k }, (_, i) =>
+                                      Math.max(0, Math.round(N1 * (1 - i / k)))
+                                    )
+                                    setNivelDraft(e.id, niveles)
+                                    aplicarAlturasPorNivel(e.id, niveles)
+                                  }}
+                                  onReset={() => {
+                                    setNivelDraft(e.id, [])
+                                    setAlmacenCfg(prev => prev.map(x => (x.id === e.id ? { ...x, caps: [] } : x)))
+                                  }}
+                                />
+                              )}
                             </div>
                           )}
                         </div>

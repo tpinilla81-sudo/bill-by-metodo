@@ -1353,3 +1353,38 @@ Stage Summary:
 - Commit 4f8f14f 'V19-ALTURAS' pushed a origin/main (PAT intacto, db excluido)
 - Build marker: V19-ALTURAS · 2026-09-15
 - Formato storage: stock-config-v2 entries con caps?: number[] — retrocompatible
+
+---
+Task ID: V20-ALTURAS-POR-NIVEL
+Agent: main
+Task: "necesito poder configurar huecos por altrura" — vista complementaria de config de almacén POR NIVEL (cuántos huecos llegan a cada altura), inversa al modo POR HUECO (altura de cada posición)
+
+Work Log:
+- Leído almacen.ts: caps?: number[] ya existe desde V19 (altura por hueco, 0=sin límite); capDeHueco(), huecoOptimo(), clasificarUbicacion() ya respetan alturas.
+- Leído stock-almacen-view.tsx: V19 ya tenía panel "Alturas por hueco" (botón lo abre, un input por posición + atajo "Todas:N Aplicar").
+- stock-almacen-view.tsx: añadido switch de modo [Por hueco | Por altura] dentro del panel.
+  * alturasDesdeCaps(e): convierte caps[] → conteo por nivel [N1, N2, …, Nk]. Ej: caps=[3,3,3,2,2,2,2,2,1,1] → [10, 8, 3].
+  * aplicarAlturasPorNivel(id, alturas): inversa — genera caps[] desde niveles (pirámide: posición 1..N_k → altura k, etc.) y ajusta e.huecos = N1.
+  * toggleAlturasPanel(id): al abrir, inicializa nivelesDraft desde caps[]; resetea modo a 'hueco'.
+  * Componente nuevo PorAlturaEditor: input "Niveles" + botón "Generar pirámide" (decremento 80% por nivel), lista de niveles (Suelo, 2ª, 3ª…) con barra visual + input de huecos. Pirámide forzada: niveles[i] >= niveles[i+1]. Resumen: total suelo + capacidad total + aviso si va a cambiar e.huecos.
+  * Sync bidireccional: al cambiar a "Por altura" relee caps[]; al editar niveles aplica inmediatamente caps[].
+- sidebar.tsx: build marker V20-ALTURAS-POR-NIVEL · 2026-09-16.
+- TS preexistente (Html5Qrcode): NO arreglado (no relacionado, línea movida de 233 → 441 por el nuevo componente).
+
+Verificación (agent-browser, localhost rebuild):
+- TEST1 (6 huecos): Por altura → Niveles 3 → Generar pirámide → Suelo=6, 2ª=4 (6×0.8→floor 4), 3ª=3 (4×0.8→floor 3). storage caps=[3,3,3,2,1,1] ✓ (3 posiciones a altura 3, 1 a altura 2, 2 a suelo).
+- Cambio manual 3ª altura 3→1: niveles=[6,4,1] → caps=[3,2,2,2,1,1] ✓ (solo 1 posición a altura 3).
+- Cambio suelo 6→10: niveles=[10,4,1] → caps=[3,2,2,2,1,1,1,1,1,1] (huecos auto-extendidos a 10) ✓.
+- Limpiar: vacía caps=[], muestra mensaje "Sin alturas definidas — pulsa Generar pirámide o cambia a modo Por hueco".
+- Switch Por hueco ↔ Por altura: bidireccional, los inputs se rellenan desde caps[] al entrar en cada modo.
+- SUELO (8 huecos): pirámide [8,5,2] manual → caps=[3,3,2,2,2,1,1,1] ✓ (2 a altura 3, 5 a altura 2, 8 a suelo).
+- Resumen "X huecos en suelo · Y palets caben en total" se actualiza en vivo.
+- 0 errores consola, 0 errores página. Test data limpiada (storage reseteado a []).
+
+Stage Summary:
+- Commit próximo: V20-ALTURAS-POR-NIVEL.
+- El usuario ahora puede configurar el almacén de DOS formas complementarias en el mismo panel:
+  · "Por hueco": un input por posición (E1-01 → altura 3, E1-02 → altura 1…). Modo V19.
+  · "Por altura": un input por nivel (Suelo: 10 huecos, 2ª: 8, 3ª: 3…). Genera pirámide automáticamente.
+- Ideal para zonas SIN estantería donde se apila en el suelo con alturas distintas: "tengo 10 palets en el suelo, 8 apilados a 2, 3 que llegan a 3".
+- Ambos modos editan el mismo campo caps[]; el switch es solo de vista. Pirámide forzada (no más arriba que abajo).
