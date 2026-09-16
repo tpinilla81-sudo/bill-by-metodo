@@ -1450,3 +1450,33 @@ Stage Summary:
 - Commit e09ddc6 V22-HUECOS-POR-NIVEL pushed a origin/main (Vercel auto-deploy).
 - El flujo pedido queda completo en AMBOS sitios: formulario de nueva zona (Nº de niveles → huecos por nivel) y tarjeta de zona (stepper − N + → huecos por fila).
 - Mismo motor caps[] de V19-V21: huecoOptimo/clasificarUbicacion/mapa funcionan sin cambios.
+
+---
+Task ID: V23-MAPA-POR-NIVELES
+Agent: main
+Task: "EN EL MAPA DEL ALMACÉN, NO SE VE TODO LO CONFIGURADO" — el mapa solo dibujaba la fila del suelo (una fila plana de huecos con "·N" de altura); los niveles/alturas configurados en V21/V22 no aparecían.
+
+Work Log:
+- stock-almacen-view.tsx — MAPA rediseñado con ALZADO POR NIVELES:
+  * Nuevo helper paletsDeColumna(c): expande los lotes de una columna en puestos de palet (cada lote ocupa cantRestante, orden FIFO el más antiguo abajo) — el motor solo guarda ubicación de columna, así que el nivel exacto de cada palet es una representación de abajo arriba.
+  * Por cada rack: kNiveles = altura máxima de sus columnas (caps). Si kNiveles ≥ 2 → alzado; si no → fila única como antes (apilado libre, sin regresión).
+  * Alzado: una FILA por nivel/altura dibujada TOP-DOWN (3º nivel arriba… Suelo abajo), COLUMNAS ALINEADAS (grid repeat(N1, minmax(56px,1fr)) + overflow-x-auto); etiqueta lateral por fila ("3º nivel · 6 huecos" / "3ª altura" en pared, "Suelo").
+  * Cada casilla = 1 PALET: ocupada si nivel ≤ palets de la columna → muestra ident + días con color por antigüedad; libre → "— Libre" punteado; columna que no llega al nivel → placeholder tenue (silueta piramidal).
+  * Badges en el tope de columna: LLENO (rojo + ring) cuando total ≥ cap; "+N" desbordo cuando total > altura; "∞" en columnas sin límite dentro de zona con niveles.
+  * Fila "Total" al pie: palets/altura por columna (2/3, 4/3, 0/1…).
+  * Chip en cabecera de zona: "3 niveles"/"3 alturas". Leyenda del mapa añade "filas = niveles/alturas · cada casilla = 1 palet" (solo si hay zonas con niveles).
+  * Búsqueda (cellMatch) y opacidad de no-coincidencia aplican por columna; ring sky en las casillas de la columna encontrada.
+- sidebar.tsx: build marker V23-MAPA-POR-NIVELES · 2026-09-16.
+- TS: solo error preexistente Html5Qrcode (línea ~543).
+
+Verificación (agent-browser, localhost — ojo: custom-server.js sirve build precompilado, hay que `next build` + reiniciar para ver cambios):
+- ESTANTERÍA E1 niveles [12,10,6] → filas 3º nivel (6 huecos + 6 placeholders), 2º nivel (10 + 2), Suelo (12) ✓ chip "3 niveles" ✓.
+- PARED P1 alturas [8,8,3] → 3ª altura (3 + 5 placeholders), 2ª altura (8), Suelo (8) ✓ chip "3 alturas" ✓.
+- Stock test (4 registros ENTRADA PALET TEST-MAPA, luego borrados): E1-01 2 palets TEST-A1 78d rojo en niveles 1-2; E1-03 4 palets TEST-C1 2d verde niveles 1-3 + badge "+1" (cap 3); E1-07 2/2 TEST-B1 38d ámbar + "LLENO"; P1-02 TEST-D1 7d en suelo ✓. Totales pie: [2/3,0/3,4/3,…,2/2,…] ✓.
+- Buscador "TEST-B1": ring sky en las 2 casillas de E1-07, 26 atenuadas ✓.
+- VLM screenshot: filas por nivel, columnas alineadas, silueta piramidal, idents+días visibles, sin glitches ✓. 0 errores consola.
+- Limpieza: registros TEST-MAPA borrados (scripts/clean-test-mapa.js), storage reseteado.
+
+Stage Summary:
+- Commit ee1cad4 V23-MAPA-POR-NIVELES pushed a origin/main (Vercel auto-deploy).
+- El mapa ahora muestra TODO lo configurado: cada nivel/altura con sus huecos, cada palet en su casilla (FIFO abajo→arriba), llenos/desbordos marcados y totales por columna. Zonas sin niveles siguen con la vista plana de siempre.
