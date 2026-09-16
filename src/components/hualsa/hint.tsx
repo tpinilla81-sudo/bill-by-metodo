@@ -39,9 +39,9 @@ export function Hint({ children, variant = 'info', className = '', noIcon = fals
   const Icon = s.Icon
   return (
     <div
-      className={`inline-flex items-start gap-1.5 text-[11px] leading-tight border rounded-md px-2 py-1 ${s.wrap} ${className}`}
+      className={`inline-flex items-start gap-1 text-[9px] leading-[1.15] border rounded px-1.5 py-0.5 ${s.wrap} ${className}`}
     >
-      {!noIcon && <Icon className={`h-3 w-3 mt-px shrink-0 ${s.icon}`} />}
+      {!noIcon && <Icon className={`h-2 w-2 mt-px shrink-0 ${s.icon}`} strokeWidth={2.5} />}
       <span className="flex-1 [&_b]:font-semibold [&_strong]:font-semibold">{children}</span>
     </div>
   )
