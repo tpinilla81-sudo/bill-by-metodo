@@ -1098,15 +1098,12 @@ export function StockAlmacenView() {
       )}
 
       {!tieneMovs && !loading && (
-        <Card>
-          <CardContent className="p-6 text-center">
-            <Package className="h-10 w-10 mx-auto text-gray-300 mb-3" />
-            <p className="font-semibold text-gray-700">Todavía no hay movimientos de palets</p>
-            <Hint variant="subtle" className="mt-2 max-w-lg mx-auto w-full">
-              El stock se calcula con los registros cuyo concepto (C2) contiene <b>ENTRADA PALET</b> (suma) o <b>SALIDA PALET</b> (resta). Registra entradas y salidas con los campos <b>Lote / Nº Palet / Ubicación</b> y verás el stock en vivo.
-            </Hint>
-          </CardContent>
-        </Card>
+        <div className="flex items-center gap-2 text-[11px] text-gray-500">
+          <Package className="h-3 w-3 text-gray-400 shrink-0" />
+          <span className="font-semibold text-gray-600">Sin movimientos todavía.</span>
+          <span className="text-gray-400">·</span>
+          <span>Registra entradas/salidas con <b>ENTRADA PALET</b>/<b>SALIDA PALET</b> y los campos <b>Lote / Nº Palet / Ubicación</b> para ver el stock en vivo.</span>
+        </div>
       )}
 
       {/* KPIs */}
@@ -1457,18 +1454,20 @@ export function StockAlmacenView() {
       {/* Sin configuración: guía para empezar por estanterías/huecos */}
       {racks.length === 0 && fueraCfg.length === 0 && !loading && (
         <Card>
-          <CardContent className="p-6 text-center">
-            <Warehouse className="h-10 w-10 mx-auto text-teal-300 mb-3" />
-            <p className="font-semibold text-gray-700">Configura tu almacén para ver el dibujo</p>
-            <Hint variant="tip" className="mt-2 max-w-lg mx-auto w-full">
-              Empieza por las <b>estanterías</b>: en <b>Configurar almacén</b> añade cada una con su nº de <b>huecos</b> (ej. E1 con 12 → E1-01…E1-12). El mapa se dibuja a partir de esa configuración y los huecos sin palets aparecen como LIBRE.
+          <CardContent className="p-3 text-center">
+            <div className="flex items-center justify-center gap-2 text-gray-500">
+              <Warehouse className="h-3 w-3 text-teal-400 shrink-0" />
+              <p className="text-[11px] font-semibold text-gray-600">Configura tu almacén para ver el dibujo</p>
+            </div>
+            <Hint variant="tip" className="mt-1 max-w-md mx-auto">
+              En <b>Configurar almacén</b> añade cada estantería con su nº de <b>huecos</b> (ej. E1 con 12 → E1-01…E1-12). El mapa se dibuja solo y los huecos vacíos aparecen como LIBRE.
             </Hint>
             <Button
               size="sm"
-              className="mt-4 bg-teal-600 hover:bg-teal-700 text-white"
+              className="mt-2 h-7 px-2 text-[11px] bg-teal-600 hover:bg-teal-700 text-white"
               onClick={() => setShowCfgEditor(true)}
             >
-              <Settings2 className="h-4 w-4 mr-1" /> Configurar almacén
+              <Settings2 className="h-3 w-3 mr-1" /> Configurar almacén
             </Button>
           </CardContent>
         </Card>
