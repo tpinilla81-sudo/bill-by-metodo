@@ -1422,3 +1422,31 @@ Stage Summary:
 - Commit próximo: V21-ZONAS-ALTURAS. La configuración del almacén ahora separa PRIMERO el tipo (ESTANTERÍA/PARED) y luego define FILAS DE ALTURA con nº de huecos independiente por fila — exactamente lo pedido.
 - Formato storage: stock-config-v2 entries con tipo ('estanteria'|'pared') + caps (pirámide derivada de filas). Retrocompatible: zonas sin tipo → 'estanteria'.
 - El deploy V20 sí se hizo (push 60e4be3 OK); si el usuario sigue viendo la UI vieja en Vercel: botón "Actualizar app" del sidebar o Ctrl+Shift+R, y verificar que el marker del sidebar diga V21-ZONAS-ALTURAS.
+
+---
+Task ID: V22-HUECOS-POR-NIVEL
+Agent: main
+Task: "AHORA FALTA PODER CONFIGURAR LOS HUECOS POR NIVEL DE ALTURA TANTO EN LA ESTANTERÍA COMO EN ALTURAS DE PALET. PRIMERO ELEGIR LOS NÚMEROS DE NIVEL DE ALTURA Y LUEGO DE CADA UNO DE ESTOS LOS NÚMEROS DE HUECOS"
+
+Work Log:
+- Leído worklog (V21 committed 678e497), screenshot usuario (formulario NUEVA ZONA V21: tipo + nombre + "Huecos (suelo)" + cap) y stock-almacen-view.tsx completo.
+- anadirEstanteria(nombre, filas: number[], cap, tipo): ahora acepta FILAS (huecos por nivel, fila 1 = suelo) y construye caps[] vía capsDesdeNiveles. Sugerencias de estanterías detectadas actualizadas a [maxPos].
+- Formulario NUEVA ZONA reestructurado en 3 pasos: 1º TIPO (ESTANTERÍA/PARED), 2º Nombre + "Nº DE NIVELES"/"Nº DE ALTURAS" (según tipo, placeholder 1) + Cap. máx., 3º "HUECOS POR NIVEL/ALTURA · N": grid de inputs (1 · Suelo, 2 · 2º nivel / 2ª altura…) con nota "Caben X palets en total" + aviso ámbar si pirámide violada ("se ajustará al añadir").
+- Estados: newRackNiveles + newRackFilas[] (valores se conservan al cambiar N; filas nuevas = valor de la última). Preview actualizado: aviso si falta suelo, "{N} niveles · Se nombrarán así…".
+- FilasAlturaEditor (tarjeta de zona): stepper − N + en cabecera (input directo + botones; − deshabilitado en 1, title explica). Botón "Definir niveles/alturas" cuando apilado libre. Eliminado botón inferior "+ Añadir nivel". Ordinales corregidos: 2º nivel (masc) / 2ª altura (fem). Plural correcto: niveles/alturas.
+- cambiarNumFilas(id, n): n=0 → libre; desde libre n≥1 → fill(suelo); n>k → añade (= última); n<k → slice superior.
+- sidebar.tsx: build marker V22-HUECOS-POR-NIVEL · 2026-09-16.
+- TS: solo error preexistente Html5Qrcode (línea 530).
+
+Verificación (agent-browser, localhost rebuild e09ddc6):
+- TEST1 ESTANTERÍA E1, 3 niveles [12,10,6]: filas "1 · Suelo/2 · 2º nivel/3 · 3º nivel", "Caben 28 palets" → caps [3,3,3,3,3,3,2,2,2,2,1,1] ✓.
+- Stepper tarjeta: + → 4 filas (nueva = 6 = última) ✓; − → 3 ✓; edición directa a 2 → caps [2×10,1×2] ✓.
+- TEST2 PARED P1, 3 alturas [10,8,3]: labels "Nº DE ALTURAS", "2ª altura", "Caben 21" → caps [3,3,3,2,2,2,2,2,1,1] ✓.
+- quitar límite → chip ámbar "sin límite" + botón "Definir alturas" → 1 fila caps [1×10] ✓ → + → 2 filas caps [2×10] ✓.
+- TEST3 pirámide violada [6,8,2]: aviso "Una fila no puede tener más huecos que la de abajo — se ajustará al añadir" + "Caben 14" → T1 caps [3,3,2,2,2,2] (clamp [6,6,2]) ✓.
+- 0 errores consola/página. Screenshot download/v22-config-por-nivel.png. Storage reseteado a [].
+
+Stage Summary:
+- Commit e09ddc6 V22-HUECOS-POR-NIVEL pushed a origin/main (Vercel auto-deploy).
+- El flujo pedido queda completo en AMBOS sitios: formulario de nueva zona (Nº de niveles → huecos por nivel) y tarjeta de zona (stepper − N + → huecos por fila).
+- Mismo motor caps[] de V19-V21: huecoOptimo/clasificarUbicacion/mapa funcionan sin cambios.
