@@ -1388,3 +1388,37 @@ Stage Summary:
   · "Por altura": un input por nivel (Suelo: 10 huecos, 2ª: 8, 3ª: 3…). Genera pirámide automáticamente.
 - Ideal para zonas SIN estantería donde se apila en el suelo con alturas distintas: "tengo 10 palets en el suelo, 8 apilados a 2, 3 que llegan a 3".
 - Ambos modos editan el mismo campo caps[]; el switch es solo de vista. Pirámide forzada (no más arriba que abajo).
+
+---
+Task ID: V21-ZONAS-ALTURAS
+Agent: main
+Task: "NECESITO SEPARAR EN LA CONFIGURACION DEL ALMACEN, PRIMERO SI ES ESTANTERIA O PARED. Y LUEGO PODER ELEGIR LAS ALTURAS… EL NUMERO DE HUECOS INDEPENDIENTE POR FILA DE ALTURA YA QUE PUEDEN SER DIFERENTES" (+ usuario reporta que V20 "SALE COMO ANTES" en Vercel — probable caché de navegador o deploy a medias)
+
+Work Log:
+- almacen.ts: EstanteriaCfg.tipo?: 'estanteria' | 'pared' (default estanteria en loadAlmacenCfg). Solo semántica/labels — el motor es el mismo (huecos + caps por posición).
+- stock-almacen-view.tsx — RESTRUCTURACIÓN COMPLETA del editor de config:
+  * ELIMINADO todo el panel V19/V20 (switch Por hueco|Por altura, PorAlturaEditor, inputs por posición, "Todas: N", stepper −/+ de huecos, cap por estantería movida al pie).
+  * Formulario "Añadir zona": PRIMERO el TIPO (dos botones grandes ESTANTERÍA azul "rack con niveles · 1 palet por hueco y nivel" | PARED ámbar "apilado en suelo · uno encima de otro"), luego nombre + Huecos (suelo) + cap opcional.
+  * Tarjeta de zona: badge TIPO clicable (estantería ↔ pared) junto al nombre; FILAS DE ALTURA como editor PRINCIPAL siempre visible (nuevo componente FilasAlturaEditor).
+  * FilasAlturaEditor: fila 1 = "1 · Suelo" (nº huecos de la zona); filas 2+ = "2 · 2ª altura/2º nivel", "3 · 3ª…" cada una con su Nº DE HUECOS INDEPENDIENTE + botón × para quitarla; "+ Añadir altura/nivel" (nueva fila = mismo valor que la última); "quitar límite" (vuelve a apilado libre, caps=[]); chips resumen ("N filas · caben X palets" / "sin límite de altura (apilado libre)" ámbar); barra visual proporcional por fila.
+  * Labels según tipo: PARED → "Alturas (apilado en suelo)" + palabras "altura"; ESTANTERÍA → "Niveles (estantería)" + "nivel".
+  * Helpers módulo: alturasDesdeCaps() (caps→niveles), capsDesdeNiveles() (niveles→caps pirámide, clampa fila ≤ fila inferior). En componente: cambiarSuelo (respeta filas existentes o solo huecos si ilimitado), cambiarFila (pirámide forzada), anadirFila (FIX: base implícita [suelo] cuando ilimitado — sin el fix generaba 1 solo nivel), quitarFila, quitarLimiteAlturas, cambiarTipo.
+- Mapa: cabecera de rack muestra "ESTANTERÍA E1" / "PARED P1" según config; título sección → "MAPA DEL ALMACÉN".
+- sidebar.tsx: build marker V21-ZONAS-ALTURAS · 2026-09-16.
+- TS: solo error preexistente Html5Qrcode (línea movida).
+
+Verificación (agent-browser, localhost rebuild):
+- Añadir PARED P1 (10 huecos): tarjeta con badge PARED, "Alturas (apilado en suelo)", fila Suelo=10, chip ámbar "sin límite de altura (apilado libre)".
+- + Añadir altura ×3 y editar filas → [10, 8, 3]: caps=[3,3,3,2,2,2,2,2,1,1] ✓ (3 posiciones a 3 alturas, 5 a 2, 2 sueltas). Chips P1-01·3…P1-10·1 ✓.
+- Añadir ESTANTERÍA E1 (12 huecos): labels "Niveles (estantería)", "+ Añadir nivel", filas "2º nivel". Niveles [12,12,6] → caps=[3×6,2×6] ✓, chips E1-01·3…E1-12·2 ✓.
+- Badge TIPO clicable: E1 estantería→pared→estantería, caps intactos ✓.
+- Quitar fila 4 (×): [10,8,3,3]→[10,8,3] regenera caps ✓. "quitar límite" → caps=[] ✓.
+- Cambiar suelo 10→12 con filas definidas: regenera manteniendo filas ✓.
+- Mapa: "ESTANTERÍA E1" y "PARED P1" en cabeceras ✓. 0 errores consola/página.
+- Test data limpiada (storage []).
+- NOTA test: find role button --name "Añadir" puede chocar con "+ Añadir altura" — usar refs exactos.
+
+Stage Summary:
+- Commit próximo: V21-ZONAS-ALTURAS. La configuración del almacén ahora separa PRIMERO el tipo (ESTANTERÍA/PARED) y luego define FILAS DE ALTURA con nº de huecos independiente por fila — exactamente lo pedido.
+- Formato storage: stock-config-v2 entries con tipo ('estanteria'|'pared') + caps (pirámide derivada de filas). Retrocompatible: zonas sin tipo → 'estanteria'.
+- El deploy V20 sí se hizo (push 60e4be3 OK); si el usuario sigue viendo la UI vieja en Vercel: botón "Actualizar app" del sidebar o Ctrl+Shift+R, y verificar que el marker del sidebar diga V21-ZONAS-ALTURAS.

@@ -69,139 +69,185 @@ function NombreEstanteriaInput({ nombre, onCommit }: { nombre: string; onCommit:
   )
 }
 
-// ─── Editor "Por altura" (vista complementaria al editor "Por hueco") ───
-// En lugar de definir la altura de CADA hueco individual (modo 'hueco'),
-// el usuario define CUÁNTOS huecos hay en cada nivel (suelo, 2º, 3º…).
-// Pensado para zonas SIN estantería donde se apila en el suelo: "tengo 10
-// palets en el suelo, de esos 8 apilados a 2, y de esos 8 hay 3 que llegan a 3".
-// internally → caps[] se rellena como pirámide: primeros N_k → altura k, etc.
-function PorAlturaEditor({
-  huecos,
-  niveles,
-  onChangeNiveles,
-  onAplicarPiramide,
-  onReset,
+// ─── Conversión FILAS DE ALTURA ⇄ caps[] ────────────────────────────────
+// La configuración V21 se define por FILAS DE ALTURA: cada fila tiene su
+// propio nº de huecos (pueden ser distintas: suelo 12, 2ª 12, 3ª 6…).
+// El motor (hueco óptimo, mapa, avisos) sigue usando caps[] (altura por
+// hueco), así que convertimos en ambos sentidos:
+//   niveles = [N1, N2, …, Nk] → Nj huecos que llegan a la fila j+1
+//   caps[i] = altura (nº de palets/niveles) de la posición i+1
+
+// caps[] → filas de altura. [] sin caps → [] (apilado libre, sin límite).
+// Ej: caps=[3,3,3,2,2,2,2,2,1,1] → [10, 8, 3]
+//   (los 10 huecos llegan al suelo, 8 a la 2ª fila, 3 a la 3ª)
+function alturasDesdeCaps(e: EstanteriaCfg): number[] {
+  const huecos = e.huecos || 0
+  if (huecos <= 0) return []
+  const slice = (e.caps || []).slice(0, huecos)
+  let k = 0
+  for (const c of slice) if ((c || 0) > k) k = c || 0
+  if (k === 0) return []
+  const niveles = new Array<number>(k).fill(0)
+  for (let i = 0; i < huecos; i++) {
+    const c = Math.min(20, Math.max(0, slice[i] || 0))
+    for (let fila = 1; fila <= c; fila++) niveles[fila - 1]++
+  }
+  return niveles
+}
+
+// filas de altura → caps[] (pirámide: la fila j tiene Nj huecos → los
+// primeros Nj huecos del suelo llegan a la fila j). Nunca más arriba que
+// abajo: si N3 > N2, se eleva N2 (los de arriba necesitan apoyo debajo).
+// Devuelve también el nº de huecos del suelo (= niveles[0]).
+function capsDesdeNiveles(niveles: number[]): { caps: number[]; suelo: number } {
+  // Pirámide: cada fila ≤ la anterior
+  const pir = niveles.map(n => Math.max(0, Math.min(200, Math.floor(n) || 0)))
+  for (let i = 1; i < pir.length; i++) {
+    if (pir[i] > pir[i - 1]) pir[i] = pir[i - 1]
+  }
+  const N1 = pir[0] || 0
+  if (N1 <= 0) return { caps: [], suelo: 0 }
+  const caps = new Array<number>(N1).fill(0)
+  for (let i = 0; i < N1; i++) {
+    let a = 0
+    for (let fila = 0; fila < pir.length; fila++) {
+      if (pir[fila] > i) a = fila + 1
+    }
+    caps[i] = a
+  }
+  return { caps, suelo: N1 }
+}
+
+// ─── Editor de FILAS DE ALTURA (configuración principal de cada zona) ───
+// El usuario define, fila a fila (de abajo a arriba), cuántos huecos tiene
+// cada altura — de forma INDEPENDIENTE, porque pueden ser distintas:
+//   · ESTANTERÍA: cada fila = un nivel del rack (nivel 1 suelo, nivel 2…).
+//   · PARED: cada fila = una capa de palets apilados (suelo, 2ª capa…).
+// La fila 1 (suelo) siempre existe: es el nº de huecos de la zona. Las
+// siguientes se añaden con "+ Añadir fila".
+function FilasAlturaEditor({
+  est,
+  onCambiarSuelo,
+  onCambiarFila,
+  onAnadirFila,
+  onQuitarFila,
+  onQuitarLimite,
 }: {
-  huecos: number
-  niveles: number[]
-  onChangeNiveles: (niveles: number[]) => void
-  onAplicarPiramide: (huecosSuelo: number, numNiveles: number) => void
-  onReset: () => void
+  est: EstanteriaCfg
+  onCambiarSuelo: (v: number) => void
+  onCambiarFila: (idx: number, v: number) => void
+  onAnadirFila: () => void
+  onQuitarFila: (idx: number) => void
+  onQuitarLimite: () => void
 }) {
-  // Borrador local del nº de niveles (separado de niveles[] para que el
-  // usuario pueda escribir un número antes de pulsar "Generar")
-  const [numNivelesInput, setNumNivelesInput] = useState<string>(
-    niveles.length > 0 ? String(niveles.length) : ''
-  )
-  const k = niveles.length
-  const totalSuelo = niveles[0] || 0
-  const totalCapacidad = niveles.reduce((s, n) => s + Math.max(0, n), 0)
-
-  function setNivel(idx: number, v: number) {
-    const next = [...niveles]
-    next[idx] = Math.max(0, Math.min(200, Math.floor(v) || 0))
-    // Forzar pirámide: niveles[i] >= niveles[i+1] (no puede haber más huecos
-    // arriba que abajo — si no, no tendrían dónde apoyarse).
-    for (let i = 0; i < next.length - 1; i++) {
-      if (next[i] < next[i + 1]) next[i] = next[i + 1]
-    }
-    onChangeNiveles(next)
-  }
-
-  function generarK(k: number) {
-    // Inicializa k niveles con pirámide decreciente: suelo = huecos actuales,
-    // cada nivel superior = 80% del anterior (mínimo 0).
-    const N1 = huecos > 0 ? huecos : Math.max(0, niveles[0] || 0)
-    if (k <= 0 || N1 <= 0) { onChangeNiveles([]); return }
-    const arr: number[] = []
-    let n = N1
-    for (let i = 0; i < k; i++) {
-      arr.push(Math.max(0, Math.round(n)))
-      n = Math.floor(n * 0.8)
-    }
-    onChangeNiveles(arr)
-  }
+  const esPared = est.tipo === 'pared'
+  const palabra = esPared ? 'altura' : 'nivel'
+  const niveles = alturasDesdeCaps(est)        // [] → apilado libre
+  const tieneLimite = niveles.length > 0
+  const suelo = est.huecos || 0
+  const capacidadTotal = niveles.reduce((s, n) => s + Math.max(0, n), 0)
 
   return (
-    <div>
+    <div className="mt-2 rounded-md border border-teal-200 bg-teal-50/40 p-2">
+      <div className="flex flex-wrap items-center gap-2 mb-1.5">
+        <Layers className="h-3.5 w-3.5 text-teal-700 shrink-0" />
+        <span className="text-[10px] font-bold uppercase tracking-wide text-teal-800">
+          {esPared ? 'Alturas (apilado en suelo)' : 'Niveles (estantería)'}
+        </span>
+        {tieneLimite ? (
+          <span className="text-[10px] font-semibold text-teal-700 bg-teal-100 border border-teal-200 rounded-full px-2 py-0.5">
+            {niveles.length} fila{niveles.length > 1 ? 's' : ''} · caben {capacidadTotal} palets
+          </span>
+        ) : (
+          <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+            sin límite de altura (apilado libre)
+          </span>
+        )}
+      </div>
       <p className="text-[10px] text-gray-600 leading-tight mb-2">
-        Define cuántos huecos llegan a cada <b>nivel</b> (de abajo a arriba).
-        Ej: 10 en suelo, 8 a 2ª altura, 3 a 3ª → 3 palets apilados a 3, 5 a 2, 2 sueltos.
-        Se aplica como <b>pirámide</b>: nunca más arriba que abajo (necesitan apoyo).
+        {esPared ? (
+          <>Cada fila es una <b>capa de palets apilados</b> (uno encima de otro): escribe cuántos huecos llegan a esa altura. Pueden ser distintas en cada fila.</>
+        ) : (
+          <>Cada fila es un <b>nivel del rack</b>: escribe cuántos huecos (posiciones) tiene ese nivel. Pueden ser distintos en cada nivel.</>
+        )}
       </p>
 
-      {/* Generar k niveles de golpe */}
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-[10px] font-bold text-gray-500 uppercase">Niveles</span>
-        <Input
-          type="number" min={0} max={20}
-          value={numNivelesInput}
-          onChange={e => setNumNivelesInput(e.target.value)}
-          placeholder="—"
-          className="h-6 w-12 text-xs text-center px-1"
-        />
-        <button
-          onClick={() => generarK(Math.max(1, Math.min(20, parseInt(numNivelesInput, 10) || 0)))}
-          className="h-6 px-2 rounded bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold"
-          title="Crear este nº de niveles con una pirámide por defecto (cada nivel 80% del anterior). Después ajusta manualmente."
-        >Generar pirámide</button>
-        <button
-          onClick={() => { setNumNivelesInput(''); onReset() }}
-          className="h-6 px-2 rounded text-gray-500 hover:text-red-600 text-[10px] font-bold underline ml-auto"
-          title="Quitar todas las alturas — sin límite de apilado"
-        >Limpiar</button>
-      </div>
-
-      {/* Lista de niveles: de ABAJO arriba (1=suelo, 2=encima...) */}
-      {k > 0 ? (
-        <div className="space-y-1">
-          {niveles.map((n, i) => {
-            const nivel = i + 1  // 1 = suelo, 2 = encima, etc.
-            const label = nivel === 1 ? 'Suelo' : nivel === 2 ? '2ª altura' : `${nivel}ª altura`
-            // Visualización: barra horizontal proporcional al suelo
-            const pct = totalSuelo > 0 ? Math.round((n / totalSuelo) * 100) : 0
-            return (
-              <label
-                key={i}
-                className="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1"
-                title={`${label}: ${n} huecos que llegan a esta altura`}
-              >
-                <span className="text-[10px] font-bold text-gray-600 w-20 shrink-0">{label}</span>
-                <div className="flex-1 min-w-[60px] h-2 rounded-full bg-gray-100 overflow-hidden">
-                  <div
-                    className="h-full bg-teal-500 transition-all"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <Input
-                  type="number" min={0} max={200}
-                  value={n || ''}
-                  onChange={ev => setNivel(i, parseInt(ev.target.value, 10) || 0)}
-                  placeholder="0"
-                  className="h-6 w-14 text-xs text-center tabular-nums px-1"
-                />
-                <span className="text-[10px] text-gray-400 w-8 text-right">hcs</span>
-              </label>
-            )
-          })}
-          {/* Resumen: total de huecos en suelo + capacidad total de palets */}
-          <div className="flex items-center gap-3 pt-1 text-[10px] text-gray-600">
-            <span className="font-bold text-teal-700">{totalSuelo} huecos en suelo</span>
-            <span className="text-gray-400">·</span>
-            <span className="font-bold text-gray-700">{totalCapacidad} palets caben en total</span>
-            {totalSuelo !== huecos && (
-              <span className="text-amber-600 font-semibold ml-auto">
-                ⚠ cambia nº de huecos a {totalSuelo} al aplicar
-              </span>
-            )}
-          </div>
+      {/* Fila 1 — SUELO (siempre presente): nº de huecos de la zona */}
+      <label
+        className="flex items-center gap-2 rounded border border-gray-300 bg-white px-2 py-1 mb-1"
+        title={`Suelo: nº de huecos de la zona (${est.nombre}-01, ${est.nombre}-02…)`}
+      >
+        <span className="text-[10px] font-bold text-gray-700 w-24 shrink-0">1 · Suelo</span>
+        <div className="flex-1 min-w-[50px] h-2 rounded-full bg-gray-100 overflow-hidden">
+          <div className="h-full bg-teal-600" style={{ width: '100%' }} />
         </div>
-      ) : (
-        <p className="text-[10px] text-gray-500 italic">
-          Sin alturas definidas — pulsa <b>Generar pirámide</b> o cambia a modo <b>Por hueco</b> para definir una por una.
-          Una estantería sin alturas no tiene límite de apilado (cualquier nº de palets en una posición).
-        </p>
-      )}
+        <Input
+          type="number" min={1} max={200}
+          value={suelo || ''}
+          onChange={ev => onCambiarSuelo(parseInt(ev.target.value, 10) || 0)}
+          placeholder="—"
+          className="h-6 w-14 text-xs text-center tabular-nums px-1"
+        />
+        <span className="text-[10px] text-gray-500 w-14 text-right shrink-0">huecos</span>
+      </label>
+
+      {/* Filas 2..k — cada una con su nº de huecos INDEPENDIENTE */}
+      {niveles.slice(1).map((n, j) => {
+        const fila = j + 2  // nº de fila (2, 3, 4…)
+        const pct = suelo > 0 ? Math.min(100, Math.round((n / suelo) * 100)) : 0
+        return (
+          <label
+            key={fila}
+            className="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1 mb-1"
+            title={`Fila ${fila}: ${n} huecos llegan a esta ${palabra}`}
+          >
+            <span className="text-[10px] font-bold text-gray-600 w-24 shrink-0">{fila} · {fila === 2 ? '2ª' : `${fila}ª`} {palabra}</span>
+            <div className="flex-1 min-w-[50px] h-2 rounded-full bg-gray-100 overflow-hidden">
+              <div className="h-full bg-teal-500 transition-all" style={{ width: `${pct}%` }} />
+            </div>
+            <Input
+              type="number" min={0} max={200}
+              value={n || ''}
+              onChange={ev => onCambiarFila(j + 1, parseInt(ev.target.value, 10) || 0)}
+              placeholder="0"
+              className="h-6 w-14 text-xs text-center tabular-nums px-1"
+            />
+            <span className="text-[10px] text-gray-500 w-14 text-right shrink-0 flex items-center justify-end gap-1">
+              huecos
+              <button
+                onClick={e => { e.preventDefault(); onQuitarFila(j + 1) }}
+                className="text-gray-300 hover:text-red-500 transition-colors"
+                title={`Quitar la fila ${fila} (${n} huecos)`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          </label>
+        )
+      })}
+
+      {/* Acciones: añadir fila / quitar límite */}
+      <div className="flex items-center gap-2 pt-0.5">
+        <button
+          onClick={onAnadirFila}
+          className="h-6 px-2 rounded bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold"
+          title={`Añadir una fila más de ${palabra}s (empieza con el mismo nº de huecos que la última — ajústalo)`}
+        >
+          + Añadir {palabra}
+        </button>
+        {tieneLimite && (
+          <button
+            onClick={onQuitarLimite}
+            className="h-6 px-2 rounded text-gray-500 hover:text-red-600 text-[10px] font-bold underline"
+            title="Quitar todas las filas de altura — la zona pasa a apilado libre (sin límite)"
+          >
+            quitar límite
+          </button>
+        )}
+        <span className="ml-auto text-[10px] text-gray-400">
+          {suelo} huecos · {tieneLimite ? `${capacidadTotal} palets máx.` : 'capacidad ∞'}
+        </span>
+      </div>
     </div>
   )
 }
@@ -219,130 +265,106 @@ export function StockAlmacenView() {
   const [query, setQuery] = useState('')
   const queryNorm = normAlm(query.trim())
 
-  // Configuración del almacén: lista de estanterías con su nº de huecos.
+  // Configuración del almacén: lista de ZONAS (estanterías o paredes),
+  // cada una con sus FILAS DE ALTURA (nº de huecos independiente por fila).
   // Cada hueco se nombra automáticamente y el mapa se dibuja a partir de
   // esta lista. Compartida con ENTRADA (hueco óptimo automático) vía
   // '@/lib/almacen': persistida en localStorage ('stock-config-v2') con
   // migración de las claves antiguas 'stock-config' y 'stock-capacidades'.
   const [almacenCfg, setAlmacenCfg] = useState<EstanteriaCfg[]>(() => loadAlmacenCfg())
   const [showCfgEditor, setShowCfgEditor] = useState(false)
-  // Editor de ALTURAS por hueco: qué estantería tiene el panel abierto +
-  // valor del campo rápido "Todas:" (solo hay un panel abierto a la vez).
-  const [alturasOpenId, setAlturasOpenId] = useState<string | null>(null)
-  const [todasAlturas, setTodasAlturas] = useState('')
-  // Modo del editor de alturas por estantería: 'hueco' (un input por posición,
-  // el modo original de V19) o 'altura' (un input por NIVEL — nº de huecos
-  // que llegan a esa altura). El modo 'altura' es más natural para zonas sin
-  // estantería: "tengo 10 palets en el suelo, 8 apilados a 2, 3 apilados a 3".
-  // Ambos modos editan el mismo campo `caps[]` de la estantería.
-  const [alturasModo, setAlturasModo] = useState<'hueco' | 'altura'>('hueco')
-  // Borrador local de nº de niveles en modo 'altura' (por estantería id).
-  // Cuando se abre el panel, se inicializa desde caps[] con alturasDesdeCaps.
-  const [nivelesDraft, setNivelesDraft] = useState<Record<string, number[]>>({})
-  // Formulario "añadir estantería" (tarjeta punteada al final de la lista)
+  // Formulario "añadir zona" (tarjeta punteada al final de la lista):
+  // primero el TIPO (estantería / pared), luego nombre y nº de huecos.
   const [addOpen, setAddOpen] = useState(false)
+  const [newRackTipo, setNewRackTipo] = useState<'estanteria' | 'pared'>('estanteria')
   const [newRackName, setNewRackName] = useState('')
   const [newRackHuecos, setNewRackHuecos] = useState('')
   const [newRackCap, setNewRackCap] = useState('')
   useEffect(() => { saveAlmacenCfg(almacenCfg) }, [almacenCfg])
 
-  // ── Helpers de configuración (estanterías → huecos) ──
-  function anadirEstanteria(nombre: string, huecos: number, cap: number): boolean {
+  // ── Helpers de configuración (zonas → filas de altura → huecos) ──
+  function anadirEstanteria(nombre: string, huecos: number, cap: number, tipo: 'estanteria' | 'pared' = 'estanteria'): boolean {
     const n = nombre.trim().toUpperCase()
     const h = Math.max(1, Math.min(200, huecos || 0))
     if (!n || huecos <= 0) return false
     if (almacenCfg.some(e => e.nombre.trim().toUpperCase() === n)) return false
     setAlmacenCfg(prev => prev.some(e => e.nombre.trim().toUpperCase() === n)
       ? prev
-      : [...prev, { id: Math.random().toString(36).slice(2, 9), nombre: n, huecos: h, cap: Math.max(0, cap || 0) }])
+      : [...prev, { id: Math.random().toString(36).slice(2, 9), nombre: n, tipo, huecos: h, cap: Math.max(0, cap || 0) }])
     return true
   }
   function quitarEstanteria(id: string) {
     setAlmacenCfg(prev => prev.filter(e => e.id !== id))
   }
-  function cambiarHuecos(id: string, v: number) {
-    setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, huecos: Math.max(1, Math.min(200, v || 0)) } : e)))
-  }
   function cambiarCap(id: string, v: number) {
     setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, cap: Math.max(0, v || 0) } : e)))
   }
-  // ── ALTURAS por hueco (apilado sin estantería) ──
-  // caps[idx] = nº de palets que se pueden apilar en el hueco idx+1
-  // (0 = sin límite). Cada posición de la estantería se configura INDEPENDIENTE.
-  function cambiarAlturaHueco(id: string, idx: number, v: number) {
-    setAlmacenCfg(prev => prev.map(e => {
-      if (e.id !== id) return e
-      const caps = Array.from({ length: Math.max(e.huecos, idx + 1) }, (_, i) => Math.max(0, Math.min(20, Number(e.caps?.[i]) || 0)))
-      caps[idx] = Math.max(0, Math.min(20, v || 0))
-      return { ...e, caps }
-    }))
-  }
-  // Poner la MISMA altura en todos los huecos de la estantería (atajo)
-  function aplicarAlturaTodos(id: string, v: number) {
-    const h = Math.max(0, Math.min(20, v || 0))
-    setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, caps: Array.from({ length: e.huecos }, () => h) } : e)))
+  // Cambiar el TIPO de la zona (badge clicable en la tarjeta): estantería ↔ pared.
+  // Solo cambia etiquetas/ayuda — el motor es el mismo (huecos + altura por hueco).
+  function cambiarTipo(id: string) {
+    setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, tipo: e.tipo === 'pared' ? 'estanteria' : 'pared' } : e)))
   }
 
-  // ── ALTURAS por NIVEL (vista complementaria) ──
-  // Lee la configuración actual (caps[]) y la convierte en conteo por nivel:
-  //   · alturas[0] = nº de huecos que llegan a altura 1 (suelo)
-  //   · alturas[1] = nº de huecos que llegan a altura 2 (apilado 1 nivel)
-  //   · alturas[k-1] = nº de huecos que llegan a altura k (cima)
-  // Ej: caps = [3,3,3,2,2,2,2,2,1,1] (10 huecos) → [10,8,3]
-  //   (los 10 llegan al suelo, 8 se apilan a 2, 3 llegan a 3)
-  function alturasDesdeCaps(e: EstanteriaCfg): number[] {
-    const huecos = e.huecos || 0
-    if (huecos <= 0) return []
-    const slice = (e.caps || []).slice(0, huecos)
-    let k = 0
-    for (const c of slice) if ((c || 0) > k) k = c || 0
-    if (k === 0) return []
-    const alturas = new Array<number>(k).fill(0)
-    for (let i = 0; i < huecos; i++) {
-      const c = Math.min(20, Math.max(0, slice[i] || 0))
-      for (let nivel = 1; nivel <= c; nivel++) alturas[nivel - 1]++
-    }
-    return alturas
+  // ── FILAS DE ALTURA (configuración principal V21) ──
+  // Cambiar el nº de huecos del SUELO (fila 1). Si la zona tiene filas de
+  // altura definidas, se regeneran los caps[] manteniendo las filas;
+  // si está en apilado libre, solo cambia el nº de huecos.
+  function cambiarSuelo(id: string, v: number) {
+    const N1 = Math.max(1, Math.min(200, v || 0))
+    setAlmacenCfg(prev => prev.map(e => {
+      if (e.id !== id) return e
+      const niveles = alturasDesdeCaps(e)
+      if (niveles.length === 0) return { ...e, huecos: N1 }
+      const { caps } = capsDesdeNiveles([N1, ...niveles.slice(1)])
+      return { ...e, huecos: N1, caps }
+    }))
   }
-  // Inversa: dadas las cuentas por nivel (pirámide: N1 >= N2 >= ... >= Nk),
-  // genera caps[]: los primeros N_k huecos tienen altura k, los siguientes
-  // N_{k-1} - N_k tienen altura k-1, etc. Reparte de izquierda a derecha.
-  // También ajusta `e.huecos` al total (= alturas[0]) para que los nombres
-  // automáticos coincidan con las posiciones realmente configuradas.
-  function aplicarAlturasPorNivel(id: string, alturas: number[]) {
-    const k = alturas.length
-    const N1 = k > 0 ? Math.max(0, Math.min(200, Math.floor(alturas[0]) || 0)) : 0
-    if (N1 === 0) {
-      setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, caps: [], huecos: 0 } : e)))
-      return
-    }
-    const caps = new Array<number>(N1).fill(0)
-    for (let i = 0; i < N1; i++) {
-      let a = 0
-      for (let nivel = 0; nivel < k; nivel++) {
-        if ((alturas[nivel] || 0) > i) a = nivel + 1
+  // Cambiar el nº de huecos de la fila idx (0-based; idx ≥ 1, la 0 es el suelo)
+  function cambiarFila(id: string, idx: number, v: number) {
+    setAlmacenCfg(prev => prev.map(e => {
+      if (e.id !== id) return e
+      const niveles = alturasDesdeCaps(e)
+      if (niveles.length === 0 || idx <= 0 || idx >= niveles.length + 1) return e
+      const next = [...niveles]
+      next[idx] = Math.max(0, Math.min(200, v || 0))
+      // Pirámide: una fila nunca puede tener más huecos que la de abajo
+      for (let i = 1; i < next.length; i++) {
+        if (next[i] > next[i - 1]) next[i] = next[i - 1]
       }
-      caps[i] = a
-    }
-    setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, caps, huecos: N1 } : e)))
+      const { caps, suelo } = capsDesdeNiveles(next)
+      return { ...e, huecos: suelo, caps }
+    }))
   }
-  // Añadir o quitar niveles en el borrador (modo 'altura')
-  function setNivelDraft(id: string, niveles: number[]) {
-    setNivelesDraft(prev => ({ ...prev, [id]: niveles }))
+  // Añadir una fila más (empieza con los mismos huecos que la última —
+  // el usuario la ajusta). Si la zona estaba en apilado libre, la fila 1
+  // (suelo) es implícita: la base es [huecos] y la nueva fila es la 2.
+  function anadirFila(id: string) {
+    setAlmacenCfg(prev => prev.map(e => {
+      if (e.id !== id) return e
+      const niveles = alturasDesdeCaps(e)
+      // Sin filas definidas (apilado libre) → base = [suelo implícito]
+      const base = niveles.length > 0 ? niveles : [Math.max(1, e.huecos)]
+      const ultima = base[base.length - 1]
+      const next = [...base, Math.max(0, ultima)]
+      const { caps, suelo } = capsDesdeNiveles(next)
+      return { ...e, huecos: suelo, caps }
+    }))
   }
-  // Abrir/cerrar el panel de alturas: al abrir, inicializa el borrador
-  // 'altura' desde el estado actual de caps[] para que ambos modos estén
-  // sincronizados desde el principio.
-  function toggleAlturasPanel(id: string) {
-    setAlturasOpenId(prev => {
-      const abre = prev !== id
-      if (abre) {
-        const est = almacenCfg.find(e => e.id === id)
-        setNivelesDraft(d => ({ ...d, [id]: est ? alturasDesdeCaps(est) : [] }))
-        setAlturasModo('hueco')  // modo por defecto al abrir
-      }
-      return abre ? id : null
-    })
+  // Quitar la fila idx (0-based; solo filas ≥ 2 — el suelo siempre está)
+  function quitarFila(id: string, idx: number) {
+    setAlmacenCfg(prev => prev.map(e => {
+      if (e.id !== id) return e
+      const niveles = alturasDesdeCaps(e)
+      if (idx <= 0 || idx >= niveles.length) return e
+      const next = niveles.filter((_, i) => i !== idx)
+      if (next.length === 0) return { ...e, caps: [] }
+      const { caps, suelo } = capsDesdeNiveles(next)
+      return { ...e, huecos: suelo, caps }
+    }))
+  }
+  // Quitar TODAS las filas de altura → apilado libre (sin límite)
+  function quitarLimiteAlturas(id: string) {
+    setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, caps: [] } : e)))
   }
   function renombrarEstanteria(id: string, nuevo: string) {
     const n = nuevo.trim().toUpperCase()
@@ -686,10 +708,10 @@ export function StockAlmacenView() {
               <Settings2 className="h-4 w-4 text-teal-600" /> CONFIGURAR ALMACÉN
             </h3>
             <p className="text-xs text-gray-500 mb-3">
-              Todo el almacén son <b>estanterías</b>: cada una tiene un <b>nombre</b> (E1, E2…) y un <b>nº de huecos</b> —
-              los huecos se nombran solos (<b>E1-01, E1-02…</b>) y el mapa se dibuja con ellos; los vacíos se ven LIBRE.
-              Con <b>Alturas por hueco</b> defines cuántos palets se apilan en cada posición (apilado sin estantería,
-              alturas distintas en cada sitio). Se guarda en este navegador.
+              Configura cada zona del almacén: primero elige si es <b>ESTANTERÍA</b> (rack con niveles) o <b>PARED</b>
+              (palets apilados en el suelo, uno encima de otro). Luego define las <b>filas de altura</b>: cuántos
+              <b>huecos</b> tiene cada nivel/altura — <b>pueden ser distintos en cada fila</b> (suelo 12, 2ª 12, 3ª 6…).
+              Los huecos se nombran solos (<b>E1-01, E1-02…</b>) y el mapa se dibuja con ellos. Se guarda en este navegador.
             </p>
 
             {/* Sugerencias detectadas en los movimientos */}
@@ -715,11 +737,11 @@ export function StockAlmacenView() {
               </div>
             )}
 
-            {/* UNA sola lista: las estanterías existentes + tarjeta punteada para añadir más */}
+            {/* UNA sola lista: las zonas existentes + tarjeta punteada para añadir más */}
             <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">
-              Tus estanterías
+              Tus zonas
               <span className="normal-case font-semibold text-gray-400">
-                {' '}· {almacenCfg.length} estantería(s) · {totalHuecos} huecos en el mapa
+                {' '}· {almacenCfg.length} zona(s) · {totalHuecos} huecos en el mapa
               </span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -727,10 +749,25 @@ export function StockAlmacenView() {
                   const huecosNombres = nombresHuecos(e.nombre, e.huecos)
                   const rk = racks.find(r => r.name === e.nombre.trim().toUpperCase())
                   const ocup = rk ? rk.celdas.filter(c => c.total > 0).length : 0
+                  const esPared = e.tipo === 'pared'
                   return (
                     <div key={e.id} className="rounded-lg border border-gray-200 p-3 bg-white">
                       <div className="flex items-center gap-2">
                         <NombreEstanteriaInput nombre={e.nombre} onCommit={n => renombrarEstanteria(e.id, n)} />
+                        {/* TIPO de zona: clicable para cambiar estantería ↔ pared */}
+                        <button
+                          onClick={() => cambiarTipo(e.id)}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                            esPared
+                              ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                              : 'bg-sky-50 text-sky-700 border-sky-300 hover:bg-sky-100'
+                          }`}
+                          title={esPared
+                            ? 'PARED: palets apilados en el suelo, uno encima de otro — pulsa para cambiar a ESTANTERÍA'
+                            : 'ESTANTERÍA: rack con niveles — pulsa para cambiar a PARED (apilado en suelo)'}
+                        >
+                          {esPared ? 'PARED' : 'ESTANTERÍA'}
+                        </button>
                         {e.huecos > 0 ? (
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ml-auto ${
                             ocup > 0 ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-gray-50 text-gray-400 border-gray-200'
@@ -745,11 +782,23 @@ export function StockAlmacenView() {
                         <button
                           onClick={() => quitarEstanteria(e.id)}
                           className="text-gray-300 hover:text-red-500 transition-colors shrink-0"
-                          title="Eliminar esta estantería y sus huecos del mapa"
+                          title="Eliminar esta zona y sus huecos del mapa"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
+                      {/* FILAS DE ALTURA — configuración principal: nº de huecos
+                          INDEPENDIENTE por fila (suelo, 2ª, 3ª…) */}
+                      {e.huecos > 0 && (
+                        <FilasAlturaEditor
+                          est={e}
+                          onCambiarSuelo={v => cambiarSuelo(e.id, v)}
+                          onCambiarFila={(idx, v) => cambiarFila(e.id, idx, v)}
+                          onAnadirFila={() => anadirFila(e.id)}
+                          onQuitarFila={idx => quitarFila(e.id, idx)}
+                          onQuitarLimite={() => quitarLimiteAlturas(e.id)}
+                        />
+                      )}
                       {/* Huecos con nombre automático — muestran su altura (·N) si está definida */}
                       {huecosNombres.length > 0 ? (
                         <div className="flex flex-wrap gap-1 mt-2 max-h-24 overflow-y-auto">
@@ -773,137 +822,15 @@ export function StockAlmacenView() {
                       ) : (
                         <p className="text-[11px] text-amber-600 mt-2">
                           Importada de la configuración anterior (capacidad). No aparece en el mapa hasta que
-                          le des un nº de huecos abajo — o elimínala con la papelera si no la necesitas.
+                          le des un nº de huecos en la fila Suelo — o elimínala con la papelera si no la necesitas.
                         </p>
                       )}
-                      {/* ALTURAS por hueco: editor independiente de cada posición */}
-                      {e.huecos > 0 && (
-                        <div className="mt-2">
-                          <button
-                            onClick={() => toggleAlturasPanel(e.id)}
-                            className="text-[10px] font-bold uppercase tracking-wide text-teal-700 hover:text-teal-900 flex items-center gap-1"
-                            title="Configurar la altura de cada hueco: nº de palets que se apilan (para estantería de bloque o sin estantería)"
-                          >
-                            <Layers className="h-3.5 w-3.5" /> Alturas por hueco
-                            {e.caps?.some(c => c > 0) ? <span className="normal-case font-semibold text-gray-400">· definidas</span> : null}
-                          </button>
-                          {alturasOpenId === e.id && (
-                            <div className="mt-1.5 rounded-md border border-teal-200 bg-teal-50/40 p-2">
-                              {/* Switch de modo: 'hueco' (input por posición) o 'altura' (input por nivel) */}
-                              <div className="flex items-center gap-1 mb-2">
-                                <button
-                                  onClick={() => setAlturasModo('hueco')}
-                                  className={`px-2 h-6 rounded-l-md text-[10px] font-bold border ${alturasModo === 'hueco' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-                                  title="Un input por cada hueco (E1-01, E1-02…) — define la altura de cada posición individual"
-                                >Por hueco</button>
-                                <button
-                                  onClick={() => {
-                                    // Al cambiar a modo 'altura', re-sincroniza el borrador
-                                    // desde caps[] por si cambió en modo 'hueco'
-                                    setNivelesDraft(d => ({ ...d, [e.id]: alturasDesdeCaps(e) }))
-                                    setAlturasModo('altura')
-                                  }}
-                                  className={`px-2 h-6 rounded-r-md text-[10px] font-bold border-t border-r border-b ${alturasModo === 'altura' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-                                  title="Un input por nivel (suelo, 2º, 3º…) — cuántos huecos llegan a cada altura. Ideal para zonas sin estantería donde se apila en el suelo"
-                                >Por altura</button>
-                                <span className="ml-auto text-[10px] text-gray-400 normal-case font-semibold">
-                                  {alturasModo === 'hueco'
-                                    ? `${e.huecos} huecos · ${e.caps?.filter(c => c > 0).length || 0} con altura`
-                                    : `${(nivelesDraft[e.id] || []).length} niveles · ${e.huecos} huecos en suelo`}
-                                </span>
-                              </div>
-
-                              {alturasModo === 'hueco' ? (
-                                <>
-                                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                                    <span className="text-[10px] text-gray-600 leading-tight flex-1 min-w-[180px]">
-                                      Altura = nº de palets apilables en ese hueco (uno encima de otro). <b>Vacío / 0 = sin límite.</b>
-                                      El hueco óptimo llena cada columna hasta su altura y luego pasa a la siguiente.
-                                    </span>
-                                    <span className="flex items-center gap-1">
-                                      <span className="text-[10px] font-bold text-gray-500 uppercase">Todas:</span>
-                                      <Input
-                                        type="number" min={0} max={20}
-                                        value={todasAlturas}
-                                        onChange={ev => setTodasAlturas(ev.target.value)}
-                                        placeholder="—"
-                                        className="h-6 w-12 text-xs text-center px-1"
-                                      />
-                                      <button
-                                        onClick={() => aplicarAlturaTodos(e.id, parseInt(todasAlturas, 10) || 0)}
-                                        className="h-6 px-2 rounded bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold"
-                                        title="Poner esta altura en todos los huecos de la estantería"
-                                      >Aplicar</button>
-                                    </span>
-                                  </div>
-                                  <div className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-1">
-                                    {huecosNombres.map((h, i) => (
-                                      <label key={h} className="flex items-center gap-1 rounded border border-gray-200 bg-white px-1 py-0.5" title={`${h} · altura (palets apilables)`}>
-                                        <span className="font-mono text-[9px] font-bold text-gray-500 truncate">{h}</span>
-                                        <input
-                                          type="number" min={0} max={20}
-                                          value={e.caps?.[i] || ''}
-                                          placeholder="—"
-                                          onChange={ev => cambiarAlturaHueco(e.id, i, parseInt(ev.target.value, 10) || 0)}
-                                          className="w-9 h-6 text-xs text-center border-0 focus:ring-1 focus:ring-teal-500 rounded tabular-nums"
-                                        />
-                                      </label>
-                                    ))}
-                                  </div>
-                                </>
-                              ) : (
-                                <PorAlturaEditor
-                                  huecos={e.huecos}
-                                  niveles={nivelesDraft[e.id] || alturasDesdeCaps(e)}
-                                  onChangeNiveles={niveles => {
-                                    setNivelDraft(e.id, niveles)
-                                    aplicarAlturasPorNivel(e.id, niveles)
-                                  }}
-                                  onAplicarPiramide={(N1, k) => {
-                                    // Genera pirámide completa: N1 en suelo, escalonado hasta k
-                                    // Cada nivel tiene N1 * (k - nivel + 1) / k  huecos — redondeado
-                                    // En realidad, dejamos que el usuario rellene manualmente;
-                                    // este atajo crea k niveles con pirámide por defecto: 100%, 80%, 60%...
-                                    const niveles = Array.from({ length: k }, (_, i) =>
-                                      Math.max(0, Math.round(N1 * (1 - i / k)))
-                                    )
-                                    setNivelDraft(e.id, niveles)
-                                    aplicarAlturasPorNivel(e.id, niveles)
-                                  }}
-                                  onReset={() => {
-                                    setNivelDraft(e.id, [])
-                                    setAlmacenCfg(prev => prev.map(x => (x.id === e.id ? { ...x, caps: [] } : x)))
-                                  }}
-                                />
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
                       <div className="flex flex-wrap items-end gap-2 mt-2 pt-2 border-t border-gray-100">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => cambiarHuecos(e.id, e.huecos - 1)}
-                            className="h-7 w-7 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 font-bold"
-                            title="Un hueco menos"
-                          >−</button>
-                          <Input
-                            type="number"
-                            min={1}
-                            max={200}
-                            value={e.huecos || ''}
-                            onChange={ev => cambiarHuecos(e.id, parseInt(ev.target.value, 10) || 0)}
-                            className="h-7 w-14 text-sm text-center"
-                          />
-                          <button
-                            onClick={() => cambiarHuecos(e.id, e.huecos + 1)}
-                            className="h-7 w-7 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 font-bold"
-                            title="Un hueco más (se nombra solo al final)"
-                          >+</button>
-                          <span className="text-[10px] font-semibold text-gray-400 uppercase ml-1">huecos</span>
-                        </div>
+                        <p className="text-[10px] text-gray-400">
+                          {rk ? `${rk.total} palet(s) ahora` : 'Sin palets ahora'} · los huecos se nombran solos
+                        </p>
                         <div className="flex items-center gap-1 ml-auto">
-                          <span className="text-[10px] font-semibold text-gray-400 uppercase" title="Capacidad total de toda la estantería (opcional)">Cap. máx. total</span>
+                          <span className="text-[10px] font-semibold text-gray-400 uppercase" title="Capacidad total de toda la zona (opcional)">Cap. máx. total</span>
                           <Input
                             type="number"
                             min={0}
@@ -914,17 +841,37 @@ export function StockAlmacenView() {
                           />
                         </div>
                       </div>
-                      <p className="text-[10px] text-gray-400 mt-1.5">
-                        {rk ? `${rk.total} palet(s) ahora` : 'Sin palets ahora'} · los huecos nuevos se nombran solos al final
-                      </p>
                     </div>
                   )
                 })}
 
-                {/* Tarjeta punteada: añadir una estantería nueva A ESTA MISMA LISTA */}
+                {/* Tarjeta punteada: añadir una zona nueva A ESTA MISMA LISTA */}
                 {addOpen ? (
                   <div className="rounded-lg border-2 border-dashed border-teal-400 bg-teal-50/40 p-3">
-                    <div className="text-[11px] font-bold text-teal-800 uppercase tracking-wide mb-2">Nueva estantería</div>
+                    <div className="text-[11px] font-bold text-teal-800 uppercase tracking-wide mb-2">Nueva zona</div>
+                    {/* 1º — TIPO de zona: estantería o pared */}
+                    <div className="mb-2">
+                      <Label className="text-[10px] font-semibold text-gray-400 uppercase">Tipo de zona</Label>
+                      <div className="flex gap-1 mt-0.5">
+                        <button
+                          onClick={() => setNewRackTipo('estanteria')}
+                          className={`flex-1 h-10 px-2 rounded-md text-left border transition-colors ${newRackTipo === 'estanteria' ? 'bg-sky-100 border-sky-400' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                          title="Rack con niveles: cada nivel tiene sus huecos (posiciones) y caben distintos números por nivel"
+                        >
+                          <span className={`block text-[11px] font-bold ${newRackTipo === 'estanteria' ? 'text-sky-800' : 'text-gray-600'}`}>ESTANTERÍA</span>
+                          <span className="block text-[9px] leading-tight text-gray-500">rack con niveles · 1 palet por hueco y nivel</span>
+                        </button>
+                        <button
+                          onClick={() => setNewRackTipo('pared')}
+                          className={`flex-1 h-10 px-2 rounded-md text-left border transition-colors ${newRackTipo === 'pared' ? 'bg-amber-100 border-amber-400' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                          title="Palets apilados en el suelo (contra pared), uno encima de otro — cada posición tiene su altura en nº de palets"
+                        >
+                          <span className={`block text-[11px] font-bold ${newRackTipo === 'pared' ? 'text-amber-800' : 'text-gray-600'}`}>PARED</span>
+                          <span className="block text-[9px] leading-tight text-gray-500">apilado en suelo · uno encima de otro</span>
+                        </button>
+                      </div>
+                    </div>
+                    {/* 2º — nombre y nº de huecos del suelo */}
                     <div className="flex flex-wrap items-end gap-2">
                       <div className="w-28">
                         <Label className="text-[10px] font-semibold text-gray-400 uppercase">Nombre</Label>
@@ -936,8 +883,8 @@ export function StockAlmacenView() {
                           className="h-8 mt-0.5 text-sm"
                         />
                       </div>
-                      <div className="w-24">
-                        <Label className="text-[10px] font-semibold text-gray-400 uppercase">Nº de huecos</Label>
+                      <div className="w-32">
+                        <Label className="text-[10px] font-semibold text-gray-400 uppercase">Huecos (suelo)</Label>
                         <Input
                           type="number"
                           min={1}
@@ -963,7 +910,7 @@ export function StockAlmacenView() {
                         size="sm"
                         className="h-8 bg-teal-600 hover:bg-teal-700 text-white"
                         onClick={() => {
-                          const ok = anadirEstanteria(newRackName, parseInt(newRackHuecos, 10) || 0, parseInt(newRackCap, 10) || 0)
+                          const ok = anadirEstanteria(newRackName, parseInt(newRackHuecos, 10) || 0, parseInt(newRackCap, 10) || 0, newRackTipo)
                           if (ok) { setNewRackName(''); setNewRackHuecos(''); setNewRackCap('') }
                         }}
                       >
@@ -986,7 +933,7 @@ export function StockAlmacenView() {
                       const dup = almacenCfg.some(e => e.nombre.trim().toUpperCase() === n)
                       return (
                         <div className="mt-2 text-xs">
-                          {dup && <div className="text-red-600 font-semibold mb-1">Ya existe una estantería llamada {n}.</div>}
+                          {dup && <div className="text-red-600 font-semibold mb-1">Ya existe una zona llamada {n}.</div>}
                           <span className="text-teal-800 font-semibold">Se nombrarán así: </span>
                           <span className="inline-flex flex-wrap gap-1 mt-1">
                             {muestra.map((m, i) => (
@@ -1003,13 +950,13 @@ export function StockAlmacenView() {
                     className={`rounded-lg border-2 border-dashed border-gray-300 p-3 hover:border-teal-400 hover:bg-teal-50/40 transition-colors flex flex-col items-center justify-center gap-1.5 text-gray-400 hover:text-teal-700 ${
                       almacenCfg.length === 0 ? 'min-h-[150px]' : 'min-h-[110px]'
                     }`}
-                    title="Añadir una estantería nueva a esta lista"
+                    title="Añadir una zona nueva (estantería o pared) a esta lista"
                   >
                     <Plus className="h-5 w-5" />
-                    <span className="text-xs font-bold uppercase tracking-wide">Añadir estantería</span>
+                    <span className="text-xs font-bold uppercase tracking-wide">Añadir zona</span>
                     {almacenCfg.length === 0 && (
-                      <span className="text-[10px] normal-case text-gray-400 text-center max-w-[220px]">
-                        La primera: un nombre + un nº de huecos, y el dibujo se crea solo
+                      <span className="text-[10px] normal-case text-gray-400 text-center max-w-[240px]">
+                        Estantería o pared: elige el tipo, un nombre y sus huecos por altura
                       </span>
                     )}
                   </button>
@@ -1091,7 +1038,7 @@ export function StockAlmacenView() {
           <CardContent className="p-4">
             <div className="flex flex-wrap items-center gap-3 mb-3">
               <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                <Warehouse className="h-4 w-4 text-teal-600" /> MAPA DE ESTANTERÍAS
+                <Warehouse className="h-4 w-4 text-teal-600" /> MAPA DEL ALMACÉN
               </h3>
               <div className="flex flex-wrap items-center gap-2 ml-auto text-[11px] font-semibold print-hide">
                 <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-sm bg-emerald-200 border border-emerald-400 inline-block" /> ≤ 30 días</span>
@@ -1117,11 +1064,13 @@ export function StockAlmacenView() {
             <div className="flex flex-wrap gap-4 print-racks">
               {racks.map(rk => {
                 const cap = capInfo(rk.name, rk.total)
+                const tipoRack = almacenCfg.find(c => c.nombre.trim().toUpperCase() === rk.name)?.tipo
                 return (
                 <div key={rk.name} className="rounded-xl border-2 border-gray-300 bg-gradient-to-b from-gray-50 to-white p-3 shadow-sm min-w-[250px] flex-1 max-w-full print-rack">
                   <div className="flex items-center justify-between mb-1 px-0.5">
                     <div className="font-bold text-gray-700 text-sm flex items-center gap-1.5">
-                      <Warehouse className="h-4 w-4 text-teal-600" /> ESTANTERÍA {rk.name}
+                      <Warehouse className="h-4 w-4 text-teal-600" />
+                      {tipoRack === 'pared' ? 'PARED' : 'ESTANTERÍA'} {rk.name}
                     </div>
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
                       cap.cap > 0

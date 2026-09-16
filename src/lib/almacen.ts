@@ -33,19 +33,25 @@ export interface RackStock {
   celdas: CeldaStock[]
 }
 
-// El almacén se define a partir de ESTANTERÍAS y sus HUECOS: cada estantería
-// tiene un nombre y un nº de huecos, y cada hueco se nombra automáticamente
+// El almacén se define a partir de ZONAS (estanterías o paredes) y sus
+// huecos: cada zona tiene un nombre, un TIPO (estantería = rack con niveles
+// · pared = palets apilados en el suelo, uno encima de otro) y FILAS DE
+// ALTURA con nº de huecos INDEPENDIENTE por fila (pueden ser distintas:
+// p.ej. suelo 12, 2ª altura 12, 3ª 6). Cada hueco se nombra automáticamente
 // (E1 con 12 huecos → E1-01, E1-02 … E1-12). El mapa del almacén se dibuja
 // a partir de esta configuración; los huecos sin palets se ven como LIBRE.
 export interface EstanteriaCfg {
   id: string        // id estable (keys de React)
   nombre: string    // "E1" — prefijo con el que se nombran los huecos
-  huecos: number    // nº de huecos de la estantería
+  tipo?: 'estanteria' | 'pared'  // V21: estantería (rack por niveles) o pared (apilado en suelo).
+                    // Afecta a las etiquetas/ayuda de la configuración; para el
+                    // motor ambas se modelan igual (huecos en suelo + altura por hueco)
+  huecos: number    // nº de huecos de la fila del SUELO (fila de altura 1)
   cap: number       // capacidad máx. de palets (0 = sin límite) — opcional
   caps?: number[]   // ALTURA por hueco (nº de palets apilables): caps[0] → hueco 01,
-                    // caps[1] → hueco 02… 0 o ausente = sin límite. Sirve para
-                    // estantería de bloque / apilado sin estantería, donde cada
-                    // posición del suelo puede tener una altura DISTINTA.
+                    // caps[1] → hueco 02… 0 o ausente = sin límite. Derivado de las
+                    // filas de altura (pirámide): fila j con N huecos → los primeros
+                    // N huecos llegan a la altura j.
   alias?: string[]  // nombres antiguos de la estantería: los palets registrados
                     // con ellos siguen apareciendo en el mapa tras un renombrado
 }
@@ -323,6 +329,7 @@ export function loadAlmacenCfg(): EstanteriaCfg[] {
         ? arr.filter(e => e && String(e.nombre || '').trim()).map(e => ({
             id: e.id || Math.random().toString(36).slice(2, 9),
             nombre: String(e.nombre).trim().toUpperCase(),
+            tipo: e.tipo === 'pared' ? 'pared' : 'estanteria',
             huecos: Math.max(0, Math.min(200, Number(e.huecos) || 0)),
             cap: Math.max(0, Number(e.cap) || 0),
             caps: Array.isArray(e.caps)
