@@ -1480,3 +1480,23 @@ Verificación (agent-browser, localhost — ojo: custom-server.js sirve build pr
 Stage Summary:
 - Commit ee1cad4 V23-MAPA-POR-NIVELES pushed a origin/main (Vercel auto-deploy).
 - El mapa ahora muestra TODO lo configurado: cada nivel/altura con sus huecos, cada palet en su casilla (FIFO abajo→arriba), llenos/desbordos marcados y totales por columna. Zonas sin niveles siguen con la vista plana de siempre.
+
+---
+Task ID: V25
+Agent: main
+Task: El mapa del almacén no se veía en el móvil — la config de zonas vivía solo en localStorage del PC
+
+Work Log:
+- Diagnosticado con agent-browser (viewport iPhone 375px): el móvil veía "Configura tu almacén" porque localStorage estaba vacío en ese dispositivo
+- Añadido campo almacenCfg (JSON) al modelo Config en schema.prisma y schema.prisma.pg
+- Creado endpoint /api/almacen (GET lee, PUT guarda; sanea igual que loadAlmacenCfg)
+- lib/almacen.ts: fetchAlmacenCfg() (GET + caché local + migración auto) y pushAlmacenCfg() (PUT fire-and-forget)
+- stock-almacen-view: guarda en local+servidor; carga del servidor al montar
+- entrada-view y entrada-grilla: cargan config fresca del servidor (hueco óptimo correcto en móvil)
+- Fix race-condition encontrado en testing: el effect de guardado sobrescribía el servidor con [] antes de que llegara la config → guard con serverCfgReadyRef + initialCfgJsonRef (no pisar ediciones del usuario)
+- Verificado en navegador móvil: zona P1 creada → guardada en servidor → localStorage borrado → mapa se redibuja desde el servidor con niveles Suelo/2º nivel
+
+Stage Summary:
+- El mapa del almacén ahora se ve en TODOS los dispositivos de la empresa (config por tenant en BD)
+- Migración transparente: al abrir STOCK ALMACÉN en el PC donde estaba configurado, la config sube sola al servidor
+- Deploy: commit b8d3a67, build kJbVNltXUe6sncuuthCtR (17:25 UTC)
