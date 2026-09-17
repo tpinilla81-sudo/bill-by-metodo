@@ -15,6 +15,10 @@ export interface LoteStock {
   ident: string
   cantTotal: number
   cantRestante: number
+  // Producto del movimiento (V28): los usa el asistente de ubicación para
+  // agrupar por FAMILIA (mismo c1+c2) o por LOTE al proponer huecos.
+  c1?: string
+  c2?: string
 }
 
 export interface CeldaStock {
@@ -202,6 +206,8 @@ export function buildStock(registros: Registro[], clientesFiltro: string[]): Lot
         ident: getIdent(m),
         cantTotal: m.cant || 0,
         cantRestante: m.cant || 0,
+        c1: m.c1,
+        c2: m.c2,
       })
       continue
     }

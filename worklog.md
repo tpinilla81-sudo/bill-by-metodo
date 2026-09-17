@@ -1612,3 +1612,65 @@ Stage Summary:
   según estado. Seleccionable con un clic. Vista Lista como alternativa.
   Misma info que el mapa de STOCK ALMACÉN pero en miniatura para elegir
   rápido al meter una entrada.
+
+---
+Task ID: V28-UBIC-ASISTENTE
+Agent: main
+Task: "CUANDO EL ALMACEN SEA MUY GRANDE SERA UN LIO. EN LA UBICACION TE TIENE QUE LLEVAR A UN SITIO DONDE IR ELIGIENDO PRIMERAMENTE LA ESTANTERIA O PARED Y LUEGO AHI TE PROPONE HUECO, BAJO CRITERIOS EFICIENTES: FIFO, FAMILIA, LOTE... Y TAMBIEN CON UN BOTON" — asistente de ubicación en 2 pasos con motor de criterios. (El mensaje del usuario se cortó en "SE PUEDA..."; el botón se ha interpretado como acceso directo al asistente desde el campo UBICACIÓN.)
+
+Work Log:
+- almacen.ts: LoteStock gana c1?/c2? (producto del movimiento) — los setea
+  buildStock; el asistente los usa para agrupar por familia/lote. Retrocompatible.
+- entrada-view.tsx · NUEVO UbicacionWizard (modal overlay full-screen z-100):
+  * PASO 1 · ZONA: tarjeta por estantería/pared con icono, nº huecos,
+    ocup/cap, "N con sitio", barra de ocupación y badge "⚡ RECOMENDADA"
+    (la zona de la 1ª propuesta del criterio activo) + "N palets de este
+    producto ya en esta zona". Con UNA sola zona se salta directo al paso 2.
+  * PASO 2 · HUECO: mapa grande y táctil de la zona (casillas 44px,
+    niveles top-down, badges numerados 1/2/3 de las 3 mejores propuestas
+    en el NIVEL exacto donde entraría el palet) + lista de 5 propuestas
+    con motivo ("rota con 2 palets — el más antiguo tiene 61 días",
+    "junto a 1 palet del mismo lote", "completa la columna (2/3)"...),
+    chip N/M, ⚡ en la 1ª. Clic en casilla o propuesta = seleccionar;
+    pie con "USAR E1-04" que rellena el campo y cierra. Botón "← Zonas".
+  * Barra de CRITERIOS (afecta a recomendación y propuestas):
+    - FIFO: junto al stock más antiguo del mismo producto (rota antes);
+      si no, hueco libre; si no, columna con sitio.
+    - Familia: misma c1+c2 (más palets = mejor), luego mismo cliente,
+      luego hueco libre "nueva zona de producto".
+    - Lote: mismo prefijo de ident sin dígitos finales ("L-24001"→"l-",
+      casa con "L-24003"); fallback mismo producto.
+    - Compactar: columnas empezadas primero (ocupación desc), vacías al final.
+  * Alias de zona respetados (stock en "B1-03" cuenta para "E1-03" vía
+    claveACanonicos). Huecos LLENOS excluidos de las propuestas. Si el
+    form no tiene c1/c2: aviso "elige CONCEPTO 1 y 2 para agrupar".
+  * Estado: wizardOpen; stock vivo con buildStock(todosRegistros) memo.
+- UbicacionCombo: botón 🎯 Crosshair junto al input (abre el asistente,
+  cierra el desplegable) + botón "Asistente" en la barra superior del
+  desplegable. El desplegable MAPA/LISTA de V27 se conserva para almacenes
+  pequeños (elección rápida).
+- sidebar.tsx: build marker V28-UBIC-ASISTENTE · 2026-09-17.
+
+Verificación (agent-browser, localhost rebuild):
+- Test: 4 zonas (E1 12h/3niv · P1 8h pared/3alt · E2 6h/2niv · S1 10h
+  sin límite) + stock FRUTA E1-01×2(60d)+E1-07×3(LLENO), VERDURA P1-02×1,
+  BOX E2-03×2 + E2-04×1 (lote L-240xx), SUELTO S1-01×2.
+- Paso 1 (c1=FRUTA): 4 tarjetas con stats; E1 RECOMENDADA "5 palets de
+  este producto ya en esta zona" ✓.
+- FIFO en E1: 1ª E1-01 "rota con 2 palets de este producto — el más
+  antiguo tiene 61 días" (E1-07 LLENO excluido) ✓; 2ª-5ª E1-02…05 libres ✓.
+- Lote (c1=BOX, lote L-24003): E2 pasa a RECOMENDADA; dentro, 1ª E2-04
+  1/2 "junto a 1 palet del mismo lote" ✓ (prefijo "l-" casa con L-24004).
+- Compactar: 1ª E1-01 "completa la columna (2/3)", vacías detrás ✓.
+- USAR E2-04 → wizard cierra y campo UBICACIÓN = E2-04 ✓. Badge de
+  ranking solo en el nivel de entrada del palet ✓.
+- Móvil 375px: tarjetas ~85px táctiles, mapa legible, criterios con
+  scroll horizontal (VLM: "EXCELENTE... sin cortes"). 0 errores consola.
+- Limpieza: 11 registros de test borrados, cfg reseteada a [].
+
+Stage Summary:
+- Commit V28-UBIC-ASISTENTE.
+- Almacenes grandes: el campo UBICACIÓN lleva a un ASISTENTE en 2 pasos
+  (zona → hueco) que PROPONE el hueco según FIFO/familia/lote/compactar
+  con el motivo visible, mapa táctil y un clic para usarlo. El desplegable
+  rápido de V26/V27 se conserva.

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, Plus, Table, QrCode, Printer, Warehouse, Map as MapIcon, List } from 'lucide-react'
+import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, ChevronRight, Plus, Table, QrCode, Printer, Warehouse, Map as MapIcon, List, Crosshair, ArrowLeft, Package, Layers, Boxes } from 'lucide-react'
 import { todayISO, fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData, fieldAppliesToClient } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
@@ -15,8 +15,8 @@ import { QrEtiquetaDialog, type EtiquetaPalet } from '@/components/hualsa/qr-eti
 import {
   loadAlmacenCfg, fetchAlmacenCfg, huecoOptimo, clasificarUbicacion, contadoresHuecos, listadoHuecos,
   esC2EntradaPalet, normAlm, getIdent, getUbicacion, identDeCustomValues,
-  isQrAuto, setQrAuto,
-  type EstanteriaCfg, type HuecoInfo,
+  isQrAuto, setQrAuto, buildStock, diasEnAlmacen, normHuecoKey, padPos,
+  type EstanteriaCfg, type HuecoInfo, type LoteStock,
 } from '@/lib/almacen'
 
 interface EntradaViewData {
@@ -119,12 +119,14 @@ function UbicacionCombo({
   huecos,
   optimo,
   placeholder,
+  onOpenWizard,
 }: {
   value: string
   onChange: (v: string) => void
   huecos: HuecoInfo[]
   optimo: string
   placeholder: string
+  onOpenWizard?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(-1)
@@ -205,8 +207,20 @@ function UbicacionCombo({
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className="h-9 text-sm border-0 bg-transparent p-0 pr-6 focus:ring-0 focus:outline-none font-semibold"
+          className="h-9 text-sm border-0 bg-transparent p-0 pr-12 focus:ring-0 focus:outline-none font-semibold"
         />
+        {onOpenWizard && (
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => { setOpen(false); onOpenWizard() }}
+            aria-label="Asistente de ubicación"
+            title="Asistente: elegir zona y hueco con criterios (FIFO, familia, lote…)"
+            className="absolute right-5 top-1/2 -translate-y-1/2 p-0.5 text-teal-500 hover:text-teal-700"
+          >
+            <Crosshair className="h-4 w-4" />
+          </button>
+        )}
         <button
           type="button"
           tabIndex={-1}
@@ -220,7 +234,7 @@ function UbicacionCombo({
       </div>
       {open && (
         <div className="absolute z-50 left-0 top-full mt-1 w-[min(560px,94vw)] bg-white border border-gray-200 rounded-xl shadow-lg flex flex-col max-h-[78vh]">
-          {/* Barra superior: óptimo (si aplica) + conmutador Mapa/Lista */}
+          {/* Barra superior: óptimo (si aplica) + asistente + conmutador Mapa/Lista */}
           <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 shrink-0">
             {optimo && (
               <button
@@ -232,6 +246,17 @@ function UbicacionCombo({
                 <Zap className="h-3.5 w-3.5 text-teal-600 shrink-0" />
                 <span className="text-xs font-bold text-teal-800 font-mono">{optimo}</span>
                 <span className="text-[9px] font-extrabold uppercase tracking-wider text-teal-600 hidden xs:inline">óptimo</span>
+              </button>
+            )}
+            {onOpenWizard && (
+              <button
+                type="button"
+                onMouseDown={e => { e.preventDefault(); setOpen(false); onOpenWizard() }}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#005bb5]/5 border border-[#005bb5]/20 hover:bg-[#005bb5]/10 transition-colors"
+                title="Asistente: elige primero la zona y luego te propone el hueco según criterios (FIFO, familia, lote…)"
+              >
+                <Crosshair className="h-3.5 w-3.5 text-[#005bb5] shrink-0" />
+                <span className="text-[9px] font-extrabold uppercase tracking-wider text-[#005bb5]">Asistente</span>
               </button>
             )}
             <div className="ml-auto flex items-center bg-gray-100 rounded-lg p-0.5">
@@ -407,6 +432,472 @@ function UbicacionCombo({
   )
 }
 
+// ─── V28: Asistente de UBICACIÓN en 2 pasos (almacenes grandes) ──────────
+// Paso 1 · ZONA: tarjetas de cada estantería/pared con su estado y la zona
+// RECOMENDADA marcada. Paso 2 · HUECO: dentro de la zona, propuestas ordenadas
+// por CRITERIO (FIFO · familia · lote · compactar) + mapa grande para elegir
+// a mano. Se abre con el botón 🎯 del campo UBICACIÓN o "Asistente" en el
+// desplegable — con muchas zonas el mapa único era un lío.
+type Criterio = 'fifo' | 'familia' | 'lote' | 'compactar'
+
+const CRITERIOS: { id: Criterio; label: string; icon: typeof Clock; ayuda: string }[] = [
+  { id: 'fifo', label: 'FIFO', icon: Clock, ayuda: 'Junto al stock más antiguo del mismo producto — rota antes' },
+  { id: 'familia', label: 'Familia', icon: Package, ayuda: 'Junta palets del mismo producto (y luego del mismo cliente)' },
+  { id: 'lote', label: 'Lote', icon: Layers, ayuda: 'Junta palets del mismo lote (mismo prefijo de nº palet)' },
+  { id: 'compactar', label: 'Compactar', icon: Boxes, ayuda: 'Llena primero las columnas empezadas, deja columnas vacías' },
+]
+
+interface Propuesta {
+  hueco: HuecoInfo
+  motivo: string
+  puntos: number
+}
+
+// Prefijo de lote: "L-24001" → "l-" (sin la parte numérica final). Dos palets
+// son del mismo lote si comparten prefijo (≥2 chars para no casar todo).
+function prefijoLote(ident: string): string {
+  const p = normAlm(ident).replace(/\d+\s*$/, '')
+  return p.length >= 2 ? p : ''
+}
+
+// Motor de propuestas: puntúa cada hueco con sitio libre según el criterio y
+// el producto/lote que se está metiendo en el formulario.
+function propuestasHuecos(
+  huecos: HuecoInfo[],
+  lotesPorHueco: Map<string, LoteStock[]>,
+  criterio: Criterio,
+  actual: { c1: string; c2: string; clienteId: string; ident: string },
+): Propuesta[] {
+  const prodAct = normAlm(`${actual.c1} ${actual.c2}`).trim()
+  const cliAct = normAlm(actual.clienteId)
+  const loteAct = prefijoLote(actual.ident)
+  const out: Propuesta[] = []
+  for (const h of huecos) {
+    // Solo huecos que ADMITEN palets (llenos fuera)
+    if (h.altura > 0 && h.ocupacion >= h.altura) continue
+    const lotes = lotesPorHueco.get(h.hueco) || []
+    const mismoProd = prodAct ? lotes.filter(l => normAlm(`${l.c1} ${l.c2}`).trim() === prodAct) : []
+    const mismoCliente = cliAct ? lotes.filter(l => normAlm(l.clienteId) === cliAct) : []
+    const mismoLote = loteAct ? lotes.filter(l => prefijoLote(l.ident) === loteAct) : []
+    const masAntiguo = lotes.reduce<string | null>((min, l) => (!min || l.fecha < min ? l.fecha : min), null)
+    const diasAntiguo = masAntiguo ? diasEnAlmacen(masAntiguo) : 0
+    const capTxt = h.altura > 0 ? `${h.ocupacion}/${h.altura}` : `${h.ocupacion}/∞`
+
+    let puntos = 0
+    let motivo = ''
+    if (criterio === 'fifo') {
+      if (mismoProd.length > 0) {
+        puntos = 100 + Math.min(30, diasAntiguo) + mismoProd.length
+        motivo = `rota con ${mismoProd.length} palet${mismoProd.length > 1 ? 's' : ''} de este producto — el más antiguo tiene ${diasAntiguo} días`
+      } else if (h.ocupacion === 0) {
+        puntos = 50
+        motivo = 'hueco libre (columna nueva)'
+      } else {
+        puntos = 40
+        motivo = `columna con sitio (${capTxt})`
+      }
+    } else if (criterio === 'familia') {
+      if (mismoProd.length > 0) {
+        puntos = 100 + mismoProd.length * 5
+        motivo = `${mismoProd.length} palet${mismoProd.length > 1 ? 's' : ''} de este producto en la columna`
+      } else if (mismoCliente.length > 0) {
+        puntos = 60 + mismoCliente.length
+        motivo = `${mismoCliente.length} palet${mismoCliente.length > 1 ? 's' : ''} de este cliente en la columna`
+      } else {
+        puntos = 20
+        motivo = 'hueco libre (nueva zona de producto)'
+      }
+    } else if (criterio === 'lote') {
+      if (mismoLote.length > 0) {
+        puntos = 100 + mismoLote.length
+        motivo = `junto a ${mismoLote.length} palet${mismoLote.length > 1 ? 's' : ''} del mismo lote`
+      } else if (mismoProd.length > 0) {
+        puntos = 70
+        motivo = 'mismo producto'
+      } else {
+        puntos = 20
+        motivo = 'hueco libre'
+      }
+    } else {
+      // compactar
+      puntos = 10 + h.ocupacion * 10
+      motivo = h.ocupacion > 0 ? `completa la columna (${capTxt})` : 'columna vacía — se abre si no queda otra'
+    }
+    out.push({ hueco: h, motivo, puntos })
+  }
+  out.sort((a, b) => b.puntos - a.puntos || a.hueco.hueco.localeCompare(b.hueco.hueco, 'es', { numeric: true }))
+  return out
+}
+
+function UbicacionWizard({
+  open,
+  onClose,
+  onChoose,
+  huecos,
+  stock,
+  cfg,
+  c1,
+  c2,
+  clienteId,
+  ident,
+  initialValue,
+}: {
+  open: boolean
+  onClose: () => void
+  onChoose: (hueco: string) => void
+  huecos: HuecoInfo[]
+  stock: LoteStock[]
+  cfg: EstanteriaCfg[]
+  c1: string
+  c2: string
+  clienteId: string
+  ident: string
+  initialValue: string
+}) {
+  const [paso, setPaso] = useState<1 | 2>(1)
+  const [rack, setRack] = useState<string>('')
+  const [criterio, setCriterio] = useState<Criterio>('fifo')
+  const [sel, setSel] = useState('')
+
+  // Al abrir: reset; si solo hay UNA zona se salta directo al paso 2.
+  useEffect(() => {
+    if (!open) return
+    const zonas = new Set(huecos.map(h => h.rack))
+    setPaso(zonas.size === 1 ? 2 : 1)
+    setRack(zonas.size === 1 ? [...zonas][0] : '')
+    setSel('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  // Clave normalizada → hueco canónico (alias de zona incluidos: el stock
+  // guardado con el nombre antiguo B1-03 cuenta para el hueco E1-03).
+  const claveACanonicos = useMemo(() => {
+    const m = new Map<string, HuecoInfo>()
+    const porHueco = new Map(huecos.map(h => [h.hueco, h]))
+    for (const e of cfg) {
+      const prefijos = [e.nombre, ...(e.alias || [])].filter(Boolean)
+      for (let n = 1; n <= (e.huecos || 0); n++) {
+        const pos = padPos(n, e.huecos || 0)
+        const canon = porHueco.get(`${e.nombre}-${pos}`)
+        if (!canon) continue
+        for (const p of prefijos) {
+          const k = normHuecoKey(`${p}-${pos}`)
+          if (k) m.set(k, canon)
+        }
+      }
+    }
+    return m
+  }, [cfg, huecos])
+
+  // Lotes con stock agrupados por hueco canónico
+  const lotesPorHueco = useMemo(() => {
+    const m = new Map<string, LoteStock[]>()
+    for (const l of stock) {
+      const k = normHuecoKey(l.ubicacion)
+      if (!k) continue
+      const h = claveACanonicos.get(k)
+      if (!h) continue
+      if (!m.has(h.hueco)) m.set(h.hueco, [])
+      m.get(h.hueco)!.push(l)
+    }
+    return m
+  }, [stock, claveACanonicos])
+
+  // Propuestas globales según criterio (afecta a la zona recomendada)
+  const propuestas = useMemo(
+    () => propuestasHuecos(huecos, lotesPorHueco, criterio, { c1, c2, clienteId, ident }),
+    [huecos, lotesPorHueco, criterio, c1, c2, clienteId, ident],
+  )
+  const propuestasRack = useMemo(
+    () => (rack ? propuestas.filter(p => p.hueco.rack === rack) : []),
+    [propuestas, rack],
+  )
+
+  // Zonas con estadísticas para las tarjetas del paso 1
+  const racksInfo = useMemo(() => {
+    const prodAct = normAlm(`${c1} ${c2}`).trim()
+    const m = new Map<string, { nombre: string; esPared: boolean; lista: HuecoInfo[]; ocup: number; cap: number; libres: number; mismos: number }>()
+    for (const h of huecos) {
+      let r = m.get(h.rack)
+      if (!r) { r = { nombre: h.rack, esPared: h.tipo === 'pared', lista: [], ocup: 0, cap: 0, libres: 0, mismos: 0 }; m.set(h.rack, r) }
+      r.lista.push(h)
+      r.ocup += h.ocupacion
+      r.cap += h.altura > 0 ? h.altura : 0
+      if (h.altura === 0 || h.ocupacion < h.altura) r.libres++
+    }
+    for (const [hueco, lotes] of lotesPorHueco) {
+      const rackNombre = hueco.split('-').slice(0, -1).join('-')
+      const r = m.get(rackNombre)
+      if (!r || !prodAct) continue
+      r.mismos += lotes.filter(l => normAlm(`${l.c1} ${l.c2}`).trim() === prodAct).length
+    }
+    return [...m.values()]
+  }, [huecos, lotesPorHueco, c1, c2])
+
+  const rackRecomendado = propuestas[0]?.hueco.rack || ''
+  const criterioAct = CRITERIOS.find(c => c.id === criterio)!
+  const huecosRack = useMemo(() => huecos.filter(h => h.rack === rack), [huecos, rack])
+  const prodAct = normAlm(`${c1} ${c2}`).trim()
+
+  // Auto-selección: al entrar a la zona, el hueco ya puesto (si es de aquí y
+  // tiene sitio) o la 1ª propuesta del criterio activo.
+  useEffect(() => {
+    if (paso === 2 && propuestasRack.length > 0) {
+      setSel(prev => {
+        if (prev && propuestasRack.some(p => p.hueco.hueco === prev)) return prev
+        if (initialValue && propuestasRack.some(p => p.hueco.hueco === initialValue)) return initialValue
+        return propuestasRack[0].hueco.hueco
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paso, rack, criterio, propuestasRack])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/40" onMouseDown={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden" onMouseDown={e => e.stopPropagation()}>
+        {/* Cabecera: título + stepper + cerrar */}
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2 sm:gap-3 shrink-0">
+          <Crosshair className="h-5 w-5 text-[#005bb5] shrink-0" />
+          <span className="font-bold text-gray-800 text-sm sm:text-base whitespace-nowrap">Elegir ubicación</span>
+          <div className="flex items-center gap-1 ml-1 sm:ml-2">
+            <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider ${paso === 1 ? 'bg-[#005bb5] text-white' : 'bg-emerald-100 text-emerald-700'}`}>1 · Zona</span>
+            <ChevronRight className="h-3 w-3 text-gray-300" />
+            <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider ${paso === 2 ? 'bg-[#005bb5] text-white' : 'bg-gray-100 text-gray-400'}`}>2 · Hueco</span>
+          </div>
+          <button type="button" onClick={onClose} className="ml-auto p-1.5 rounded-lg hover:bg-gray-100" aria-label="Cerrar">
+            <X className="h-4 w-4 text-gray-400" />
+          </button>
+        </div>
+
+        {/* Barra de criterios — decide cómo se proponen los huecos */}
+        <div className="px-4 py-2 border-b border-gray-100 bg-gray-50/70 flex items-center gap-1.5 overflow-x-auto shrink-0" title={criterioAct.ayuda}>
+          <span className="text-[9px] font-extrabold uppercase tracking-wider text-gray-400 shrink-0 pr-0.5">Criterio</span>
+          {CRITERIOS.map(cr => {
+            const Icon = cr.icon
+            return (
+              <button
+                key={cr.id}
+                type="button"
+                onClick={() => setCriterio(cr.id)}
+                title={cr.ayuda}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors ${criterio === cr.id ? 'bg-[#005bb5] text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700'}`}
+              >
+                <Icon className="h-3.5 w-3.5" /> {cr.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Cuerpo */}
+        <div className="flex-1 overflow-auto p-3 sm:p-4">
+          {!prodAct && (
+            <div className="mb-2 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 font-semibold">
+              Consejo: elige antes CONCEPTO 1 y 2 — así las propuestas agrupan por familia/lote de ese producto.
+            </div>
+          )}
+
+          {paso === 1 ? (
+            /* ── PASO 1: tarjetas de zona ── */
+            <div className="grid gap-2 sm:grid-cols-2">
+              {racksInfo.map(r => {
+                const pct = r.cap > 0 ? Math.round((r.ocup / r.cap) * 100) : 0
+                const esRec = r.nombre === rackRecomendado
+                return (
+                  <button
+                    key={r.nombre}
+                    type="button"
+                    onClick={() => { setRack(r.nombre); setPaso(2); setSel('') }}
+                    className={`text-left rounded-xl border-2 p-3 transition-all active:scale-[0.99] ${esRec ? 'border-teal-400 bg-teal-50/40 hover:bg-teal-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Warehouse className="h-4 w-4 text-teal-600 shrink-0" />
+                      <span className="font-bold text-gray-800 text-sm">{r.esPared ? 'PARED' : 'ESTANTERÍA'} {r.nombre}</span>
+                      {esRec && (
+                        <span className="ml-auto flex items-center gap-0.5 text-[8px] font-extrabold bg-teal-500 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                          <Zap className="h-2 w-2" /> recomendada
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-gray-500 font-semibold flex-wrap">
+                      <span>{r.lista.length} huecos</span>
+                      <span className="text-gray-300">·</span>
+                      <span>{r.ocup}{r.cap > 0 ? `/${r.cap}` : ''} palets</span>
+                      <span className="text-gray-300">·</span>
+                      <span className={r.libres > 0 ? 'text-emerald-600' : 'text-red-600'}>{r.libres} con sitio</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-gray-100 mt-1.5 overflow-hidden">
+                      <div className={`h-full rounded-full ${pct >= 100 ? 'bg-red-500' : pct > 75 ? 'bg-amber-500' : 'bg-teal-500'}`} style={{ width: `${r.cap > 0 ? Math.min(100, pct) : 0}%` }} />
+                    </div>
+                    {r.mismos > 0 && (
+                      <div className="mt-1.5 text-[10px] font-bold text-teal-700 flex items-center gap-1">
+                        <Package className="h-3 w-3" /> {r.mismos} palet{r.mismos > 1 ? 's' : ''} de este producto ya en esta zona
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            /* ── PASO 2: propuestas + mapa de la zona ── */
+            <div className="space-y-3">
+              {/* Mapa de la zona (grande, táctil) con las propuestas numeradas */}
+              {huecosRack.length > 0 && (() => {
+                const esPared = huecosRack[0]?.tipo === 'pared'
+                const maxAltura = huecosRack.reduce((m, h) => Math.max(m, h.altura > 0 ? h.altura : 1), 0)
+                const palabra = esPared ? 'altura' : 'nivel'
+                const ordinal = esPared ? 'ª' : 'º'
+                const totalOcup = huecosRack.reduce((s, h) => s + h.ocupacion, 0)
+                const totalCap = huecosRack.reduce((s, h) => s + (h.altura > 0 ? h.altura : 0), 0)
+                const rankDe = (hueco: string) => propuestasRack.findIndex(p => p.hueco.hueco === hueco)
+                return (
+                  <div className="rounded-xl border-2 border-gray-200 bg-gradient-to-b from-gray-50 to-white p-2.5">
+                    <div className="flex items-center gap-1.5 mb-2 px-0.5 flex-wrap">
+                      <button type="button" onClick={() => setPaso(1)} className="flex items-center gap-1 text-[10px] font-bold text-[#005bb5] hover:underline">
+                        <ArrowLeft className="h-3 w-3" /> Zonas
+                      </button>
+                      <Warehouse className="h-4 w-4 text-teal-600 ml-1" />
+                      <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+                        {esPared ? 'PARED' : 'ESTANTERÍA'} {rack}
+                      </span>
+                      {maxAltura >= 2 && <span className="text-[9px] font-bold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-1.5 py-0.5">{maxAltura} {esPared ? 'alturas' : 'niveles'}</span>}
+                      <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${totalCap > 0 && totalOcup >= totalCap ? 'bg-red-50 text-red-700 border-red-300' : totalOcup > 0 ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-300'}`}>
+                        {totalOcup}{totalCap > 0 ? `/${totalCap}` : ''} palets
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <div className="min-w-full w-max">
+                        {Array.from({ length: maxAltura }, (_, idx) => maxAltura - idx).map(j => (
+                          <div key={j} className="flex items-stretch gap-1.5 mb-1.5 last:mb-0">
+                            <div className="w-[3.6rem] shrink-0 flex items-end justify-end pr-1 pb-1">
+                              <span className="text-[8px] font-extrabold text-gray-500 uppercase tracking-wide leading-tight text-right">
+                                {j === 1 ? 'Suelo' : `${j}${ordinal} ${palabra}`}
+                              </span>
+                            </div>
+                            <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${huecosRack.length}, minmax(44px, 1fr))` }}>
+                              {huecosRack.map(h => {
+                                if (h.altura > 0 && h.altura < j) {
+                                  return <div key={h.hueco} className="rounded-lg border-2 border-dashed border-gray-200/60 bg-gray-50/30 min-h-[3rem]" title="A esta altura no llega este hueco" />
+                                }
+                                if (h.altura === 0 && j !== 1) {
+                                  return <div key={h.hueco} className="rounded-lg border-2 border-dashed border-gray-200/60 bg-gray-50/30 min-h-[3rem]" title="Sin límite de altura" />
+                                }
+                                const ocupada = h.altura > 0 ? j <= h.ocupacion : h.ocupacion > 0
+                                const llena = h.altura > 0 && h.ocupacion >= h.altura
+                                const rank = rankDe(h.hueco)
+                                const esSel = sel === h.hueco
+                                // El badge de propuesta solo en el NIVEL donde
+                                // entraría el palet (encima de los existentes).
+                                const nivelEntrada = h.altura === 0 ? 1 : Math.min(h.ocupacion + 1, h.altura)
+                                let cls = ''
+                                if (h.altura === 0) cls = ocupada ? 'bg-sky-100 border-sky-300 text-sky-700' : 'bg-emerald-50 border-sky-200 text-sky-600'
+                                else if (ocupada) cls = llena ? 'bg-red-100 border-red-400 text-red-700' : 'bg-amber-100 border-amber-400 text-amber-800'
+                                else cls = 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+                                return (
+                                  <button
+                                    key={h.hueco}
+                                    type="button"
+                                    onClick={() => setSel(h.hueco)}
+                                    title={`${h.hueco} · ${j === 1 ? 'suelo' : `${j}${ordinal} ${palabra}`}${h.altura > 0 ? ` (${h.ocupacion}/${h.altura})` : ` (${h.ocupacion}/∞)`}${rank >= 0 && rank < 3 ? ` · propuesta ${rank + 1}ª (${criterioAct.label})` : ''}`}
+                                    className={`relative rounded-lg border-2 min-h-[3rem] flex flex-col items-center justify-center transition-all ${cls} ${esSel ? 'ring-4 ring-[#005bb5] ring-offset-1' : ''}`}
+                                  >
+                                    {rank >= 0 && rank < 3 && j === nivelEntrada && (
+                                      <span className={`absolute -top-2 -left-1.5 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-extrabold shadow-sm border-2 border-white ${rank === 0 ? 'bg-[#005bb5] text-white' : 'bg-white text-[#005bb5]'}`}>
+                                        {rank + 1}
+                                      </span>
+                                    )}
+                                    <span className="text-xs font-extrabold leading-none">{h.pos}</span>
+                                    {h.altura === 0 && h.ocupacion > 0 ? (
+                                      <span className="text-[9px] font-bold leading-none mt-0.5">{h.ocupacion}/∞</span>
+                                    ) : ocupada ? (
+                                      <span className="w-2 h-2 rounded-full bg-current opacity-70 mt-0.5" />
+                                    ) : (
+                                      <span className="text-[8px] font-bold uppercase leading-none mt-0.5 opacity-80">libre</span>
+                                    )}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="flex items-stretch gap-1.5 mt-1.5 pt-1.5 border-t border-gray-200">
+                          <div className="w-[3.6rem] shrink-0 text-right pr-1 text-[8px] font-extrabold text-gray-400 uppercase tracking-wide">Hueco</div>
+                          <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${huecosRack.length}, minmax(44px, 1fr))` }}>
+                            {huecosRack.map(h => (
+                              <div key={`lbl-${h.hueco}`} className={`text-center text-[9px] font-mono leading-none ${sel === h.hueco ? 'text-[#005bb5] font-extrabold' : 'text-gray-400 font-bold'}`}>
+                                {rack}-{h.pos}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Lista de propuestas con su motivo */}
+              <div>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Propuestas · {criterioAct.label}</span>
+                  <span className="text-[9px] text-gray-400 font-semibold truncate" title={criterioAct.ayuda}>{criterioAct.ayuda}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {propuestasRack.slice(0, 5).map((p, i) => {
+                    const capTxt = p.hueco.altura > 0 ? `${p.hueco.ocupacion}/${p.hueco.altura}` : `${p.hueco.ocupacion}/∞`
+                    return (
+                      <button
+                        key={p.hueco.hueco}
+                        type="button"
+                        onClick={() => setSel(p.hueco.hueco)}
+                        className={`w-full flex items-center gap-2.5 rounded-xl border-2 px-3 py-2 text-left transition-all ${sel === p.hueco.hueco ? 'border-[#005bb5] bg-blue-50/60' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+                      >
+                        <span className={`h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-extrabold shrink-0 ${i === 0 ? 'bg-[#005bb5] text-white' : 'bg-gray-100 text-gray-600'}`}>{i + 1}</span>
+                        <span className="text-sm font-extrabold font-mono text-gray-800 shrink-0">{p.hueco.hueco}</span>
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">{capTxt}</span>
+                        <span className="text-[11px] text-gray-500 font-semibold leading-tight truncate">{p.motivo}</span>
+                        {i === 0 && <Zap className="h-3.5 w-3.5 text-amber-500 shrink-0 ml-auto" />}
+                      </button>
+                    )
+                  })}
+                  {propuestasRack.length === 0 && (
+                    <div className="text-center text-xs text-red-600 font-bold py-3">Esta zona está LLENA — no admite más palets</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Pie: volver + selección + usar */}
+        <div className="px-4 py-3 border-t border-gray-100 flex items-center gap-2 shrink-0 bg-white">
+          {paso === 2 && (
+            <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPaso(1)}>
+              <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Zonas
+            </Button>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            {sel && (
+              <span className="text-xs text-gray-500 hidden sm:inline">
+                Seleccionado: <b className="font-mono text-[#005bb5] text-sm">{sel}</b>
+              </span>
+            )}
+            <Button
+              type="button"
+              disabled={!sel}
+              onClick={() => { onChoose(sel); onClose() }}
+              className="h-9 px-4 bg-[#2bb24c] hover:bg-[#23963e] text-white text-xs font-bold"
+            >
+              <CheckCircle className="h-4 w-4 mr-1" /> USAR {sel || 'HUECO'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Permission check helpers
 const SCREEN_PERMS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'clientes', 'catalogo', 'facturas', 'backup'] as const
 
@@ -500,6 +991,13 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   // hay"): permite respetar las ALTURAS por hueco al sugerir el óptimo —
   // una columna con 1/3 palets sigue admitiendo 2 más; una llena ya no.
   const ocupadas = useMemo(() => contadoresHuecos(data.todosRegistros), [data.todosRegistros])
+
+  // V28: stock vivo (lotes con c1/c2) — lo usa el ASISTENTE de ubicación
+  // para proponer huecos por FIFO/familia/lote según el producto actual.
+  const stockActual = useMemo(() => buildStock(data.todosRegistros, []), [data.todosRegistros])
+
+  // V28: asistente de ubicación en 2 pasos (zona → hueco con propuestas)
+  const [wizardOpen, setWizardOpen] = useState(false)
 
   // V26: listado de TODOS los huecos configurados (con su estado) y el hueco
   // óptimo actual — lo OFRECE el desplegable de UBICACIÓN al meter palets.
@@ -940,6 +1438,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
                 huecos={huecosLista}
                 optimo={esPalet ? huecoOptimoActual : ''}
                 placeholder={field.placeholder || 'Elige o escribe el hueco…'}
+                onOpenWizard={() => setWizardOpen(true)}
               />
             ) : esUbic ? (
               <Input
@@ -1219,6 +1718,24 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
       {/* Diálogo de etiqueta QR — se abre al guardar una ENTRADA PALET */}
       <QrEtiquetaDialog open={qrOpen} onOpenChange={setQrOpen} etiquetas={qrEtiquetas} />
+
+      {/* V28: asistente de UBICACIÓN en 2 pasos — zona primero, luego hueco
+          propuesto según criterio (FIFO/familia/lote/compactar). */}
+      {ubicKey && (
+        <UbicacionWizard
+          open={wizardOpen}
+          onClose={() => setWizardOpen(false)}
+          onChoose={h => { ubicClearedRef.current = false; setCustomValue(ubicKey, h) }}
+          huecos={huecosLista}
+          stock={stockActual}
+          cfg={almacenCfg}
+          c1={c1}
+          c2={c2}
+          clienteId={effectiveClientId}
+          ident={identDeCustomValues(customValues)}
+          initialValue={String(customValues[ubicKey] || '')}
+        />
+      )}
     </div>
   )
 }
