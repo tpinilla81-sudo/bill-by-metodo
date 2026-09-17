@@ -156,60 +156,65 @@ export function splitUbicacion(ub: string): { rack: string; pos: string } {
 }
 
 // Clave robusta para emparejar ubicaciones de los movimientos con huecos
-// configurados. El RACK es un bloque alfanumérico (puede ser "P1", "E1",
-// "NAVE2", "A") y luego vienen uno o dos números (fila, [altura]).
+// configurados. El RACK es un bloque alfanumérico (P1, E1, NAVE2, S1) y
+// luego vienen uno o dos números (fila, [altura]) con separadores F/H
+// o guiones/espacios.
 //
-// V29.3: las ubicaciones ahora llevan ALTURA ("P1-1-1" = pared 1, fila 1,
-// altura 1). Para que el motor cuente por COLUMNA (no por plaza), la clave
-// canónica elimina la altura. Así:
-//   "P1-1-1" (palet en suelo)     → "P1-1" (columna P1 fila 1)
-//   "P1-1-2" (palet en 2ª altura) → "P1-1" (misma columna)
+// V29.4: las ubicaciones ahora usan formato RACK F fila H altura, p.ej.
+//   "P1F1H1" = Pared P1, Fila 1, Altura 1
+//   "E1F3H2" = Estantería E1, Fila 3, Altura 2
+// Para que el motor cuente por COLUMNA (no por plaza), la clave canónica
+// elimina la altura. Así:
+//   "P1F1H1" (palet en suelo)     → "P1-1" (columna P1 fila 1)
+//   "P1F1H2" (palet en 2ª altura) → "P1-1" (misma columna)
 //   "P1-01"   (formato antiguo)   → "P1-1" (sigue funcionando)
+//   "P1-1-1"  (formato V29.3)     → "P1-1"
 //   "E1-04"   (formato antiguo)   → "E1-4"
-//
-// Implementación: el primer token (rack) puede ser letras+ números (P1, E1,
-// NAVE2). Para separarlo de la fila, se busca dónde empieza el número que no
-// es parte del rack. El rack = bloque al inicio con letras (seguidas o no de
-// dígitos). Si el rack termina en dígitos, la fila es el siguiente número.
 export function normHuecoKey(s: string): string {
   const t = String(s || '').trim().toUpperCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   if (!t) return ''
-  // Tokens: letras al inicio, luego números, luego letras, luego números…
-  // Ej: "P1-1-1" → ["P","1","1","1"]; "P1-01" → ["P","1","1"]; "NAVE2-3" → ["NAVE","2","3"]
-  // Pero el rack "P1" está formado por P+1 (letras+dígitos pegados) — los
-  // tokens separan al cambiar de clase (letra→dígito→letra).
-  // Simplificación: el rack = letras iniciales (posiblemente seguidas de
-  // dígitos, sin separador). Lo capturamos con una regex que agrupa
-  // [letras][dígitos] al inicio, y luego los números siguientes.
-  const m = t.match(/^([A-ZÀ-ÿ]+[0-9]*)(.*)$/)
-  if (!m) return t.replace(/[^A-Z0-9]+/g, '-')
-  const rack = m[1]
-  const resto = (m[2] || '')
-    .replace(/[^0-9]+/g, ' ')           // todo lo que no sea número → separador
+  // V29.4: prioridad 1 — formato nuevo RACK F fila [H altura]
+  const m = t.match(/^([A-ZÀ-ÿ]+[0-9]*)F([0-9]+)(?:H([0-9]+))?/)
+  if (m) {
+    const rack = m[1]
+    const fila = parseInt(m[2], 10)
+    return `${rack}-${fila}`
+  }
+  // V29.4: prioridad 2 — formatos antiguos (P1-01, P1-1-1, NAVE2-3)
+  const m2 = t.match(/^([A-ZÀ-ÿ]+[0-9]*)(.*)$/)
+  if (!m2) return t.replace(/[^A-Z0-9]+/g, '-')
+  const rack = m2[1]
+  const resto = (m2[2] || '')
+    .replace(/[^0-9]+/g, ' ')
     .trim()
     .split(/\s+/)
     .filter(Boolean)
     .map(n => String(parseInt(n, 10)))
   // Si hay 2+ números (fila + altura), la clave de COLUMNA es rack + fila.
-  // Si hay 1 número (solo fila, formato antiguo sin altura), la clave es rack + fila.
-  // Si hay 0 números (solo rack, raro), la clave es rack.
-  if (resto.length >= 2) return `${rack}-${resto[0]}`
-  if (resto.length === 1) return `${rack}-${resto[0]}`
+  // Si hay 1 número (solo fila), la clave es rack + fila.
+  if (resto.length >= 1) return `${rack}-${resto[0]}`
   return rack
 }
 
-// V29.3: clave de PLAZA concreta (rack-fila-altura). Se usa para distinguir
+// V29.4: clave de PLAZA concreta (rack-fila-altura). Se usa para distinguir
 // dos palets en la misma columna pero a distinta altura — no para contar
 // ocupación (eso es por columna, ver normHuecoKey).
 export function normPlazaKey(s: string): string {
   const t = String(s || '').trim().toUpperCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   if (!t) return ''
-  const m = t.match(/^([A-ZÀ-ÿ]+[0-9]*)(.*)$/)
-  if (!m) return t.replace(/[^A-Z0-9]+/g, '-')
-  const rack = m[1]
-  const resto = (m[2] || '')
+  const m = t.match(/^([A-ZÀ-ÿ]+[0-9]*)F([0-9]+)(?:H([0-9]+))?/)
+  if (m) {
+    const rack = m[1]
+    const fila = parseInt(m[2], 10)
+    const altura = m[3] ? parseInt(m[3], 10) : 1
+    return `${rack}-${fila}-${altura}`
+  }
+  const m2 = t.match(/^([A-ZÀ-ÿ]+[0-9]*)(.*)$/)
+  if (!m2) return t.replace(/[^A-Z0-9]+/g, '-')
+  const rack = m2[1]
+  const resto = (m2[2] || '')
     .replace(/[^0-9]+/g, ' ')
     .trim()
     .split(/\s+/)
@@ -636,10 +641,10 @@ export function huecoOptimo(
       // Sin altura (0): solo libre si no hay ningún palet (como antes).
       const libre = altura > 0 ? ocupacion < altura : ocupacion === 0
       if (libre) {
-        // V29.3: el nombre del hueco incluye la ALTURA donde entrará el palet.
+        // V29.4: el nombre del hueco incluye la ALTURA donde entrará el palet.
         // altura > 0 → min(ocupacion+1, altura); altura = 0 → 1 (suelo).
         const nivel = altura > 0 ? Math.min(ocupacion + 1, altura) : 1
-        return { hueco: `${e.nombre}-${n}-${nivel}`, rack: e.nombre, pos }
+        return { hueco: `${e.nombre}F${n}H${nivel}`, rack: e.nombre, pos }
       }
     }
   }
@@ -721,16 +726,16 @@ export function listadoHuecos(cfg: EstanteriaCfg[], ocupadas: Set<string> | Map<
       const estado: EstadoUbicacion = altura > 0
         ? (ocupacion >= altura ? 'ocupado' : ocupacion > 0 ? 'con-stock' : 'libre')
         : (ocupacion > 0 ? 'ocupado' : 'libre')
-      // V29.3: nivel de entrada = dónde entrará el siguiente palet
+      // V29.4: nivel de entrada = dónde entrará el siguiente palet
       //  · altura > 0  → min(ocupacion+1, altura)  (respeta apilado: debajo debe estar lleno)
       //  · altura = 0  → 1 (suelo, apilado libre)
       const nivelEntrada = altura > 0 ? Math.min(ocupacion + 1, altura) : 1
-      // V29.3: nombre del hueco con altura = rack-fila-altura (sin ceros)
-      // p.ej. P1-1-1, E1-3-2. Si la columna está LLENA, no lleva nivel
-      // (no se puede poner más palets) — el nombre es rack-fila solo.
+      // V29.4: nombre del hueco con altura = RACK F fila H altura (sin ceros)
+      // p.ej. P1F1H1, E1F3H2. Si la columna está LLENA, no lleva H
+      // (no se puede poner más palets) — el nombre es RACK F fila solo.
       const hueco = estado === 'ocupado'
-        ? `${e.nombre}-${n}`
-        : `${e.nombre}-${n}-${nivelEntrada}`
+        ? `${e.nombre}F${n}`
+        : `${e.nombre}F${n}H${nivelEntrada}`
       out.push({ hueco, rack: e.nombre, pos, filaNum: n, tipo: e.est.tipo === 'pared' ? 'pared' : 'estanteria', altura, ocupacion, estado, nivelEntrada })
     }
   }
@@ -744,18 +749,18 @@ export function listadoHuecos(cfg: EstanteriaCfg[], ocupadas: Set<string> | Map<
 // «Criterios de asignación», y también con el botón «Ajustar» del propio
 // asistente. Se guardan con la configuración de la zona (campo criterios).
 
-// V29.3: nivel/altura DONDE ENTRARÁ el siguiente palet en una columna.
+// V29.4: nivel/altura DONDE ENTRARÁ el siguiente palet en una columna.
 //  · altura > 0 → min(ocupacion+1, altura) — el siguiente nivel libre (apilado: debajo debe estar lleno)
 //  · altura = 0 → 1 (suelo, apilado libre)
 //  · columna LLENA → 0 (no se puede poner más palets)
-// Es el número que va al final del nombre del hueco: P1-1-1, E1-3-2, etc.
+// Es el número que va al final del nombre del hueco: P1F1H1, E1F3H2, etc.
 export function nivelEntradaTexto(h: HuecoInfo): string {
   if (h.altura > 0 && h.ocupacion >= h.altura) return ''
-  return `ALTURA ${h.nivelEntrada}`
+  return `H${h.nivelEntrada}`
 }
 
-// V29.3: nombre HUMANO del hueco para mostrar al usuario. El nombre del hueco
-// YA incluye la altura (P1-1-1), así que esta función devuelve una etiqueta
+// V29.4: nombre HUMANO del hueco para mostrar al usuario. El nombre del hueco
+// YA incluye la altura (P1F1H1), así que esta función devuelve una etiqueta
 // más legible: "PARED P1 · FILA 1 · ALTURA 1" para tooltips y lista detallada.
 export function huecoConNivel(h: HuecoInfo, nivel?: string): string {
   const lv = nivel || nivelEntradaTexto(h)

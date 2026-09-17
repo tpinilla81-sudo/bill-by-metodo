@@ -745,34 +745,45 @@ function UbicacionWizard({
                                 const ocupada = h.altura > 0 ? j <= h.ocupacion : h.ocupacion > 0
                                 const llena = h.altura > 0 && h.ocupacion >= h.altura
                                 const rank = rankDe(h.hueco)
-                                const esSel = sel === h.hueco
-                                // El badge de propuesta solo en el NIVEL donde
-                                // entraría el palet (encima de los existentes).
+                                // V29.4: cada celda es una PLAZA concreta (fila+altura).
+                                // Solo se puede elegir la celda DISPONIBLE = la siguiente
+                                // altura libre (respetando apilado). Las demás son
+                                // informativas: las ocupadas muestran el palet, las
+                                // libres-futuras no se pueden elegir (primero hay que
+                                // llenar la de abajo).
                                 const nivelEntrada = h.altura === 0 ? 1 : Math.min(h.ocupacion + 1, h.altura)
+                                const esDisponible = !llena && j === nivelEntrada
+                                // Nombre de la PLAZA concreta: RACK F fila H altura
+                                const plazaHueco = `${rack}F${h.filaNum}H${j}`
+                                const esSel = sel === plazaHueco
                                 let cls = ''
                                 if (h.altura === 0) cls = ocupada ? 'bg-sky-100 border-sky-300 text-sky-700' : 'bg-emerald-50 border-sky-200 text-sky-600'
                                 else if (ocupada) cls = llena ? 'bg-red-100 border-red-400 text-red-700' : 'bg-amber-100 border-amber-400 text-amber-800'
-                                else cls = 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+                                else if (esDisponible) cls = 'bg-emerald-50 border-emerald-400 text-emerald-700 hover:bg-emerald-100 cursor-pointer'
+                                else cls = 'bg-gray-50 border-gray-200 text-gray-300'
                                 return (
                                   <button
-                                    key={h.hueco}
+                                    key={`${h.hueco}-${j}`}
                                     type="button"
-                                    onClick={() => setSel(h.hueco)}
-                                    title={`${h.hueco} · FILA ${h.pos} · ALTURA ${j}${h.altura > 0 ? ` (${h.ocupacion}/${h.altura})` : ` (${h.ocupacion}/∞)`}${rank >= 0 && rank < 3 ? ` · propuesta ${rank + 1}ª según los criterios de la zona` : ''}`}
-                                    className={`relative rounded-lg border-2 min-h-[3rem] flex flex-col items-center justify-center transition-all ${cls} ${esSel ? 'ring-4 ring-[#005bb5] ring-offset-1' : ''}`}
+                                    disabled={!esDisponible}
+                                    onClick={() => esDisponible && setSel(plazaHueco)}
+                                    title={`${plazaHueco} · ${ocupada ? 'ocupado' : esDisponible ? 'disponible — pincha para elegir' : 'no disponible (llena primero la altura de abajo)'}${h.altura > 0 ? ` (${h.ocupacion}/${h.altura})` : ` (${h.ocupacion}/∞)`}${rank >= 0 && rank < 3 && esDisponible ? ` · propuesta ${rank + 1}ª` : ''}`}
+                                    className={`relative rounded-lg border-2 min-h-[3rem] flex flex-col items-center justify-center transition-all ${cls} ${esSel ? 'ring-4 ring-[#005bb5] ring-offset-1' : ''} ${esDisponible ? '' : 'cursor-not-allowed'}`}
                                   >
-                                    {rank >= 0 && rank < 3 && j === nivelEntrada && (
+                                    {rank >= 0 && rank < 3 && esDisponible && (
                                       <span className={`absolute -top-2 -left-1.5 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-extrabold shadow-sm border-2 border-white ${rank === 0 ? 'bg-[#005bb5] text-white' : 'bg-white text-[#005bb5]'}`}>
                                         {rank + 1}
                                       </span>
                                     )}
-                                    <span className="text-xs font-extrabold leading-none">{h.pos}</span>
+                                    <span className="text-xs font-extrabold leading-none">{h.filaNum}</span>
                                     {h.altura === 0 && h.ocupacion > 0 ? (
                                       <span className="text-[9px] font-bold leading-none mt-0.5">{h.ocupacion}/∞</span>
                                     ) : ocupada ? (
                                       <span className="w-2 h-2 rounded-full bg-current opacity-70 mt-0.5" />
+                                    ) : esDisponible ? (
+                                      <span className="text-[8px] font-bold uppercase leading-none mt-0.5 opacity-90">H{j}</span>
                                     ) : (
-                                      <span className="text-[8px] font-bold uppercase leading-none mt-0.5 opacity-80">libre</span>
+                                      <span className="text-[8px] font-bold uppercase leading-none mt-0.5 opacity-50">H{j}</span>
                                     )}
                                   </button>
                                 )
