@@ -1228,9 +1228,10 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   // V29.1: AUTO-DESCRIPCIÓN — al elegir c1+c2 en el formulario, si el par
   // existe en el catálogo (con o sin cliente seleccionado), se rellena el
-  // campo custom DESCRIPCION con el c2 canónico del catálogo. El usuario
-  // escribe libremente, y al hacer match con catálogo se normaliza/autocompleta.
-  // Si el par c1+c2 no existe en catálogo, no se rellena (lo deja como está).
+  // campo custom DESCRIPCION con la descripción del producto. Busca primero
+  // en el customData del item del catálogo (campo "descripcion" o similar)
+  // y si no existe, cae al c2 canónico. El usuario escribe libremente, y al
+  // hacer match con catálogo se normaliza/autocompleta.
   // OBSERVACIONES es 100% manual — nunca se toca automáticamente.
   const descrKey = useMemo(
     () => fieldDefs.find(f => f.isCustom && /descripcion/i.test(normAlm(`${f.key} ${f.label}`)))?.key || '',
@@ -1247,8 +1248,22 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       (!clienteId || !x.clienteId || x.clienteId === clienteId))
     if (!item) item = data.catalogo.find(x => normStr(x.c1) === c1n && normStr(x.c2) === c2n)
     if (!item) return
-    // La descripción canónica del catálogo es su c2 (texto del producto).
-    const canon = item.c2 || ''
+    // 1) Prioridad: el customData del catálogo puede tener una "descripción"
+    //    larga del producto (clave que contenga "descripcion"). Es lo que el
+    //    usuario quiere ver en DESCRIPCION de ENTRADAS.
+    let canon = ''
+    try {
+      const cd = JSON.parse(item.customData || '{}') as Record<string, unknown>
+      for (const [k, v] of Object.entries(cd)) {
+        if (!/descripcion/i.test(normAlm(k))) continue
+        const txt = String(v ?? '').trim()
+        if (txt) { canon = txt; break }
+      }
+    } catch { /* customData corrupto — ignorar */ }
+    // 2) Si no había descripción en customData, caer al c2 del catálogo
+    //    (texto del producto, lo más habitual).
+    if (!canon) canon = item.c2 || ''
+    if (!canon) return
     const actual = String(customValues[descrKey] || '').trim()
     // Solo rellena si el campo está vacío o coincide con un texto auto-previo
     // (no pisa lo que el usuario haya escrito a mano).
