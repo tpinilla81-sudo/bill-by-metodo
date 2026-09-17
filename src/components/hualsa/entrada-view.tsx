@@ -167,7 +167,7 @@ function UbicacionCombo({
 
   // Chip de estado de cada hueco: LIBRE (verde) · N/M con sitio (ámbar) ·
   // LLENO (rojo) · N/∞ sin límite de altura (azul grisáceo). Incluye el
-  // NIVEL donde entrará el siguiente palet (V29): suelo, 2º nivel, 3ª altura…
+  // NIVEL donde entrará el siguiente palet (V29): ALTURA 1 (suelo), ALTURA 2…
   function chipHueco(h: HuecoInfo): { text: string; cls: string } {
     const lv = nivelEntradaTexto(h)
     const lvTxt = lv ? ` · ${lv}` : ''
@@ -325,7 +325,7 @@ function UbicacionCombo({
                             <div key={j} className="flex items-stretch gap-1 mb-1 last:mb-0">
                               <div className="w-[3.5rem] shrink-0 flex flex-col items-end justify-center pr-1 text-right leading-tight">
                                 <span className="text-[8px] font-extrabold text-gray-500 uppercase tracking-wide">
-                                  {j === 1 ? 'Suelo' : `${j}${ordinal} ${palabra}`}
+                                  {j === 1 ? 'ALTURA 1' : `ALTURA ${j}`}
                                 </span>
                               </div>
                               <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${huecosRack.length}, minmax(38px, 1fr))` }}>
@@ -356,7 +356,7 @@ function UbicacionCombo({
                                       key={h.hueco}
                                       type="button"
                                       onMouseDown={e => { e.preventDefault(); elegir(h.hueco) }}
-                                      title={`${h.hueco} · ${j === 1 ? 'suelo' : `${j}${ordinal} ${palabra}`} · ${ocupada ? 'ocupado' : 'libre'}${h.altura > 0 ? ` (${h.ocupacion}/${h.altura})` : ` (${h.ocupacion}/∞)`}`}
+                                      title={`${h.hueco} · FILA ${h.pos} · ALTURA ${j} · ${ocupada ? 'ocupado' : 'libre'}${h.altura > 0 ? ` (${h.ocupacion}/${h.altura})` : ` (${h.ocupacion}/∞)`}`}
                                       className={`relative rounded-md border-2 p-0.5 min-h-[2.2rem] flex flex-col items-center justify-center transition-all ${cls} ${esSeleccionado ? 'ring-2 ring-[#005bb5] ring-offset-1' : ''} cursor-pointer`}
                                     >
                                       {/* Marca ⚡ en el óptimo (solo fila suelo para no duplicar) */}
@@ -731,7 +731,7 @@ function UbicacionWizard({
                           <div key={j} className="flex items-stretch gap-1.5 mb-1.5 last:mb-0">
                             <div className="w-[3.6rem] shrink-0 flex items-end justify-end pr-1 pb-1">
                               <span className="text-[8px] font-extrabold text-gray-500 uppercase tracking-wide leading-tight text-right">
-                                {j === 1 ? 'Suelo' : `${j}${ordinal} ${palabra}`}
+                                {j === 1 ? 'ALTURA 1' : `ALTURA ${j}`}
                               </span>
                             </div>
                             <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${huecosRack.length}, minmax(44px, 1fr))` }}>
@@ -758,7 +758,7 @@ function UbicacionWizard({
                                     key={h.hueco}
                                     type="button"
                                     onClick={() => setSel(h.hueco)}
-                                    title={`${h.hueco} · ${j === 1 ? 'suelo' : `${j}${ordinal} ${palabra}`}${h.altura > 0 ? ` (${h.ocupacion}/${h.altura})` : ` (${h.ocupacion}/∞)`}${rank >= 0 && rank < 3 ? ` · propuesta ${rank + 1}ª según los criterios de la zona` : ''}`}
+                                    title={`${h.hueco} · FILA ${h.pos} · ALTURA ${j}${h.altura > 0 ? ` (${h.ocupacion}/${h.altura})` : ` (${h.ocupacion}/∞)`}${rank >= 0 && rank < 3 ? ` · propuesta ${rank + 1}ª según los criterios de la zona` : ''}`}
                                     className={`relative rounded-lg border-2 min-h-[3rem] flex flex-col items-center justify-center transition-all ${cls} ${esSel ? 'ring-4 ring-[#005bb5] ring-offset-1' : ''}`}
                                   >
                                     {rank >= 0 && rank < 3 && j === nivelEntrada && (
@@ -941,7 +941,6 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   const [almacenCfg, setAlmacenCfg] = useState<EstanteriaCfg[]>([])
   const autoUbicRef = useRef<string>('')      // último hueco asignado automáticamente
   const ubicClearedRef = useRef(false)        // el usuario vació la ubicación a mano → no rellenar
-  const obsAutoRef = useRef<string>('')       // V29: último obs auto-relleno del catálogo (para no pisar lo escrito a mano)
 
   // Refresca la configuración cada vez que se recargan los datos (la pestaña
   // puede recuperar el foco tras editarla en STOCK ALMACÉN en otra pestaña).
@@ -1227,44 +1226,35 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     setCustomValues(prev => ({ ...prev, [key]: value }))
   }
 
-  // V29: AUTO-DESCRIPCIÓN en OBSERVACIONES al elegir c1+c2 — busca el ítem del
-  // catálogo y rellena OBS con un texto útil (cliente + precio si es admin
-  // + c1/c2 si no son ya el texto del producto). Solo lo hace si:
-  //   · el catálogo tiene UN ítem exacto (c1+c2+clienteId actual),
-  //   · el usuario NO ha escrito nada en obs (no lo pisa),
-  //   · no estamos editando una entrada existente (respeta su obs).
-  // El precio viene del campo `final` del catálogo y se muestra solo si el
-  // usuario puede ver precios (admin).
-  function rellenarObsDeCatalogo(c1Val: string, c2Val: string) {
-    if (editingId) return              // no tocar obs durante edición
-    if (!c1Val || !c2Val) return
-    // Si el usuario ya escribió algo distinto a un texto auto-previo, no pisar
+  // V29.1: AUTO-DESCRIPCIÓN — al elegir c1+c2 en el formulario, si el par
+  // existe en el catálogo (con o sin cliente seleccionado), se rellena el
+  // campo custom DESCRIPCION con el c2 canónico del catálogo. El usuario
+  // escribe libremente, y al hacer match con catálogo se normaliza/autocompleta.
+  // Si el par c1+c2 no existe en catálogo, no se rellena (lo deja como está).
+  // OBSERVACIONES es 100% manual — nunca se toca automáticamente.
+  const descrKey = useMemo(
+    () => fieldDefs.find(f => f.isCustom && /descripcion/i.test(normAlm(`${f.key} ${f.label}`)))?.key || '',
+    [fieldDefs],
+  )
+  const descrAutoRef = useRef<string>('')
+  function rellenarDescripcionDeCatalogo(c1Val: string, c2Val: string) {
+    if (!descrKey || !c1Val || !c2Val) return
     const c1n = normStr(c1Val)
     const c2n = normStr(c2Val)
+    // Busca el ítem exacto en catálogo (c1+c2, con cliente si hay)
     let item = data.catalogo.find(x =>
       normStr(x.c1) === c1n && normStr(x.c2) === c2n &&
       (!clienteId || !x.clienteId || x.clienteId === clienteId))
     if (!item) item = data.catalogo.find(x => normStr(x.c1) === c1n && normStr(x.c2) === c2n)
     if (!item) return
-    const partes: string[] = []
-    if (item.clienteId) {
-      const cli = data.clientes.find(c => c.id === item!.clienteId)
-      if (cli?.nombre) partes.push(cli.nombre)
-    }
-    if (userCanSeePrices && Number(item.final) > 0) {
-      partes.push(fmtCurrency(Number(item.final)))
-    }
-    // Si c2 ya es la descripción del producto (lo más habitual), no la
-    // duplicamos; si c1 es la referencia y c2 el código, añadimos c2.
-    if (partes.length === 0) {
-      partes.push(c2Val)
-    }
-    const nuevo = partes.join(' · ')
-    // Solo rellena si obs está vacío o coincide con un texto auto-previo
-    // (para no pisar lo que el usuario haya escrito a mano).
-    if (!obs || obsAutoRef.current === obs) {
-      obsAutoRef.current = nuevo
-      setObs(nuevo)
+    // La descripción canónica del catálogo es su c2 (texto del producto).
+    const canon = item.c2 || ''
+    const actual = String(customValues[descrKey] || '').trim()
+    // Solo rellena si el campo está vacío o coincide con un texto auto-previo
+    // (no pisa lo que el usuario haya escrito a mano).
+    if (!actual || descrAutoRef.current === actual) {
+      descrAutoRef.current = canon
+      setCustomValue(descrKey, canon)
     }
   }
 
@@ -1333,7 +1323,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       // salvo que el usuario haya apagado el interruptor de impresión QR.
       if (etiquetaPalet && qrAuto) abrirQr([etiquetaPalet])
     }
-    setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({}); obsAutoRef.current = ''
+    setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({}); descrAutoRef.current = ''
     autoUbicRef.current = ''
     ubicClearedRef.current = false
     triggerBackup()
@@ -1342,7 +1332,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   function handleEdit(r: Registro) {
     setEditingId(r.id)
-    setFecha(r.fecha); setClienteId(r.clienteId); setC1(r.c1); setC2(r.c2); setCant(String(r.cant)); setObs(r.obs); obsAutoRef.current = ''
+    setFecha(r.fecha); setClienteId(r.clienteId); setC1(r.c1); setC2(r.c2); setCant(String(r.cant)); setObs(r.obs); descrAutoRef.current = ''
     // Load custom data
     const cd = parseCustomData((r as Record<string, unknown>).customData as string || '')
     setCustomValues(cd as Record<string, string>)
@@ -1358,7 +1348,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   }
 
   function handleCancelEdit() {
-    setEditingId(null); setFecha(todayISO()); setClienteId(''); setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({}); obsAutoRef.current = ''
+    setEditingId(null); setFecha(todayISO()); setClienteId(''); setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({}); descrAutoRef.current = ''
     autoUbicRef.current = ''
     ubicClearedRef.current = false
   }
@@ -1427,16 +1417,6 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
                 .filter(Boolean)
             )].sort()
             setC2(c2matches.length === 1 ? c2matches[0] : '')
-            // V29: rellena OBSERVACIONES si c1 ya apunta a un producto único
-            // del catálogo (con o sin cliente seleccionado).
-            if (c2matches.length === 1) {
-              rellenarObsDeCatalogo(v, c2matches[0])
-            } else if (obs && !editingId) {
-              // c1 ambiguo: limpia la obs auto-rellena anterior si no es edición
-              const c2prev = c2
-              const it = data.catalogo.find(x => normStr(x.c1) === vn && normStr(x.c2) === normStr(c2prev))
-              if (!it) setObs('')
-            }
           }} suggestions={c1Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
         </div>
       )
@@ -1447,10 +1427,11 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
           <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
           <div className="px-3 pb-2"><ComboInput value={c2} onChange={v => {
             setC2(v)
-            // V29: al elegir la DESCRIPCIÓN (c2), si casa con un ítem del
-            // catálogo, rellena OBSERVACIONES con info útil (cliente + precio
-            // si es admin) para que el operario no tenga que escribirlo a mano.
-            rellenarObsDeCatalogo(c1, v)
+            // V29.1: al elegir la DESCRIPCIÓN (c2), si casa con un ítem del
+            // catálogo, rellena el campo custom DESCRIPCION con la descripción
+            // canónica del catálogo (el c2 exacto). El usuario no tiene que
+            // escribirlo dos veces. OBSERVACIONES sigue siendo manual.
+            rellenarDescripcionDeCatalogo(c1, v)
           }} suggestions={c2Options.length > 0 ? c2Options : allC2Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
         </div>
       )

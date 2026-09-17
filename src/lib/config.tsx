@@ -27,6 +27,13 @@ export const DEFAULT_FIELDS_ENTRADA: FieldDef[] = [
   { key: 'c2', label: 'CONCEPTO 2', type: 'text', visible: true, isCustom: false, required: true, dbColumn: 'c2' },
   { key: 'cantidad', label: 'CANTIDAD', type: 'number', visible: true, isCustom: false, required: true, dbColumn: 'cant' },
   { key: 'observaciones', label: 'OBSERVACIONES', type: 'text', visible: true, isCustom: false, dbColumn: 'obs' },
+  // V29.1: customField DESCRIPCION — se rellena automáticamente con el c2
+  // canónico del catálogo al elegir c1+c2 en el formulario. El operario
+  // ve la descripción exacta del producto sin tener que escribirla dos veces.
+  // Si el usuario ya tenía customFields configurados y no tiene este campo,
+  // no aparece (respeta su configuración). Se puede añadir desde
+  // CONFIGURACIÓN → Campos de ENTRADA.
+  { key: 'custom_descripcion', label: 'DESCRIPCION', type: 'text', visible: true, isCustom: true, required: false, placeholder: 'Se rellena del catálogo' },
 ]
 
 export const DEFAULT_FIELDS_CLIENTES: FieldDef[] = [
@@ -225,6 +232,26 @@ function parseFieldDefs(jsonStr: string, defaults: FieldDef[]): FieldDef[] {
   }
 }
 
+// V29.1: Asegura que fieldsEntrada tenga el customField DESCRIPCION (autorellenable
+// del catálogo al elegir c1+c2). Si el usuario ya tiene un customField con
+// key 'custom_descripcion' o label que contenga 'descripcion', no se añade.
+// Solo se aplica a fieldsEntrada (no a otras secciones).
+function ensureDescripcionField(fields: FieldDef[]): FieldDef[] {
+  const ya = fields.some(f =>
+    f.key === 'custom_descripcion' || /descripcion/i.test(String(f.label || ''))
+  )
+  if (ya) return fields
+  return [...fields, {
+    key: 'custom_descripcion',
+    label: 'DESCRIPCION',
+    type: 'text',
+    visible: true,
+    isCustom: true,
+    required: false,
+    placeholder: 'Se rellena del catálogo',
+  } as FieldDef]
+}
+
 export function resolveConfig(raw: AppConfig): ResolvedConfig {
   return {
     companyName: raw.companyName || 'BILL by Metodo',
@@ -252,7 +279,7 @@ export function resolveConfig(raw: AppConfig): ResolvedConfig {
     labelsRegistros: parseJSON(raw.labelRegistros, DEFAULT_LABELS_REGISTROS),
     labelsFacturas: parseJSON(raw.labelFacturas, DEFAULT_LABELS_FACTURAS),
     labelsClientes: parseJSON(raw.labelClientes, DEFAULT_LABELS_CLIENTES),
-    fieldsEntrada: parseFieldDefs(raw.fieldsEntrada, DEFAULT_FIELDS_ENTRADA),
+    fieldsEntrada: ensureDescripcionField(parseFieldDefs(raw.fieldsEntrada, DEFAULT_FIELDS_ENTRADA)),
     fieldsClientes: parseFieldDefs(raw.fieldsClientes, DEFAULT_FIELDS_CLIENTES),
     fieldsCatalogo: parseFieldDefs(raw.fieldsCatalogo, DEFAULT_FIELDS_CATALOGO),
     fieldsRegistros: parseFieldDefs(raw.fieldsRegistros, DEFAULT_FIELDS_REGISTROS),

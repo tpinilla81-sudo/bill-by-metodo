@@ -672,30 +672,37 @@ export function listadoHuecos(cfg: EstanteriaCfg[], ocupadas: Set<string> | Map<
 // asistente. Se guardan con la configuración de la zona (campo criterios).
 
 // V29: nivel/altura DONDE ENTRARÁ el siguiente palet en una columna.
-//  · Estantería (con altura) → "2º nivel" / "3º nivel" / …
-//  · Pared (con altura)       → "2ª altura" / "3ª altura" / …
-//  · Sin altura (0)           → "suelo" (apilado libre: la 1ª plaza)
+//  · Estantería (con altura) → "ALTURA 2" / "ALTURA 3" / …
+//  · Pared (con altura)       → "ALTURA 2" / "ALTURA 3" / …
+//  · Sin altura (0)           → "ALTURA 1" (apilado libre: la 1ª plaza)
 //  · Si la columna está LLENA → '' (no hay próximo nivel)
+// Regla de PARED: en una pared solo se puede apilar si debajo hay palet. El
+// motor ya lo garantiza: nivel = min(ocupacion+1, altura). Si ocupacion=0,
+// nivel=1 (suelo). Por tanto ALTURA 2 solo se ofrece si ALTURA 1 ya está
+// ocupada. Igual para estantería: el nivel k solo se ofrece si el k-1 lo está.
 // Se usa como ETIQUETA en los huecos del desplegable y el asistente para que
-// se vea en qué nivel acaba de apilarse el palet sin tener que mirar el mapa.
+// se vea en qué nivel/caja se está poniendo el palet sin tener que mirar el mapa.
 export function nivelEntradaTexto(h: HuecoInfo): string {
   if (h.altura > 0 && h.ocupacion >= h.altura) return ''
   const nivel = h.altura > 0 ? Math.min(h.ocupacion + 1, h.altura) : 1
-  const palabra = h.tipo === 'pared' ? 'altura' : 'nivel'
-  const ordinal = h.tipo === 'pared' ? 'ª' : 'º'
-  return nivel === 1 ? 'suelo' : `${nivel}${ordinal} ${palabra}`
+  return `ALTURA ${nivel}`
 }
 
-// V29: nombre HUMANO del hueco para mostrar al usuario — además de "E1-03"
-// añade "· 2º nivel" / "· suelo" / "· 3ª altura" para que al elegir ubicación
-// se vea en qué nivel/caja se está poniendo el palet (almacenes con alturas).
-//  · El valor guardado sigue siendo solo "E1-03" (el identificador del hueco
-//    físico, sin el nivel) porque el motor cuenta por columna, no por plaza.
-//  · Pero al MOSTRAR (desplegable, asistente, tooltip, lista de entradas)
-//    se ve el nivel donde ENTRARÁ el siguiente palet.
+// V29: nombre HUMANO del hueco para mostrar al usuario — sigue el formato
+//   "{TIPO} {RACK} · FILA {n} · ALTURA {m}"
+// donde:
+//  · TIPO   = 'PARED' o 'ESTANTERIA' (según la zona)
+//  · RACK   = nombre de la zona (E1, P1, …)
+//  · FILA   = número de hueco en la fila del suelo (la posición física)
+//  · ALTURA = nivel donde ENTRARÁ el siguiente palet (1=suelo, 2, 3…)
+// El valor guardado sigue siendo "E1-03" (clave canónica del hueco físico);
+// este nombre es solo para mostrarlo en desplegable, asistente, tooltip y
+// lista de entradas.
 export function huecoConNivel(h: HuecoInfo, nivel?: string): string {
   const lv = nivel || nivelEntradaTexto(h)
-  return lv ? `${h.hueco} · ${lv}` : h.hueco
+  const tipo = h.tipo === 'pared' ? 'PARED' : 'ESTANTERIA'
+  const fila = parseInt(h.pos, 10) || 1
+  return lv ? `${tipo} ${h.rack} · FILA ${fila} · ${lv}` : `${tipo} ${h.rack} · FILA ${fila}`
 }
 
 export type CriterioId =
