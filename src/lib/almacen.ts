@@ -671,6 +671,33 @@ export function listadoHuecos(cfg: EstanteriaCfg[], ocupadas: Set<string> | Map<
 // «Criterios de asignación», y también con el botón «Ajustar» del propio
 // asistente. Se guardan con la configuración de la zona (campo criterios).
 
+// V29: nivel/altura DONDE ENTRARÁ el siguiente palet en una columna.
+//  · Estantería (con altura) → "2º nivel" / "3º nivel" / …
+//  · Pared (con altura)       → "2ª altura" / "3ª altura" / …
+//  · Sin altura (0)           → "suelo" (apilado libre: la 1ª plaza)
+//  · Si la columna está LLENA → '' (no hay próximo nivel)
+// Se usa como ETIQUETA en los huecos del desplegable y el asistente para que
+// se vea en qué nivel acaba de apilarse el palet sin tener que mirar el mapa.
+export function nivelEntradaTexto(h: HuecoInfo): string {
+  if (h.altura > 0 && h.ocupacion >= h.altura) return ''
+  const nivel = h.altura > 0 ? Math.min(h.ocupacion + 1, h.altura) : 1
+  const palabra = h.tipo === 'pared' ? 'altura' : 'nivel'
+  const ordinal = h.tipo === 'pared' ? 'ª' : 'º'
+  return nivel === 1 ? 'suelo' : `${nivel}${ordinal} ${palabra}`
+}
+
+// V29: nombre HUMANO del hueco para mostrar al usuario — además de "E1-03"
+// añade "· 2º nivel" / "· suelo" / "· 3ª altura" para que al elegir ubicación
+// se vea en qué nivel/caja se está poniendo el palet (almacenes con alturas).
+//  · El valor guardado sigue siendo solo "E1-03" (el identificador del hueco
+//    físico, sin el nivel) porque el motor cuenta por columna, no por plaza.
+//  · Pero al MOSTRAR (desplegable, asistente, tooltip, lista de entradas)
+//    se ve el nivel donde ENTRARÁ el siguiente palet.
+export function huecoConNivel(h: HuecoInfo, nivel?: string): string {
+  const lv = nivel || nivelEntradaTexto(h)
+  return lv ? `${h.hueco} · ${lv}` : h.hueco
+}
+
 export type CriterioId =
   | 'orden' | 'familia' | 'lote' | 'cliente' | 'antiguedad'
   | 'compactar' | 'espacio' | 'equilibrio'

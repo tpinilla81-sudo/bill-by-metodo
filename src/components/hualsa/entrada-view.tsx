@@ -18,6 +18,7 @@ import {
   esC2EntradaPalet, normAlm, getIdent, getUbicacion, identDeCustomValues,
   isQrAuto, setQrAuto, buildStock, huecoOptimo,
   pesosDeZona, resumenCriterios, puntuarPorRack, mejorHuecoGlobal, agruparLotesPorHueco,
+  nivelEntradaTexto, huecoConNivel,
   type EstanteriaCfg, type HuecoInfo, type LoteStock, type PesosCriterios,
 } from '@/lib/almacen'
 
@@ -165,14 +166,17 @@ function UbicacionCombo({
   }
 
   // Chip de estado de cada hueco: LIBRE (verde) · N/M con sitio (ámbar) ·
-  // LLENO (rojo) · N/∞ sin límite de altura (azul grisáceo)
+  // LLENO (rojo) · N/∞ sin límite de altura (azul grisáceo). Incluye el
+  // NIVEL donde entrará el siguiente palet (V29): suelo, 2º nivel, 3ª altura…
   function chipHueco(h: HuecoInfo): { text: string; cls: string } {
+    const lv = nivelEntradaTexto(h)
+    const lvTxt = lv ? ` · ${lv}` : ''
     if (h.altura === 0) return h.ocupacion > 0
-      ? { text: `${h.ocupacion}/∞`, cls: 'bg-sky-100 text-sky-700' }
-      : { text: 'LIBRE', cls: 'bg-emerald-100 text-emerald-700' }
-    if (h.ocupacion === 0) return { text: 'LIBRE', cls: 'bg-emerald-100 text-emerald-700' }
+      ? { text: `${h.ocupacion}/∞${lvTxt}`, cls: 'bg-sky-100 text-sky-700' }
+      : { text: `LIBRE${lvTxt}`, cls: 'bg-emerald-100 text-emerald-700' }
+    if (h.ocupacion === 0) return { text: `LIBRE${lvTxt}`, cls: 'bg-emerald-100 text-emerald-700' }
     if (h.ocupacion >= h.altura) return { text: `LLENO ${h.ocupacion}/${h.altura}`, cls: 'bg-red-100 text-red-600' }
-    return { text: `${h.ocupacion}/${h.altura}`, cls: 'bg-amber-100 text-amber-700' }
+    return { text: `${h.ocupacion}/${h.altura}${lvTxt}`, cls: 'bg-amber-100 text-amber-700' }
   }
 
   // Filas a pintar en lista: cabecera de zona cuando cambia + huecos con índice plano
@@ -804,6 +808,7 @@ function UbicacionWizard({
                   {propuestasRack.slice(0, 5).map((p, i) => {
                     const capTxt = p.hueco.altura > 0 ? `${p.hueco.ocupacion}/${p.hueco.altura}` : `${p.hueco.ocupacion}/∞`
                     const motivoTxt = p.razones.length > 0 ? p.razones.map(r => r.detalle).join(' · ') : 'hueco libre'
+                    const nivelTxt = nivelEntradaTexto(p.hueco)
                     return (
                       <button
                         key={p.hueco.hueco}
@@ -813,7 +818,10 @@ function UbicacionWizard({
                         className={`w-full flex items-center gap-2.5 rounded-xl border-2 px-3 py-2 text-left transition-all ${sel === p.hueco.hueco ? 'border-[#005bb5] bg-blue-50/60' : 'border-gray-200 bg-white hover:border-gray-300'}`}
                       >
                         <span className={`h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-extrabold shrink-0 ${i === 0 ? 'bg-[#005bb5] text-white' : 'bg-gray-100 text-gray-600'}`}>{i + 1}</span>
-                        <span className="text-sm font-extrabold font-mono text-gray-800 shrink-0">{p.hueco.hueco}</span>
+                        <div className="flex flex-col leading-tight shrink-0">
+                          <span className="text-sm font-extrabold font-mono text-gray-800">{p.hueco.hueco}</span>
+                          {nivelTxt && <span className="text-[9px] font-bold text-indigo-600 uppercase tracking-wider">{nivelTxt}</span>}
+                        </div>
                         <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">{capTxt}</span>
                         <span className="text-[11px] text-gray-500 font-semibold leading-tight truncate flex-1 min-w-0">{motivoTxt}</span>
                         <span className="text-[9px] font-mono font-bold text-gray-300 shrink-0" title="puntuación ponderada con los criterios de la zona">{Math.round(p.total)}</span>
@@ -838,11 +846,17 @@ function UbicacionWizard({
             </Button>
           )}
           <div className="ml-auto flex items-center gap-3">
-            {sel && (
-              <span className="text-xs text-gray-500 hidden sm:inline">
-                Seleccionado: <b className="font-mono text-[#005bb5] text-sm">{sel}</b>
-              </span>
-            )}
+            {sel && (() => {
+              const hSel = huecos.find(h => h.hueco === sel)
+              const nivelTxt = hSel ? nivelEntradaTexto(hSel) : ''
+              return (
+                <span className="text-xs text-gray-500 hidden sm:flex sm:items-center sm:gap-1.5">
+                  Seleccionado:
+                  <b className="font-mono text-[#005bb5] text-sm">{sel}</b>
+                  {nivelTxt && <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">· {nivelTxt}</span>}
+                </span>
+              )
+            })()}
             <Button
               type="button"
               disabled={!sel}
@@ -927,6 +941,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   const [almacenCfg, setAlmacenCfg] = useState<EstanteriaCfg[]>([])
   const autoUbicRef = useRef<string>('')      // último hueco asignado automáticamente
   const ubicClearedRef = useRef(false)        // el usuario vació la ubicación a mano → no rellenar
+  const obsAutoRef = useRef<string>('')       // V29: último obs auto-relleno del catálogo (para no pisar lo escrito a mano)
 
   // Refresca la configuración cada vez que se recargan los datos (la pestaña
   // puede recuperar el foco tras editarla en STOCK ALMACÉN en otra pestaña).
@@ -1212,6 +1227,47 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     setCustomValues(prev => ({ ...prev, [key]: value }))
   }
 
+  // V29: AUTO-DESCRIPCIÓN en OBSERVACIONES al elegir c1+c2 — busca el ítem del
+  // catálogo y rellena OBS con un texto útil (cliente + precio si es admin
+  // + c1/c2 si no son ya el texto del producto). Solo lo hace si:
+  //   · el catálogo tiene UN ítem exacto (c1+c2+clienteId actual),
+  //   · el usuario NO ha escrito nada en obs (no lo pisa),
+  //   · no estamos editando una entrada existente (respeta su obs).
+  // El precio viene del campo `final` del catálogo y se muestra solo si el
+  // usuario puede ver precios (admin).
+  function rellenarObsDeCatalogo(c1Val: string, c2Val: string) {
+    if (editingId) return              // no tocar obs durante edición
+    if (!c1Val || !c2Val) return
+    // Si el usuario ya escribió algo distinto a un texto auto-previo, no pisar
+    const c1n = normStr(c1Val)
+    const c2n = normStr(c2Val)
+    let item = data.catalogo.find(x =>
+      normStr(x.c1) === c1n && normStr(x.c2) === c2n &&
+      (!clienteId || !x.clienteId || x.clienteId === clienteId))
+    if (!item) item = data.catalogo.find(x => normStr(x.c1) === c1n && normStr(x.c2) === c2n)
+    if (!item) return
+    const partes: string[] = []
+    if (item.clienteId) {
+      const cli = data.clientes.find(c => c.id === item!.clienteId)
+      if (cli?.nombre) partes.push(cli.nombre)
+    }
+    if (userCanSeePrices && Number(item.final) > 0) {
+      partes.push(fmtCurrency(Number(item.final)))
+    }
+    // Si c2 ya es la descripción del producto (lo más habitual), no la
+    // duplicamos; si c1 es la referencia y c2 el código, añadimos c2.
+    if (partes.length === 0) {
+      partes.push(c2Val)
+    }
+    const nuevo = partes.join(' · ')
+    // Solo rellena si obs está vacío o coincide con un texto auto-previo
+    // (para no pisar lo que el usuario haya escrito a mano).
+    if (!obs || obsAutoRef.current === obs) {
+      obsAutoRef.current = nuevo
+      setObs(nuevo)
+    }
+  }
+
   async function handleSave() {
     // ALL visible fields in Entrada are mandatory (user requirement),
     // EXCEPT 'observaciones' which stays optional.
@@ -1277,7 +1333,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       // salvo que el usuario haya apagado el interruptor de impresión QR.
       if (etiquetaPalet && qrAuto) abrirQr([etiquetaPalet])
     }
-    setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
+    setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({}); obsAutoRef.current = ''
     autoUbicRef.current = ''
     ubicClearedRef.current = false
     triggerBackup()
@@ -1286,7 +1342,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   function handleEdit(r: Registro) {
     setEditingId(r.id)
-    setFecha(r.fecha); setClienteId(r.clienteId); setC1(r.c1); setC2(r.c2); setCant(String(r.cant)); setObs(r.obs)
+    setFecha(r.fecha); setClienteId(r.clienteId); setC1(r.c1); setC2(r.c2); setCant(String(r.cant)); setObs(r.obs); obsAutoRef.current = ''
     // Load custom data
     const cd = parseCustomData((r as Record<string, unknown>).customData as string || '')
     setCustomValues(cd as Record<string, string>)
@@ -1302,7 +1358,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   }
 
   function handleCancelEdit() {
-    setEditingId(null); setFecha(todayISO()); setClienteId(''); setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({})
+    setEditingId(null); setFecha(todayISO()); setClienteId(''); setC1(''); setC2(''); setCant('1'); setObs(''); setCustomValues({}); obsAutoRef.current = ''
     autoUbicRef.current = ''
     ubicClearedRef.current = false
   }
@@ -1371,6 +1427,16 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
                 .filter(Boolean)
             )].sort()
             setC2(c2matches.length === 1 ? c2matches[0] : '')
+            // V29: rellena OBSERVACIONES si c1 ya apunta a un producto único
+            // del catálogo (con o sin cliente seleccionado).
+            if (c2matches.length === 1) {
+              rellenarObsDeCatalogo(v, c2matches[0])
+            } else if (obs && !editingId) {
+              // c1 ambiguo: limpia la obs auto-rellena anterior si no es edición
+              const c2prev = c2
+              const it = data.catalogo.find(x => normStr(x.c1) === vn && normStr(x.c2) === normStr(c2prev))
+              if (!it) setObs('')
+            }
           }} suggestions={c1Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
         </div>
       )
@@ -1379,7 +1445,13 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-visible">
           <div className="px-3 pt-2 pb-0.5"><Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</Label></div>
-          <div className="px-3 pb-2"><ComboInput value={c2} onChange={setC2} suggestions={c2Options.length > 0 ? c2Options : allC2Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
+          <div className="px-3 pb-2"><ComboInput value={c2} onChange={v => {
+            setC2(v)
+            // V29: al elegir la DESCRIPCIÓN (c2), si casa con un ítem del
+            // catálogo, rellena OBSERVACIONES con info útil (cliente + precio
+            // si es admin) para que el operario no tenga que escribirlo a mano.
+            rellenarObsDeCatalogo(c1, v)
+          }} suggestions={c2Options.length > 0 ? c2Options : allC2Options} placeholder="Escribe o selecciona..." label={field.label} /></div>
         </div>
       )
     }
