@@ -1286,13 +1286,15 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   async function handleSave() {
     // ALL visible fields in Entrada are mandatory (user requirement),
-    // EXCEPT 'observaciones' which stays optional.
+    // EXCEPT 'observaciones' and 'cliente' which stay optional.
+    // 'cliente' es opcional porque para ENTRADA PALET el operario muchas
+    // veces no selecciona cliente (se autodetecta del catálogo, o no aplica).
+    // Sin esto, el guardado falla y por tanto no salta la etiqueta QR.
     for (const f of visibleFields) {
-      if (f.key === 'observaciones') continue  // optional
+      if (f.key === 'observaciones' || f.key === 'cliente') continue  // optional
       let empty = false
       switch (f.key) {
         case 'fecha': empty = !fecha; break
-        case 'cliente': empty = !clienteId; break
         case 'c1': empty = !c1; break
         case 'c2': empty = !c2; break
         case 'cantidad': empty = !cant; break
