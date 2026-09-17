@@ -1752,11 +1752,13 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
                     </td>
                   ))}
                   <td className="p-2 whitespace-nowrap">
-                    {esC2EntradaPalet(r.c2) && (
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-teal-600 hover:bg-teal-50" onClick={() => abrirQrDesdeRegistro(r)} title="Etiqueta QR del palet (imprimir)">
-                        <QrCode className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
+                    {/* V29.6: botón QR siempre visible en Acciones para que se
+                        pueda reimprimir la etiqueta de cualquier entrada.
+                        Antes solo aparecía si c2 era "ENTRADA PALET", pero
+                        el operario puede querer etiquetar cualquier palet. */}
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-teal-600 hover:bg-teal-50" onClick={() => abrirQrDesdeRegistro(r)} title="Etiqueta QR del palet (imprimir / reimprimir)">
+                      <QrCode className="h-3.5 w-3.5" />
+                    </Button>
                     <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
                     <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                   </td>
