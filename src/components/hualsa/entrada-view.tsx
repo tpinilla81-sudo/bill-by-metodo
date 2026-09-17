@@ -988,7 +988,16 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   // OFRECE el desplegable de UBICACIÓN al meter palets.
   const huecosLista = useMemo(() => listadoHuecos(almacenCfg, ocupadas), [almacenCfg, ocupadas])
 
-  const esPalet = esC2EntradaPalet(c2)
+  // V29.7: detecta si la entrada es un PALET para abrir la etiqueta QR.
+  // Criterios (cualquiera basta):
+  //  · c1 O c2 contiene "entrada palet" (formato catálogo clásico y nuevo)
+  //  · hay lote/nº palet rellenado (el operario lo etiqueta físicamente)
+  //  · hay ubicación rellenada (un palet siempre va a un hueco del almacén)
+  // Antes solo miraba c2 → fallaba con códigos de producto (10F1027) o
+  // servicios (ALQUILER NAVE), aunque el operario quisiera etiquetar.
+  const esPalet = esC2EntradaPalet(c2) || esC2EntradaPalet(c1)
+    || !!identDeCustomValues(customValues)
+    || !!(ubicKey && String(customValues[ubicKey] || '').trim())
 
   // Al cambiar el CONCEPTO 2 se reactiva la asignación automática
   useEffect(() => { ubicClearedRef.current = false }, [c2])
