@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Trash2, Save, CheckCircle, AlertCircle, Table, Zap, QrCode, Printer } from 'lucide-react'
+import { Plus, Trash2, Save, CheckCircle, AlertCircle, Table, Zap, QrCode, Printer, Download, Upload } from 'lucide-react'
 import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, parseCustomData, serializeCustomData, fieldAppliesToClient, getFieldLabel, type FieldDef } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
@@ -15,6 +15,7 @@ import {
   type EstanteriaCfg,
 } from '@/lib/almacen'
 import { QrEtiquetaDialog, type EtiquetaPalet } from '@/components/hualsa/qr-etiqueta'
+import * as XLSX from 'xlsx'
 
 interface GrillaData {
   clientes: Cliente[]
@@ -100,17 +101,19 @@ export function EntradaGrilla() {
   // ámbar y para BLOQUEAR el guardado, igual que hace el formulario.
   // Los campos exclusivos de un cliente solo se exigen en sus filas
   // (fieldAppliesToClient, con el cliente autodetectado si está oculto).
+  // V29.8: cliente y observaciones NO son obligatorios (igual que en el
+  // formulario normal). Los customFields solo son obligatorios si están
+  // marcados como required en la configuración de campos.
   function filaMissing(r: GrillaRow): string[] {
     const missing: string[] = []
     if (!r.fecha) missing.push(getFieldLabel(fieldDefs, 'fecha'))
     if (!r.c1) missing.push(getFieldLabel(fieldDefs, 'c1'))
     if (!r.c2) missing.push(getFieldLabel(fieldDefs, 'c2'))
-    if (clienteVisible && !r.clienteId) missing.push(getFieldLabel(fieldDefs, 'cliente'))
     if (!String(r.cant || '').trim()) missing.push(getFieldLabel(fieldDefs, 'cantidad'))
     const cliId = r.clienteId || (clienteVisible ? '' : lookupCliente(data.catalogo, r.c1, r.c2))
     for (const f of customFields) {
       if (!fieldAppliesToClient(f, cliId || null)) continue
-      if (!String(r.customValues[f.key] || '').trim()) missing.push(f.label)
+      if (f.required && !String(r.customValues[f.key] || '').trim()) missing.push(f.label)
     }
     return missing
   }
@@ -378,6 +381,118 @@ export function EntradaGrilla() {
     }
   }
 
+  // ── V29.8: Exportar/Importar Excel ─────────────────────────────────────
+  // Plantilla con las columnas visibles de la ENTRADA (mismo orden que la grilla).
+  // Al importar se mapea por CABECERA (no por posición) → el usuario puede
+  // reordenar/quitar columnas en su Excel y sigue funcionando. Las filas
+  // vacías se ignoran. CustomFields (Lote, Ubicación, Descripcion...) van
+  // como columnas adicionales con su label exacto.
+
+  // Cabecera canónica: lista de {key, label, isCustom} para columnas visibles.
+  const grillaHeaders = useMemo(() => {
+    const visible = (config?.fieldsEntrada || []).filter(f => f.visible)
+    return visible.map(f => ({ key: f.key, label: f.label, isCustom: !!f.isCustom }))
+  }, [config?.fieldsEntrada])
+
+  function descargarPlantillaExcel() {
+    // Una fila de ejemplo (no se importa si está vacía en customValues)
+    const headers = grillaHeaders.map(h => h.label)
+    const ejemplo: Record<string, string> = {}
+    for (const h of grillaHeaders) {
+      switch (h.key) {
+        case 'fecha': ejemplo[h.label] = todayISO(); break
+        case 'c1': ejemplo[h.label] = 'ALMACEN'; break
+        case 'c2': ejemplo[h.label] = 'ENTRADA PALET'; break
+        case 'cantidad': ejemplo[h.label] = '1'; break
+        case 'cliente': ejemplo[h.label] = '(opcional)'; break
+        case 'observaciones': ejemplo[h.label] = '(opcional)'; break
+        default: ejemplo[h.label] = h.key === ubicKey ? 'P1F1H1' : (h.key.startsWith('custom_lote') ? 'L-24001' : '')
+      }
+    }
+    const ws = XLSX.utils.json_to_sheet([ejemplo], { header: headers })
+    // Anchos de columna razonables
+    const colWidths = headers.map(h => ({ wch: Math.max(12, Math.min(40, h.length + 6)) }))
+    ws['!cols'] = colWidths
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Entradas')
+    XLSX.writeFile(wb, `plantilla-entradas-${todayISO()}.xlsx`)
+  }
+
+  function importarExcel(file: File) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const buffer = new Uint8Array(e.target?.result as ArrayBuffer)
+        const wb = XLSX.read(buffer, { type: 'array' })
+        const sheet = wb.Sheets[wb.SheetNames[0]]
+        if (!sheet) { showStatus('err', 'El Excel no tiene hojas'); return }
+        const json: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+        if (json.length === 0) { showStatus('err', 'El Excel está vacío'); return }
+
+        // Mapear cabeceras del Excel → keys de la grilla (por label exacto,
+        // sin distinguir mayúsculas/minúsculas ni acentos).
+        const labelToKey = new Map<string, { key: string; isCustom: boolean }>()
+        for (const h of grillaHeaders) {
+          labelToKey.set(normAlm(h.label), { key: h.key, isCustom: h.isCustom })
+        }
+
+        const nuevas: GrillaRow[] = []
+        for (const row of json) {
+          // Saltar filas vacías (todas las celdas en blanco)
+          const todasVacias = Object.values(row).every(v => !String(v ?? '').trim())
+          if (todasVacias) continue
+
+          const grillaRow: GrillaRow = emptyRow()
+          const cv: Record<string, string> = {}
+          for (const [label, value] of Object.entries(row)) {
+            const meta = labelToKey.get(normAlm(label))
+            if (!meta) continue  // columna desconocida — ignorar
+            const strVal = String(value ?? '').trim()
+            if (!strVal) continue
+            switch (meta.key) {
+              case 'fecha': grillaRow.fecha = strVal; break
+              case 'clienteId':
+              case 'cliente': {
+                // Acepta nombre del cliente o ID — busca match en la lista
+                const cli = data.clientes.find(c =>
+                  c.id === strVal || normAlm(c.nombre) === normAlm(strVal))
+                if (cli) grillaRow.clienteId = cli.id
+                break
+              }
+              case 'c1': grillaRow.c1 = strVal; break
+              case 'c2': grillaRow.c2 = strVal; break
+              case 'cant':
+              case 'cantidad': grillaRow.cant = strVal; break
+              case 'obs':
+              case 'observaciones': grillaRow.obs = strVal; break
+              default:
+                if (meta.isCustom) cv[meta.key] = strVal
+            }
+          }
+          if (Object.keys(cv).length > 0) grillaRow.customValues = cv
+          // Saltar filas que no tengan al menos c1 y c2 (no son entradas válidas)
+          if (!grillaRow.c1 && !grillaRow.c2) continue
+          nuevas.push(grillaRow)
+        }
+
+        if (nuevas.length === 0) {
+          showStatus('err', 'No se encontraron filas válidas en el Excel')
+          return
+        }
+        setRows(nuevas)
+        setRowCount(nuevas.length)
+        showStatus('ok', `Importadas ${nuevas.length} filas desde Excel ✓`)
+      } catch (err) {
+        console.error('Error importando Excel:', err)
+        showStatus('err', 'No se pudo leer el Excel — ¿es un archivo .xlsx válido?')
+      }
+    }
+    reader.onerror = () => showStatus('err', 'No se pudo leer el archivo')
+    reader.readAsArrayBuffer(file)
+  }
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   async function handleSave() {
     // El botón solo se habilita cuando todas las filas empezadas están
     // completas (validado por `todasCompletas`); pero por seguridad
@@ -563,6 +678,24 @@ export function EntradaGrilla() {
           <Button variant="outline" size="sm" onClick={addRow} title="Añadir una fila">
             <Plus className="h-4 w-4 mr-1" /> +1
           </Button>
+          {/* V29.8: Plantilla Excel + Importar Excel — entrada masiva desde fichero */}
+          <Button variant="outline" size="sm" onClick={descargarPlantillaExcel} title="Descargar plantilla Excel con las columnas de la grilla (FECHA, CONCEPTO 1, CONCEPTO 2, LOTE, UBICACIÓN…)">
+            <Download className="h-4 w-4 mr-1" /> Plantilla
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} title="Subir un Excel (.xlsx) con entradas — las cabeceras deben coincidir con las columnas de la grilla. Las filas vacías se ignoran">
+            <Upload className="h-4 w-4 mr-1" /> Excel
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={e => {
+              const f = e.target.files?.[0]
+              if (f) importarExcel(f)
+              e.target.value = ''  // reset para poder re-importar el mismo archivo
+            }}
+          />
           <Button variant="outline" size="sm" onClick={clearAll} title="Borrar todo">
             <Trash2 className="h-4 w-4" />
           </Button>
