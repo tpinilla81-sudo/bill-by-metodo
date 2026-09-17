@@ -6,17 +6,19 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, ChevronRight, Plus, Table, QrCode, Printer, Warehouse, Map as MapIcon, List, Crosshair, ArrowLeft, Package, Layers, Boxes } from 'lucide-react'
+import { Pencil, Trash2, Save, CheckCircle, AlertCircle, X, ArrowRightCircle, Clock, Zap, Settings2, ChevronDown, ChevronRight, Plus, Table, QrCode, Printer, Warehouse, Map as MapIcon, List, Crosshair, ArrowLeft, Package, Scale, SlidersHorizontal } from 'lucide-react'
 import { todayISO, fmtCurrency, fmtDate, getISOWeek, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_ENTRADA, type FieldDef, parseCustomData, serializeCustomData, fieldAppliesToClient } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 import { EntradaGrilla } from '@/components/hualsa/entrada-grilla'
 import { QrEtiquetaDialog, type EtiquetaPalet } from '@/components/hualsa/qr-etiqueta'
+import { CriteriosEditor } from '@/components/hualsa/criterios-editor'
 import {
-  loadAlmacenCfg, fetchAlmacenCfg, huecoOptimo, clasificarUbicacion, contadoresHuecos, listadoHuecos,
+  loadAlmacenCfg, saveAlmacenCfg, fetchAlmacenCfg, pushAlmacenCfg, clasificarUbicacion, contadoresHuecos, listadoHuecos,
   esC2EntradaPalet, normAlm, getIdent, getUbicacion, identDeCustomValues,
-  isQrAuto, setQrAuto, buildStock, diasEnAlmacen, normHuecoKey, padPos,
-  type EstanteriaCfg, type HuecoInfo, type LoteStock,
+  isQrAuto, setQrAuto, buildStock, huecoOptimo,
+  pesosDeZona, resumenCriterios, puntuarPorRack, mejorHuecoGlobal, agruparLotesPorHueco,
+  type EstanteriaCfg, type HuecoInfo, type LoteStock, type PesosCriterios,
 } from '@/lib/almacen'
 
 interface EntradaViewData {
@@ -241,7 +243,7 @@ function UbicacionCombo({
                 type="button"
                 onMouseDown={e => { e.preventDefault(); elegir(optimo) }}
                 className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-teal-50 border border-teal-200 hover:bg-teal-100 transition-colors"
-                title="Elegir el primer hueco libre del almacén"
+                title="Elegir el mejor hueco según los criterios de cada zona"
               >
                 <Zap className="h-3.5 w-3.5 text-teal-600 shrink-0" />
                 <span className="text-xs font-bold text-teal-800 font-mono">{optimo}</span>
@@ -432,102 +434,13 @@ function UbicacionCombo({
   )
 }
 
-// ─── V28: Asistente de UBICACIÓN en 2 pasos (almacenes grandes) ──────────
-// Paso 1 · ZONA: tarjetas de cada estantería/pared con su estado y la zona
-// RECOMENDADA marcada. Paso 2 · HUECO: dentro de la zona, propuestas ordenadas
-// por CRITERIO (FIFO · familia · lote · compactar) + mapa grande para elegir
-// a mano. Se abre con el botón 🎯 del campo UBICACIÓN o "Asistente" en el
-// desplegable — con muchas zonas el mapa único era un lío.
-type Criterio = 'fifo' | 'familia' | 'lote' | 'compactar'
-
-const CRITERIOS: { id: Criterio; label: string; icon: typeof Clock; ayuda: string }[] = [
-  { id: 'fifo', label: 'FIFO', icon: Clock, ayuda: 'Junto al stock más antiguo del mismo producto — rota antes' },
-  { id: 'familia', label: 'Familia', icon: Package, ayuda: 'Junta palets del mismo producto (y luego del mismo cliente)' },
-  { id: 'lote', label: 'Lote', icon: Layers, ayuda: 'Junta palets del mismo lote (mismo prefijo de nº palet)' },
-  { id: 'compactar', label: 'Compactar', icon: Boxes, ayuda: 'Llena primero las columnas empezadas, deja columnas vacías' },
-]
-
-interface Propuesta {
-  hueco: HuecoInfo
-  motivo: string
-  puntos: number
-}
-
-// Prefijo de lote: "L-24001" → "l-" (sin la parte numérica final). Dos palets
-// son del mismo lote si comparten prefijo (≥2 chars para no casar todo).
-function prefijoLote(ident: string): string {
-  const p = normAlm(ident).replace(/\d+\s*$/, '')
-  return p.length >= 2 ? p : ''
-}
-
-// Motor de propuestas: puntúa cada hueco con sitio libre según el criterio y
-// el producto/lote que se está metiendo en el formulario.
-function propuestasHuecos(
-  huecos: HuecoInfo[],
-  lotesPorHueco: Map<string, LoteStock[]>,
-  criterio: Criterio,
-  actual: { c1: string; c2: string; clienteId: string; ident: string },
-): Propuesta[] {
-  const prodAct = normAlm(`${actual.c1} ${actual.c2}`).trim()
-  const cliAct = normAlm(actual.clienteId)
-  const loteAct = prefijoLote(actual.ident)
-  const out: Propuesta[] = []
-  for (const h of huecos) {
-    // Solo huecos que ADMITEN palets (llenos fuera)
-    if (h.altura > 0 && h.ocupacion >= h.altura) continue
-    const lotes = lotesPorHueco.get(h.hueco) || []
-    const mismoProd = prodAct ? lotes.filter(l => normAlm(`${l.c1} ${l.c2}`).trim() === prodAct) : []
-    const mismoCliente = cliAct ? lotes.filter(l => normAlm(l.clienteId) === cliAct) : []
-    const mismoLote = loteAct ? lotes.filter(l => prefijoLote(l.ident) === loteAct) : []
-    const masAntiguo = lotes.reduce<string | null>((min, l) => (!min || l.fecha < min ? l.fecha : min), null)
-    const diasAntiguo = masAntiguo ? diasEnAlmacen(masAntiguo) : 0
-    const capTxt = h.altura > 0 ? `${h.ocupacion}/${h.altura}` : `${h.ocupacion}/∞`
-
-    let puntos = 0
-    let motivo = ''
-    if (criterio === 'fifo') {
-      if (mismoProd.length > 0) {
-        puntos = 100 + Math.min(30, diasAntiguo) + mismoProd.length
-        motivo = `rota con ${mismoProd.length} palet${mismoProd.length > 1 ? 's' : ''} de este producto — el más antiguo tiene ${diasAntiguo} días`
-      } else if (h.ocupacion === 0) {
-        puntos = 50
-        motivo = 'hueco libre (columna nueva)'
-      } else {
-        puntos = 40
-        motivo = `columna con sitio (${capTxt})`
-      }
-    } else if (criterio === 'familia') {
-      if (mismoProd.length > 0) {
-        puntos = 100 + mismoProd.length * 5
-        motivo = `${mismoProd.length} palet${mismoProd.length > 1 ? 's' : ''} de este producto en la columna`
-      } else if (mismoCliente.length > 0) {
-        puntos = 60 + mismoCliente.length
-        motivo = `${mismoCliente.length} palet${mismoCliente.length > 1 ? 's' : ''} de este cliente en la columna`
-      } else {
-        puntos = 20
-        motivo = 'hueco libre (nueva zona de producto)'
-      }
-    } else if (criterio === 'lote') {
-      if (mismoLote.length > 0) {
-        puntos = 100 + mismoLote.length
-        motivo = `junto a ${mismoLote.length} palet${mismoLote.length > 1 ? 's' : ''} del mismo lote`
-      } else if (mismoProd.length > 0) {
-        puntos = 70
-        motivo = 'mismo producto'
-      } else {
-        puntos = 20
-        motivo = 'hueco libre'
-      }
-    } else {
-      // compactar
-      puntos = 10 + h.ocupacion * 10
-      motivo = h.ocupacion > 0 ? `completa la columna (${capTxt})` : 'columna vacía — se abre si no queda otra'
-    }
-    out.push({ hueco: h, motivo, puntos })
-  }
-  out.sort((a, b) => b.puntos - a.puntos || a.hueco.hueco.localeCompare(b.hueco.hueco, 'es', { numeric: true }))
-  return out
-}
+// ─── V28/V29: Asistente de UBICACIÓN en 2 pasos (almacenes grandes) ─────
+// Paso 1 · ZONA: tarjetas de cada estantería/pared con su estado, sus
+// CRITERIOS y la zona RECOMENDADA marcada. Paso 2 · HUECO: propuestas
+// puntuadas con las PONDERACIONES de esa zona (configurables en STOCK
+// ALMACÉN → Criterios de asignación, o en vivo con el botón «Ajustar»)
+// + mapa grande para elegir a mano. Se abre con el botón 🎯 del campo
+// UBICACIÓN o "Asistente" en el desplegable.
 
 function UbicacionWizard({
   open,
@@ -541,6 +454,7 @@ function UbicacionWizard({
   clienteId,
   ident,
   initialValue,
+  onCambiarCriterios,
 }: {
   open: boolean
   onClose: () => void
@@ -553,11 +467,12 @@ function UbicacionWizard({
   clienteId: string
   ident: string
   initialValue: string
+  onCambiarCriterios: (rack: string, pesos: PesosCriterios) => void
 }) {
   const [paso, setPaso] = useState<1 | 2>(1)
   const [rack, setRack] = useState<string>('')
-  const [criterio, setCriterio] = useState<Criterio>('fifo')
   const [sel, setSel] = useState('')
+  const [ajusteOpen, setAjusteOpen] = useState(false)
 
   // Al abrir: reset; si solo hay UNA zona se salta directo al paso 2.
   useEffect(() => {
@@ -569,48 +484,31 @@ function UbicacionWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  // Clave normalizada → hueco canónico (alias de zona incluidos: el stock
-  // guardado con el nombre antiguo B1-03 cuenta para el hueco E1-03).
-  const claveACanonicos = useMemo(() => {
-    const m = new Map<string, HuecoInfo>()
-    const porHueco = new Map(huecos.map(h => [h.hueco, h]))
-    for (const e of cfg) {
-      const prefijos = [e.nombre, ...(e.alias || [])].filter(Boolean)
-      for (let n = 1; n <= (e.huecos || 0); n++) {
-        const pos = padPos(n, e.huecos || 0)
-        const canon = porHueco.get(`${e.nombre}-${pos}`)
-        if (!canon) continue
-        for (const p of prefijos) {
-          const k = normHuecoKey(`${p}-${pos}`)
-          if (k) m.set(k, canon)
-        }
-      }
+  // Lotes con stock agrupados por hueco canónico (V29: ahora en '@/lib/almacen',
+  // compartido con el botón ⚡ y la asignación automática del formulario)
+  const lotesPorHueco = useMemo(
+    () => agruparLotesPorHueco(stock, huecos, cfg),
+    [stock, huecos, cfg],
+  )
+
+  // V29: PONDERACIONES de cada zona (de la configuración — se editan en STOCK
+  // ALMACÉN o en vivo con «Ajustar») y propuestas por zona con ellas.
+  const pesosPorZona = useMemo(() => {
+    const m = new Map<string, PesosCriterios>()
+    for (const h of huecos) {
+      if (m.has(h.rack)) continue
+      m.set(h.rack, pesosDeZona(cfg.find(e => e.nombre.trim().toUpperCase() === h.rack)))
     }
     return m
-  }, [cfg, huecos])
+  }, [huecos, cfg])
 
-  // Lotes con stock agrupados por hueco canónico
-  const lotesPorHueco = useMemo(() => {
-    const m = new Map<string, LoteStock[]>()
-    for (const l of stock) {
-      const k = normHuecoKey(l.ubicacion)
-      if (!k) continue
-      const h = claveACanonicos.get(k)
-      if (!h) continue
-      if (!m.has(h.hueco)) m.set(h.hueco, [])
-      m.get(h.hueco)!.push(l)
-    }
-    return m
-  }, [stock, claveACanonicos])
-
-  // Propuestas globales según criterio (afecta a la zona recomendada)
-  const propuestas = useMemo(
-    () => propuestasHuecos(huecos, lotesPorHueco, criterio, { c1, c2, clienteId, ident }),
-    [huecos, lotesPorHueco, criterio, c1, c2, clienteId, ident],
+  const puntuaciones = useMemo(
+    () => puntuarPorRack(huecos, lotesPorHueco, { c1, c2, clienteId, ident }, r => pesosPorZona.get(r) || pesosDeZona(null)),
+    [huecos, lotesPorHueco, pesosPorZona, c1, c2, clienteId, ident],
   )
   const propuestasRack = useMemo(
-    () => (rack ? propuestas.filter(p => p.hueco.rack === rack) : []),
-    [propuestas, rack],
+    () => (rack ? puntuaciones.get(rack) || [] : []),
+    [puntuaciones, rack],
   )
 
   // Zonas con estadísticas para las tarjetas del paso 1
@@ -634,13 +532,23 @@ function UbicacionWizard({
     return [...m.values()]
   }, [huecos, lotesPorHueco, c1, c2])
 
-  const rackRecomendado = propuestas[0]?.hueco.rack || ''
-  const criterioAct = CRITERIOS.find(c => c.id === criterio)!
+  // Zona recomendada: la que tiene el hueco con MEJOR puntuación según SUS
+  // propios criterios (empate → la primera en el orden de configuración)
+  const rackRecomendado = useMemo(() => {
+    let mejor = ''
+    let mejorTotal = -1
+    for (const [zona, lista] of puntuaciones) {
+      const t = lista[0]?.total ?? -1
+      if (t > mejorTotal) { mejorTotal = t; mejor = zona }
+    }
+    return mejor
+  }, [puntuaciones])
   const huecosRack = useMemo(() => huecos.filter(h => h.rack === rack), [huecos, rack])
   const prodAct = normAlm(`${c1} ${c2}`).trim()
+  const pesosRack = rack ? (pesosPorZona.get(rack) || pesosDeZona(null)) : null
 
   // Auto-selección: al entrar a la zona, el hueco ya puesto (si es de aquí y
-  // tiene sitio) o la 1ª propuesta del criterio activo.
+  // tiene sitio) o la 1ª propuesta según los criterios de la zona.
   useEffect(() => {
     if (paso === 2 && propuestasRack.length > 0) {
       setSel(prev => {
@@ -650,7 +558,7 @@ function UbicacionWizard({
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paso, rack, criterio, propuestasRack])
+  }, [paso, rack, propuestasRack])
 
   if (!open) return null
 
@@ -671,44 +579,32 @@ function UbicacionWizard({
           </button>
         </div>
 
-        {/* Barra de criterios — decide cómo se proponen los huecos */}
-        <div className="px-4 py-2 border-b border-gray-100 bg-gray-50/70 flex items-center gap-1.5 overflow-x-auto shrink-0" title={criterioAct.ayuda}>
-          <span className="text-[9px] font-extrabold uppercase tracking-wider text-gray-400 shrink-0 pr-0.5">Criterio</span>
-          {CRITERIOS.map(cr => {
-            const Icon = cr.icon
-            return (
-              <button
-                key={cr.id}
-                type="button"
-                onClick={() => setCriterio(cr.id)}
-                title={cr.ayuda}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors ${criterio === cr.id ? 'bg-[#005bb5] text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700'}`}
-              >
-                <Icon className="h-3.5 w-3.5" /> {cr.label}
-              </button>
-            )
-          })}
-        </div>
-
         {/* Cuerpo */}
         <div className="flex-1 overflow-auto p-3 sm:p-4">
           {!prodAct && (
             <div className="mb-2 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 font-semibold">
-              Consejo: elige antes CONCEPTO 1 y 2 — así las propuestas agrupan por familia/lote de ese producto.
+              Consejo: elige antes CONCEPTO 1 y 2 — así los criterios de Familia/Lote/Cliente pueden agrupar tu palet con los suyos.
             </div>
           )}
 
           {paso === 1 ? (
             /* ── PASO 1: tarjetas de zona ── */
-            <div className="grid gap-2 sm:grid-cols-2">
+            <>
+              <div className="mb-2 text-[10px] text-gray-500 font-semibold flex items-center gap-1.5">
+                <Scale className="h-3 w-3 text-indigo-500 shrink-0" />
+                Cada zona puntúa sus huecos con SUS criterios — la recomendada es la de mejor hueco según ellos.
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
               {racksInfo.map(r => {
                 const pct = r.cap > 0 ? Math.round((r.ocup / r.cap) * 100) : 0
                 const esRec = r.nombre === rackRecomendado
+                const topCrit = resumenCriterios(pesosPorZona.get(r.nombre) || pesosDeZona(null))
+                const mejor = puntuaciones.get(r.nombre)?.[0]
                 return (
                   <button
                     key={r.nombre}
                     type="button"
-                    onClick={() => { setRack(r.nombre); setPaso(2); setSel('') }}
+                    onClick={() => { setRack(r.nombre); setPaso(2); setSel(''); setAjusteOpen(false) }}
                     className={`text-left rounded-xl border-2 p-3 transition-all active:scale-[0.99] ${esRec ? 'border-teal-400 bg-teal-50/40 hover:bg-teal-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
                   >
                     <div className="flex items-center gap-1.5">
@@ -726,22 +622,81 @@ function UbicacionWizard({
                       <span>{r.ocup}{r.cap > 0 ? `/${r.cap}` : ''} palets</span>
                       <span className="text-gray-300">·</span>
                       <span className={r.libres > 0 ? 'text-emerald-600' : 'text-red-600'}>{r.libres} con sitio</span>
+                      {mejor && (
+                        <>
+                          <span className="text-gray-300">·</span>
+                          <span className="text-teal-700 flex items-center gap-0.5"><Zap className="h-2.5 w-2.5" /> {mejor.hueco.hueco}</span>
+                        </>
+                      )}
                     </div>
                     <div className="h-1.5 rounded-full bg-gray-100 mt-1.5 overflow-hidden">
                       <div className={`h-full rounded-full ${pct >= 100 ? 'bg-red-500' : pct > 75 ? 'bg-amber-500' : 'bg-teal-500'}`} style={{ width: `${r.cap > 0 ? Math.min(100, pct) : 0}%` }} />
                     </div>
-                    {r.mismos > 0 && (
-                      <div className="mt-1.5 text-[10px] font-bold text-teal-700 flex items-center gap-1">
-                        <Package className="h-3 w-3" /> {r.mismos} palet{r.mismos > 1 ? 's' : ''} de este producto ya en esta zona
-                      </div>
-                    )}
+                    <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+                      {topCrit.length > 0 ? topCrit.map(c => (
+                        <span
+                          key={c.id}
+                          title="Criterios con más peso de esta zona (configúralos en STOCK ALMACÉN o con «Ajustar» en el paso 2)"
+                          className="text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full px-1.5 py-0.5"
+                        >
+                          {c.nombre} <b className="font-mono">{c.peso}</b>
+                        </span>
+                      )) : (
+                        <span className="text-[9px] text-gray-400 font-semibold">sin criterios — solo orden</span>
+                      )}
+                      {r.mismos > 0 && (
+                        <span className="text-[10px] font-bold text-teal-700 flex items-center gap-1">
+                          <Package className="h-3 w-3" /> {r.mismos} palet{r.mismos > 1 ? 's' : ''} de este producto
+                        </span>
+                      )}
+                    </div>
                   </button>
                 )
               })}
-            </div>
+              </div>
+            </>
           ) : (
             /* ── PASO 2: propuestas + mapa de la zona ── */
             <div className="space-y-3">
+              {/* Criterios de la zona: ponderaciones que ordenan las propuestas.
+                  Editables en vivo — se guardan para esta zona (STOCK ALMACÉN). */}
+              {pesosRack && (
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 px-3 py-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Scale className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-900">Criterios de {rack}</span>
+                    {resumenCriterios(pesosRack).map(c => (
+                      <span
+                        key={c.id}
+                        title="Criterio y peso de esta zona"
+                        className="text-[10px] font-bold bg-white border border-indigo-200 text-indigo-700 rounded-full px-2 py-0.5"
+                      >
+                        {c.nombre} <b className="font-mono">{c.peso}</b>
+                      </span>
+                    ))}
+                    {resumenCriterios(pesosRack).length === 0 && (
+                      <span className="text-[10px] text-gray-500 font-semibold">todos a 0 — se usa solo el orden</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setAjusteOpen(v => !v)}
+                      className={`ml-auto flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition-colors ${ajusteOpen ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-100'}`}
+                      title="Cambiar las ponderaciones de esta zona — se guardan para todas las ENTRADAS"
+                    >
+                      <SlidersHorizontal className="h-3 w-3" /> Ajustar
+                    </button>
+                  </div>
+                  {ajusteOpen && (
+                    <div className="mt-2 rounded-lg bg-white border border-indigo-100 p-3">
+                      <CriteriosEditor pesos={pesosRack} onChange={p => onCambiarCriterios(rack, p)} />
+                      <p className="text-[9px] text-gray-400 mt-2 leading-tight">
+                        Los cambios se guardan en la configuración de esta zona y valen para todas las ENTRADAS.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Mapa de la zona (grande, táctil) con las propuestas numeradas */}
               {huecosRack.length > 0 && (() => {
                 const esPared = huecosRack[0]?.tipo === 'pared'
@@ -799,7 +754,7 @@ function UbicacionWizard({
                                     key={h.hueco}
                                     type="button"
                                     onClick={() => setSel(h.hueco)}
-                                    title={`${h.hueco} · ${j === 1 ? 'suelo' : `${j}${ordinal} ${palabra}`}${h.altura > 0 ? ` (${h.ocupacion}/${h.altura})` : ` (${h.ocupacion}/∞)`}${rank >= 0 && rank < 3 ? ` · propuesta ${rank + 1}ª (${criterioAct.label})` : ''}`}
+                                    title={`${h.hueco} · ${j === 1 ? 'suelo' : `${j}${ordinal} ${palabra}`}${h.altura > 0 ? ` (${h.ocupacion}/${h.altura})` : ` (${h.ocupacion}/∞)`}${rank >= 0 && rank < 3 ? ` · propuesta ${rank + 1}ª según los criterios de la zona` : ''}`}
                                     className={`relative rounded-lg border-2 min-h-[3rem] flex flex-col items-center justify-center transition-all ${cls} ${esSel ? 'ring-4 ring-[#005bb5] ring-offset-1' : ''}`}
                                   >
                                     {rank >= 0 && rank < 3 && j === nivelEntrada && (
@@ -837,27 +792,32 @@ function UbicacionWizard({
                 )
               })()}
 
-              {/* Lista de propuestas con su motivo */}
+              {/* Lista de propuestas con su motivo (razones de los criterios) */}
               <div>
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Propuestas · {criterioAct.label}</span>
-                  <span className="text-[9px] text-gray-400 font-semibold truncate" title={criterioAct.ayuda}>{criterioAct.ayuda}</span>
+                <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Propuestas</span>
+                  <span className="text-[9px] text-gray-400 font-semibold truncate">
+                    puntuadas con los criterios de {rack}{resumenCriterios(pesosRack || pesosDeZona(null)).length > 0 ? `: ${resumenCriterios(pesosRack || pesosDeZona(null)).map(c => c.nombre).join(' + ')}` : ' (solo orden)'}
+                  </span>
                 </div>
                 <div className="space-y-1.5">
                   {propuestasRack.slice(0, 5).map((p, i) => {
                     const capTxt = p.hueco.altura > 0 ? `${p.hueco.ocupacion}/${p.hueco.altura}` : `${p.hueco.ocupacion}/∞`
+                    const motivoTxt = p.razones.length > 0 ? p.razones.map(r => r.detalle).join(' · ') : 'hueco libre'
                     return (
                       <button
                         key={p.hueco.hueco}
                         type="button"
                         onClick={() => setSel(p.hueco.hueco)}
+                        title={p.razones.map(r => `${r.nombre}: ${r.detalle} (+${r.pts})`).join('\n') || 'Sin motivos — primer hueco por orden'}
                         className={`w-full flex items-center gap-2.5 rounded-xl border-2 px-3 py-2 text-left transition-all ${sel === p.hueco.hueco ? 'border-[#005bb5] bg-blue-50/60' : 'border-gray-200 bg-white hover:border-gray-300'}`}
                       >
                         <span className={`h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-extrabold shrink-0 ${i === 0 ? 'bg-[#005bb5] text-white' : 'bg-gray-100 text-gray-600'}`}>{i + 1}</span>
                         <span className="text-sm font-extrabold font-mono text-gray-800 shrink-0">{p.hueco.hueco}</span>
                         <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">{capTxt}</span>
-                        <span className="text-[11px] text-gray-500 font-semibold leading-tight truncate">{p.motivo}</span>
-                        {i === 0 && <Zap className="h-3.5 w-3.5 text-amber-500 shrink-0 ml-auto" />}
+                        <span className="text-[11px] text-gray-500 font-semibold leading-tight truncate flex-1 min-w-0">{motivoTxt}</span>
+                        <span className="text-[9px] font-mono font-bold text-gray-300 shrink-0" title="puntuación ponderada con los criterios de la zona">{Math.round(p.total)}</span>
+                        {i === 0 && <Zap className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
                       </button>
                     )
                   })}
@@ -999,27 +959,14 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   // V28: asistente de ubicación en 2 pasos (zona → hueco con propuestas)
   const [wizardOpen, setWizardOpen] = useState(false)
 
-  // V26: listado de TODOS los huecos configurados (con su estado) y el hueco
-  // óptimo actual — lo OFRECE el desplegable de UBICACIÓN al meter palets.
+  // V26: listado de TODOS los huecos configurados (con su estado) — lo
+  // OFRECE el desplegable de UBICACIÓN al meter palets.
   const huecosLista = useMemo(() => listadoHuecos(almacenCfg, ocupadas), [almacenCfg, ocupadas])
-  const huecoOptimoActual = useMemo(() => (almacenCfg.length > 0 ? huecoOptimo(almacenCfg, ocupadas)?.hueco || '' : ''), [almacenCfg, ocupadas])
 
   const esPalet = esC2EntradaPalet(c2)
 
   // Al cambiar el CONCEPTO 2 se reactiva la asignación automática
   useEffect(() => { ubicClearedRef.current = false }, [c2])
-
-  // Asignación: ENTRADA PALET + campo UBICACIÓN vacío → primer hueco libre
-  useEffect(() => {
-    if (!ubicKey || !esPalet || editingId || ubicClearedRef.current) return
-    const val = String(customValues[ubicKey] || '').trim()
-    if (val) return
-    const opt = huecoOptimo(almacenCfg, ocupadas)
-    if (!opt) return
-    autoUbicRef.current = opt.hueco
-    setCustomValue(ubicKey, opt.hueco)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ubicKey, esPalet, editingId, almacenCfg, ocupadas])
 
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
@@ -1102,6 +1049,53 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   // Effective client for filtering client-specific fields. Either explicitly
   // selected (when cliente field is visible) or auto-detected from c1+c2.
   const effectiveClientId = clienteId || detectedCliente?.id || ''
+
+  // ── V29: MOTOR DE CRITERIOS ──
+  // Mejor hueco del almacén según las PONDERACIONES de cada zona (por
+  // estantería, configurables en STOCK ALMACÉN). Lo usan el botón ⚡, la
+  // asignación automática del campo UBICACIÓN y el asistente. Antes era
+  // simplemente el primer hueco libre; ahora puntúa orden/familia/lote/
+  // cliente/rotación/compactar/espacio/equilibrio de cada zona.
+  const identAct = identDeCustomValues(customValues)
+  const contextoActual = useMemo(
+    () => ({ c1, c2, clienteId: effectiveClientId, ident: identAct }),
+    [c1, c2, effectiveClientId, identAct],
+  )
+  const lotesPorHuecoAct = useMemo(
+    () => agruparLotesPorHueco(stockActual, huecosLista, almacenCfg),
+    [stockActual, huecosLista, almacenCfg],
+  )
+  const pesosDeRack = useCallback(
+    (rack: string) => pesosDeZona(almacenCfg.find(e => e.nombre.trim().toUpperCase() === rack)),
+    [almacenCfg],
+  )
+  const mejorGlobal = useMemo(() => {
+    if (almacenCfg.length === 0) return null
+    return mejorHuecoGlobal(huecosLista, lotesPorHuecoAct, contextoActual, pesosDeRack)
+  }, [almacenCfg.length, huecosLista, lotesPorHuecoAct, contextoActual, pesosDeRack])
+  const huecoOptimoActual = mejorGlobal?.hueco.hueco || ''
+
+  // Asignación: ENTRADA PALET + campo UBICACIÓN vacía → mejor hueco según
+  // los criterios de su zona (V29; antes: primer hueco libre a secas).
+  useEffect(() => {
+    if (!ubicKey || !esPalet || editingId || ubicClearedRef.current) return
+    const val = String(customValues[ubicKey] || '').trim()
+    if (val) return
+    if (!huecoOptimoActual) return
+    autoUbicRef.current = huecoOptimoActual
+    setCustomValue(ubicKey, huecoOptimoActual)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ubicKey, esPalet, editingId, huecoOptimoActual])
+
+  // V29: guarda las ponderaciones de una zona desde el asistente — persiste
+  // en localStorage + servidor, igual que hace STOCK ALMACÉN al editarlas.
+  function guardarCriteriosZona(rack: string, pesos: PesosCriterios) {
+    const next = almacenCfg.map(e =>
+      e.nombre.trim().toUpperCase() === rack.trim().toUpperCase() ? { ...e, criterios: { ...pesos } } : e)
+    setAlmacenCfg(next)
+    saveAlmacenCfg(next)
+    pushAlmacenCfg(next)
+  }
 
   // visibleFields: respect config visibility (including 'cliente' if admin enabled it)
   // and apply client-specific filter so exclusive fields only show for the right client.
@@ -1483,18 +1477,17 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       )
     }
     if (!val) {
-      const opt = huecoOptimo(almacenCfg, ocupadas)
-      if (!opt) return <span className="text-[10px] text-red-600 font-semibold">Almacén lleno: no queda ningún hueco libre</span>
+      if (!huecoOptimoActual) return <span className="text-[10px] text-red-600 font-semibold">Almacén lleno: no queda ningún hueco libre</span>
       return (
         <span className="text-[10px] text-teal-700 leading-tight">
-          Hueco óptimo: <b>{opt.hueco}</b>
-          <button type="button" onClick={() => usar(opt.hueco)} className="ml-1 underline font-semibold hover:text-teal-900">usar</button>
+          Mejor hueco: <b>{huecoOptimoActual}</b>
+          <button type="button" onClick={() => usar(huecoOptimoActual)} className="ml-1 underline font-semibold hover:text-teal-900">usar</button>
         </span>
       )
     }
     const esAuto = !!autoUbicRef.current && normAlm(val) === normAlm(autoUbicRef.current)
     if (esAuto) {
-      return <span className="text-[10px] text-teal-600 font-semibold leading-tight">⚡ {val} — primer hueco libre (asignado solo)</span>
+      return <span className="text-[10px] text-teal-600 font-semibold leading-tight">⚡ {val} — mejor hueco según los criterios de su zona (asignado solo)</span>
     }
     const estado = clasificarUbicacion(almacenCfg, ocupadas, val)
     if (estado === 'ocupado') {
@@ -1719,8 +1712,9 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       {/* Diálogo de etiqueta QR — se abre al guardar una ENTRADA PALET */}
       <QrEtiquetaDialog open={qrOpen} onOpenChange={setQrOpen} etiquetas={qrEtiquetas} />
 
-      {/* V28: asistente de UBICACIÓN en 2 pasos — zona primero, luego hueco
-          propuesto según criterio (FIFO/familia/lote/compactar). */}
+      {/* V28/V29: asistente de UBICACIÓN en 2 pasos — zona primero, luego hueco
+          propuesto según los CRITERIOS ponderados de esa zona (editables en
+          STOCK ALMACÉN o en vivo con «Ajustar»). */}
       {ubicKey && (
         <UbicacionWizard
           open={wizardOpen}
@@ -1732,8 +1726,9 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
           c1={c1}
           c2={c2}
           clienteId={effectiveClientId}
-          ident={identDeCustomValues(customValues)}
+          ident={identAct}
           initialValue={String(customValues[ubicKey] || '')}
+          onCambiarCriterios={guardarCriteriosZona}
         />
       )}
     </div>

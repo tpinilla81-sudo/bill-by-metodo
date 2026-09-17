@@ -1,0 +1,71 @@
+[
+  {
+    "id": "e1",
+    "nombre": "E1",
+    "tipo": "estanteria",
+    "orientacion": "izq",
+    "huecos": 12,
+    "cap": 0,
+    "caps": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+    ],
+    "alias": []
+  },
+  {
+    "id": "p1",
+    "nombre": "P1",
+    "tipo": "pared",
+    "orientacion": "izq",
+    "huecos": 8,
+    "cap": 0,
+    "caps": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+    ],
+    "alias": []
+  },
+  {
+    "id": "e2",
+    "nombre": "E2",
+    "tipo": "estanteria",
+    "orientacion": "izq",
+    "huecos": 6,
+    "cap": 0,
+    "caps": [
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+    ],
+    "alias": []
+  },
+  {
+    "id": "s1",
+    "nombre": "S1",
+    "tipo": "estanteria",
+    "orientacion": "izq",
+    "huecos": 10,
+    "cap": 0,
+    "caps": [],
+    "alias": []
+  }
+]

@@ -63,6 +63,11 @@ export interface EstanteriaCfg {
                     // N huecos llegan a la altura j.
   alias?: string[]  // nombres antiguos de la estantería: los palets registrados
                     // con ellos siguen apareciendo en el mapa tras un renombrado
+  criterios?: Record<string, number>  // V29: PESOS (0–10) de los criterios de
+                    // asignación de ESTA zona (orden/familia/lote/cliente/rotación/
+                    // compactar/espacio/equilibrio). Los usa el asistente de
+                    // UBICACIÓN de ENTRADAS para proponer el mejor hueco. Sin
+                    // ellos → pesos por defecto (ver pesosDeZona).
 }
 
 export interface RacksResultado {
@@ -348,6 +353,7 @@ export function loadAlmacenCfg(): EstanteriaCfg[] {
               ? e.caps.map(c => Math.max(0, Math.min(20, Number(c) || 0))).slice(0, 200)
               : undefined,
             alias: Array.isArray(e.alias) ? e.alias.map(a => String(a || '').trim().toUpperCase()).filter(Boolean).slice(0, 10) : [],
+            criterios: saneaCriterios(e.criterios),
           }))
         : []
     }
@@ -656,4 +662,300 @@ export function listadoHuecos(cfg: EstanteriaCfg[], ocupadas: Set<string> | Map<
     }
   }
   return out
+}
+
+// ─── V29: CRITERIOS DE ASIGNACIÓN por ZONA (ponderaciones 0–10) ────────
+// El asistente de UBICACIÓN de ENTRADAS puntúa cada hueco con sitio libre
+// según los criterios de SU zona y propone el de mayor puntuación. Los pesos
+// se configuran POR ESTANTERÍA en STOCK ALMACÉN → Configurar almacén →
+// «Criterios de asignación», y también con el botón «Ajustar» del propio
+// asistente. Se guardan con la configuración de la zona (campo criterios).
+
+export type CriterioId =
+  | 'orden' | 'familia' | 'lote' | 'cliente' | 'antiguedad'
+  | 'compactar' | 'espacio' | 'equilibrio'
+
+export interface CriterioDef {
+  id: CriterioId
+  nombre: string
+  desc: string
+  def: number                            // peso por defecto de la zona
+  necesita?: 'producto' | 'lote' | 'cliente'  // solo puntúa si la entrada trae ese dato
+}
+
+export const CRITERIOS_DEF: CriterioDef[] = [
+  { id: 'orden', nombre: 'Orden', desc: 'Primeras posiciones de la zona (menos desplazamiento)', def: 6 },
+  { id: 'familia', nombre: 'Familia', desc: 'Junto a palets del mismo producto', def: 5, necesita: 'producto' },
+  { id: 'lote', nombre: 'Lote', desc: 'Junto a palets del mismo lote (mismo prefijo de nº palet)', def: 4, necesita: 'lote' },
+  { id: 'cliente', nombre: 'Cliente', desc: 'Junto a palets del mismo cliente', def: 2, necesita: 'cliente' },
+  { id: 'antiguedad', nombre: 'Rotación', desc: 'Junto al stock más antiguo del mismo producto — rota antes (FIFO real)', def: 3, necesita: 'producto' },
+  { id: 'compactar', nombre: 'Compactar', desc: 'Rellena columnas empezadas antes de abrir nuevas', def: 3 },
+  { id: 'espacio', nombre: 'Espacio', desc: 'Huecos con más capacidad libre', def: 1 },
+  { id: 'equilibrio', nombre: 'Equilibrio', desc: 'Zonas menos ocupadas (reparte la carga)', def: 0 },
+]
+
+export const CRITERIOS_IDS = new Set<string>(CRITERIOS_DEF.map(c => c.id))
+
+export type PesosCriterios = Record<CriterioId, number>
+
+// Pesos por defecto (los de una zona sin configurar)
+export function pesosPorDefecto(): PesosCriterios {
+  const p = {} as PesosCriterios
+  for (const c of CRITERIOS_DEF) p[c.id] = c.def
+  return p
+}
+
+// Pesos EFECTIVOS de una zona: los guardados (si hay) sobre los por defecto
+export function pesosDeZona(e?: EstanteriaCfg | null): PesosCriterios {
+  const p = pesosPorDefecto()
+  const cr = e?.criterios
+  if (cr && typeof cr === 'object') {
+    for (const c of CRITERIOS_DEF) {
+      const v = Number((cr as Record<string, unknown>)[c.id])
+      if (Number.isFinite(v)) p[c.id] = Math.max(0, Math.min(10, Math.round(v)))
+    }
+  }
+  return p
+}
+
+// Sanea unos pesos recibidos (API / localStorage): solo ids conocidos, 0–10
+export function saneaCriterios(cr: unknown): Record<string, number> | undefined {
+  if (!cr || typeof cr !== 'object' || Array.isArray(cr)) return undefined
+  const out: Record<string, number> = {}
+  let hay = false
+  for (const [k, v] of Object.entries(cr as Record<string, unknown>)) {
+    if (!CRITERIOS_IDS.has(k) || typeof v !== 'number' || !Number.isFinite(v)) continue
+    out[k] = Math.max(0, Math.min(10, Math.round(v)))
+    hay = true
+  }
+  return hay ? out : undefined
+}
+
+function conPesos(parcial: Partial<PesosCriterios>): PesosCriterios {
+  const p = {} as PesosCriterios
+  for (const c of CRITERIOS_DEF) p[c.id] = parcial[c.id] ?? 0
+  return p
+}
+
+// Plantillas de pesos (chips del editor): 'general' sin pesos → por defecto
+export const PRESETS_CRITERIOS: { id: string; nombre: string; pesos?: PesosCriterios }[] = [
+  { id: 'general', nombre: 'General' },
+  { id: 'fifo', nombre: 'FIFO puro', pesos: conPesos({ orden: 10 }) },
+  { id: 'familia', nombre: 'Por familia', pesos: conPesos({ familia: 10, lote: 6, compactar: 4 }) },
+  { id: 'lote', nombre: 'Por lote', pesos: conPesos({ lote: 10, familia: 5, compactar: 4 }) },
+  { id: 'compactar', nombre: 'Compactar', pesos: conPesos({ compactar: 10, orden: 4 }) },
+  { id: 'rotacion', nombre: 'Rotación', pesos: conPesos({ antiguedad: 10, familia: 5, orden: 3 }) },
+  { id: 'equilibrado', nombre: 'Equilibrado', pesos: conPesos({ equilibrio: 8, espacio: 5, orden: 3, compactar: 3 }) },
+]
+
+export function aplicarPreset(presetId: string): PesosCriterios {
+  const p = PRESETS_CRITERIOS.find(x => x.id === presetId)
+  if (!p) return pesosPorDefecto()
+  return p.pesos ? { ...p.pesos } : pesosPorDefecto()
+}
+
+// Resumen de los N criterios con más peso (chips de un vistazo)
+export function resumenCriterios(pesos: PesosCriterios, n = 3): { id: CriterioId; nombre: string; peso: number }[] {
+  return CRITERIOS_DEF
+    .map(c => ({ id: c.id, nombre: c.nombre, peso: pesos[c.id] || 0 }))
+    .filter(c => c.peso > 0)
+    .sort((a, b) => b.peso - a.peso)
+    .slice(0, n)
+}
+
+// Prefijo de lote: "L-24001" → "l-" (sin la parte numérica final). Dos palets
+// son del mismo lote si comparten prefijo (≥2 chars para no casar todo).
+export function prefijoLote(ident: string): string {
+  const p = normAlm(ident).replace(/\d+\s*$/, '')
+  return p.length >= 2 ? p : ''
+}
+
+// Contexto de la entrada que se está registrando: lo que da sentido a los
+// criterios de familia/lote/cliente/rotación (producto c1+c2, cliente e
+// ident = nº palet / lote de los customValues).
+export interface ContextoEntrada {
+  c1?: string
+  c2?: string
+  clienteId?: string
+  ident?: string
+}
+
+// Lotes con stock agrupados por hueco CANÓNICO: los guardados con un alias
+// de zona (p.ej. B1-03 tras renombrarla a E1) cuentan para el hueco E1-03.
+export function agruparLotesPorHueco(stock: LoteStock[], huecos: HuecoInfo[], cfg: EstanteriaCfg[]): Map<string, LoteStock[]> {
+  const porHueco = new Map(huecos.map(h => [h.hueco, h]))
+  const claveACanonicos = new Map<string, HuecoInfo>()
+  for (const e of cfg) {
+    const nombre = String(e?.nombre || '').trim().toUpperCase()
+    if (!nombre || !e.huecos) continue
+    const prefijos = [nombre, ...(e.alias || []).map(a => String(a || '').trim().toUpperCase())].filter(Boolean)
+    for (let n = 1; n <= e.huecos; n++) {
+      const pos = padPos(n, e.huecos)
+      const canon = porHueco.get(`${nombre}-${pos}`)
+      if (!canon) continue
+      for (const p of prefijos) {
+        const k = normHuecoKey(`${p}-${pos}`)
+        if (k) claveACanonicos.set(k, canon)
+      }
+    }
+  }
+  const m = new Map<string, LoteStock[]>()
+  for (const l of stock) {
+    const k = normHuecoKey(l.ubicacion)
+    if (!k) continue
+    const h = claveACanonicos.get(k)
+    if (!h) continue
+    if (!m.has(h.hueco)) m.set(h.hueco, [])
+    m.get(h.hueco)!.push(l)
+  }
+  return m
+}
+
+// ── Motor de puntuación ponderada ─────────────────────────────────────
+export interface RazonCriterio {
+  criterio: CriterioId
+  nombre: string
+  pts: number      // aporte 0–100 al total
+  detalle: string  // motivo en texto humano
+}
+
+export interface PuntuacionHueco {
+  hueco: HuecoInfo
+  total: number         // 0–100 (suma ponderada normalizada)
+  razones: RazonCriterio[]
+}
+
+function detalleDe(
+  c: CriterioId,
+  d: { h: HuecoInfo; mismoProd: number; mismoLote: number; mismoCli: number; diasAntiguo: number },
+): string {
+  switch (c) {
+    case 'orden': return `posición ${d.h.pos} de la zona`
+    case 'familia': return `${d.mismoProd} palet${d.mismoProd > 1 ? 's' : ''} de este producto`
+    case 'lote': return `${d.mismoLote} palet${d.mismoLote > 1 ? 's' : ''} de este lote`
+    case 'cliente': return `${d.mismoCli} de este cliente`
+    case 'antiguedad': return `el más antiguo tiene ${d.diasAntiguo} días`
+    case 'compactar': return d.h.altura > 0 ? `columna ${d.h.ocupacion}/${d.h.altura}` : `columna con ${d.h.ocupacion} palet(s)`
+    case 'espacio': return d.h.altura > 0 ? `${d.h.altura - d.h.ocupacion} libre(s) de ${d.h.altura}` : 'sin límite de altura'
+    case 'equilibrio': return 'zona poco ocupada'
+  }
+}
+
+// Puntúa TODOS los huecos con sitio libre, zona a zona, con los pesos de CADA
+// zona (pesosDe(rack)). Devuelve un Map zona → propuestas ordenadas por
+// puntuación (empate → hueco anterior). Reglas:
+//  · Los criterios que NO aplican (p.ej. Familia sin producto en el
+//    formulario) no cuentan ni en el numerador ni en el denominador.
+//  · Si todos los pesos aplicables quedan a 0 → solo Orden (FIFO clásico).
+//  · 'Orden' cruza zonas: la 1ª zona configurada puntúa más que la 2ª, y
+//    dentro de cada zona las primeras posiciones más que las últimas.
+export function puntuarPorRack(
+  huecos: HuecoInfo[],
+  lotesPorHueco: Map<string, LoteStock[]>,
+  actual: ContextoEntrada,
+  pesosDe: (rack: string) => PesosCriterios,
+): Map<string, PuntuacionHueco[]> {
+  const prodAct = normAlm(`${actual.c1 || ''} ${actual.c2 || ''}`).trim()
+  const cliAct = normAlm(actual.clienteId || '')
+  const loteAct = prefijoLote(actual.ident || '')
+
+  // Zonas en su orden de aparición (= orden de la configuración) + estadísticas
+  const zonas: string[] = []
+  const zonaIdx = new Map<string, number>()
+  const stats = new Map<string, { ocup: number; cap: number; lista: HuecoInfo[] }>()
+  for (const h of huecos) {
+    if (!zonaIdx.has(h.rack)) { zonaIdx.set(h.rack, zonas.length); zonas.push(h.rack) }
+    let s = stats.get(h.rack)
+    if (!s) { s = { ocup: 0, cap: 0, lista: [] }; stats.set(h.rack, s) }
+    s.lista.push(h)
+    s.ocup += h.ocupacion
+    s.cap += h.altura > 0 ? h.altura : 0
+  }
+  const numZonas = Math.max(1, zonas.length)
+
+  const out = new Map<string, PuntuacionHueco[]>()
+  for (const zona of zonas) {
+    const st = stats.get(zona)!
+    const pesos = pesosDe(zona)
+    // ¿Qué criterios aplican? (familia/rotación/lote/cliente necesitan su dato)
+    const aplica: Record<CriterioId, boolean> = {
+      orden: true,
+      familia: !!prodAct,
+      lote: !!loteAct,
+      cliente: !!cliAct,
+      antiguedad: !!prodAct,
+      compactar: true,
+      espacio: true,
+      equilibrio: true,
+    }
+    let denom = 0
+    for (const c of CRITERIOS_DEF) if (aplica[c.id] && pesos[c.id] > 0) denom += pesos[c.id]
+    const soloOrden = denom === 0
+    if (soloOrden) denom = 1
+
+    const eqBase = st.cap > 0 ? Math.max(0, Math.min(1, 1 - st.ocup / st.cap)) : 0.5
+    const zi = zonaIdx.get(zona) || 0
+
+    const puntuaciones: PuntuacionHueco[] = []
+    for (const h of st.lista) {
+      // Solo huecos que ADMITEN un palet más
+      if (h.altura > 0 && h.ocupacion >= h.altura) continue
+      const lotes = lotesPorHueco.get(h.hueco) || []
+      const mismoProd = prodAct ? lotes.filter(l => normAlm(`${l.c1 || ''} ${l.c2 || ''}`).trim() === prodAct) : []
+      const mismoLote = loteAct ? lotes.filter(l => prefijoLote(l.ident) === loteAct) : []
+      const mismoCli = cliAct ? lotes.filter(l => normAlm(l.clienteId) === cliAct) : []
+      const diasAntiguo = mismoProd.reduce((m, l) => Math.max(m, diasEnAlmacen(l.fecha)), 0)
+      const posNum = parseInt(h.pos, 10) || 1
+
+      const s: Record<CriterioId, number> = {
+        orden: 1 - (zi + (posNum - 0.5) / st.lista.length) / numZonas,
+        familia: mismoProd.length > 0 ? 1 : 0,
+        lote: mismoLote.length > 0 ? 1 : 0,
+        cliente: mismoCli.length > 0 ? 1 : 0,
+        antiguedad: mismoProd.length > 0 ? Math.min(diasAntiguo, 90) / 90 : 0,
+        compactar: h.altura > 0 ? h.ocupacion / h.altura : (h.ocupacion > 0 ? 0.5 : 0),
+        espacio: h.altura > 0 ? (h.altura - h.ocupacion) / h.altura : 0.5,
+        equilibrio: eqBase,
+      }
+
+      const razones: RazonCriterio[] = []
+      let total = 0
+      for (const c of CRITERIOS_DEF) {
+        const w = soloOrden ? (c.id === 'orden' ? 1 : 0) : (aplica[c.id] ? pesos[c.id] : 0)
+        if (w <= 0) continue
+        const pts = (w * s[c.id]) / denom
+        total += pts
+        if (s[c.id] > 0.01) {
+          razones.push({
+            criterio: c.id,
+            nombre: soloOrden ? 'Orden' : c.nombre,
+            pts: Math.round(pts * 100),
+            detalle: detalleDe(c.id, { h, mismoProd: mismoProd.length, mismoLote: mismoLote.length, mismoCli: mismoCli.length, diasAntiguo }),
+          })
+        }
+      }
+      razones.sort((a, b) => b.pts - a.pts)
+      puntuaciones.push({ hueco: h, total: Math.round(total * 100), razones: razones.slice(0, 4) })
+    }
+    puntuaciones.sort((a, b) => b.total - a.total || a.hueco.hueco.localeCompare(b.hueco.hueco, 'es', { numeric: true }))
+    out.set(zona, puntuaciones)
+  }
+  return out
+}
+
+// El mejor hueco de TODO el almacén según los criterios de cada zona — lo
+// usan el botón ⚡ y la asignación automática del campo UBICACIÓN.
+export function mejorHuecoGlobal(
+  huecos: HuecoInfo[],
+  lotesPorHueco: Map<string, LoteStock[]>,
+  actual: ContextoEntrada,
+  pesosDe: (rack: string) => PesosCriterios,
+): PuntuacionHueco | null {
+  const porRack = puntuarPorRack(huecos, lotesPorHueco, actual, pesosDe)
+  let mejor: PuntuacionHueco | null = null
+  for (const lista of porRack.values()) {
+    const top = lista[0]
+    if (top && (!mejor || top.total > mejor.total)) mejor = top
+  }
+  return mejor
 }

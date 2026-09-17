@@ -7,13 +7,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2, Layers, ChevronDown, Plus, Trash2 } from 'lucide-react'
+import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2, Layers, ChevronDown, Plus, Trash2, Scale, Copy } from 'lucide-react'
 import { Hint } from '@/components/hualsa/hint'
+import { CriteriosEditor } from '@/components/hualsa/criterios-editor'
 import { fmtDate, type Cliente, type Registro } from '@/lib/hualsa-utils'
 import {
   normAlm, isEntradaPalet, isSalidaPalet, getUbicacion, getIdent, splitUbicacion,
   diasEnAlmacen, buildStock, buildRacks, nombresHuecos, detectarEstanterias,
-  loadAlmacenCfg, saveAlmacenCfg, fetchAlmacenCfg, pushAlmacenCfg, type EstanteriaCfg, type LoteStock, type CeldaStock,
+  loadAlmacenCfg, saveAlmacenCfg, fetchAlmacenCfg, pushAlmacenCfg, pesosDeZona, resumenCriterios, type EstanteriaCfg, type LoteStock, type CeldaStock, type PesosCriterios,
 } from '@/lib/almacen'
 
 // Tipo minimo para el escáner QR — cargado dinamicamente para evitar
@@ -499,6 +500,22 @@ export function StockAlmacenView() {
         return { ...e, nombre: n, alias }
       })
     })
+  }
+
+  // ── V29: CRITERIOS DE ASIGNACIÓN por zona (ponderaciones 0–10) ──
+  // Los usa el asistente de UBICACIÓN de ENTRADAS para proponer el hueco de
+  // cada zona. Se editan aquí (por zona, no global) o con «Ajustar» en el
+  // propio asistente; se guardan con la configuración (localStorage + servidor).
+  const [critOpenId, setCritOpenId] = useState<string | null>(null)
+  function cambiarCriterios(id: string, pesos: PesosCriterios) {
+    setAlmacenCfg(prev => prev.map(e => (e.id === id ? { ...e, criterios: { ...pesos } } : e)))
+  }
+  // Copia los pesos de UNA zona a TODAS (mismo criterio en todo el almacén)
+  function aplicarCriteriosATodas(id: string) {
+    const src = almacenCfg.find(e => e.id === id)
+    if (!src) return
+    const pesos = pesosDeZona(src)
+    setAlmacenCfg(prev => prev.map(e => ({ ...e, criterios: { ...pesos } })))
   }
 
   // Escáner QR
@@ -1160,6 +1177,79 @@ export function StockAlmacenView() {
                     )}
                   </button>
                 )}
+              </div>
+
+              {/* ── V29: CRITERIOS DE ASIGNACIÓN · POR ZONA ──
+                  Ponderaciones (0–10) con las que el asistente de UBICACIÓN
+                  de ENTRADAS puntúa los huecos de CADA zona. No es global:
+                  cada estantería/pared tiene los suyos. */}
+              <div className="mt-5 pt-4 border-t border-gray-200">
+                <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                  <Scale className="h-4 w-4 text-indigo-600" /> CRITERIOS DE ASIGNACIÓN
+                  <span className="text-[10px] font-semibold text-gray-400 normal-case">· por zona, no general</span>
+                </h4>
+                <Hint variant="info" className="block mb-3 w-full mt-2">
+                  Al meter palets en <b>ENTRADAS</b>, el asistente puntúa cada hueco de la zona con estas <b>ponderaciones (0–10)</b> y propone el de mayor puntuación. Sube <b>Familia</b> para juntar productos, <b>Lote</b> para agrupar lotes, <b>Orden</b> para FIFO de posiciones, <b>Rotación</b> para colocar junto al stock más antiguo… Cada zona tiene <b>sus propios criterios</b>.
+                </Hint>
+                <div className="space-y-2">
+                  {almacenCfg.filter(e => e.huecos > 0).map(e => {
+                    const pesos = pesosDeZona(e)
+                    const top = resumenCriterios(pesos)
+                    const abierto = critOpenId === e.id
+                    const personalizados = !!e.criterios
+                    return (
+                      <div key={e.id} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                        <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
+                          <Warehouse className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                          <span className="font-bold text-sm text-gray-800">{e.nombre}</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${e.tipo === 'pared' ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-sky-50 text-sky-700 border-sky-300'}`}>
+                            {e.tipo === 'pared' ? 'PARED' : 'ESTANTERÍA'}
+                          </span>
+                          <div className="flex items-center gap-1 flex-wrap min-w-0">
+                            {top.length > 0 ? top.map(c => (
+                              <span
+                                key={c.id}
+                                title="Criterio con más peso de esta zona"
+                                className="text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full px-1.5 py-0.5"
+                              >
+                                {c.nombre} <b className="font-mono">{c.peso}</b>
+                              </span>
+                            )) : (
+                              <span className="text-[10px] text-gray-400 font-semibold">todos a 0 — solo orden</span>
+                            )}
+                            {personalizados && (
+                              <span className="text-[9px] font-bold text-teal-600" title="Esta zona tiene criterios personalizados (no los por defecto)">●</span>
+                            )}
+                          </div>
+                          <div className="ml-auto flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => aplicarCriteriosATodas(e.id)}
+                              className="flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-indigo-600 px-1.5 py-1 rounded-md hover:bg-indigo-50 transition-colors"
+                              title="Copiar los criterios de esta zona a TODAS las zonas"
+                            >
+                              <Copy className="h-3 w-3" /> a todas
+                            </button>
+                            <button
+                              onClick={() => setCritOpenId(abierto ? null : e.id)}
+                              className={`text-[10px] font-bold px-2 py-1 rounded-md transition-colors ${abierto ? 'bg-indigo-600 text-white' : 'text-indigo-700 hover:bg-indigo-50'}`}
+                              title="Editar las ponderaciones de esta zona"
+                            >
+                              {abierto ? 'Cerrar' : 'Editar'}
+                            </button>
+                          </div>
+                        </div>
+                        {abierto && (
+                          <div className="px-3 pb-3 pt-1 border-t border-gray-100 bg-gray-50/40">
+                            <CriteriosEditor pesos={pesos} onChange={p => cambiarCriterios(e.id, p)} />
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {almacenCfg.filter(e => e.huecos > 0).length === 0 && (
+                    <p className="text-xs text-gray-400">Añade primero zonas con huecos para configurar sus criterios.</p>
+                  )}
+                </div>
               </div>
           </CardContent>
         </Card>

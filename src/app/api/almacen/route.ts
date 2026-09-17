@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { requireTenantId, getAuthUser } from '@/lib/tenant-context'
-import type { EstanteriaCfg } from '@/lib/almacen'
+import { saneaCriterios, type EstanteriaCfg } from '@/lib/almacen'
 
 // /api/almacen — configuración del almacén (zonas/estanterías/paredes) POR EMPRESA.
 // V25: antes vivía solo en localStorage del navegador → el móvil no veía el
@@ -26,6 +26,7 @@ function sanitize(arr: unknown): EstanteriaCfg[] {
       alias: Array.isArray(e.alias)
         ? (e.alias as unknown[]).map(a => String(a || '').trim().toUpperCase()).filter(Boolean).slice(0, 10)
         : [],
+      criterios: saneaCriterios(e.criterios),  // V29: pesos 0–10 por zona
     }))
     .filter(e => e.nombre)
 }
