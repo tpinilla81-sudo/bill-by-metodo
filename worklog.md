@@ -1557,3 +1557,58 @@ Stage Summary:
   formulario normal con desplegable completo (estado en vivo de cada hueco y
   ⚡ óptimo) y grilla con sugerencias al escribir. La config sale del
   servidor (V25) → mismo listado en PC y móvil de la empresa.
+
+---
+Task ID: V27-UBIC-MAPA-VISUAL
+Agent: main
+Task: "LO UNICO QEU SE PIERDE LA PRESPECTIVA, PUEDE SALIR UNA AYUDA MAS VISUAL?" — el desplegable de UBICACIÓN era una lista plana y se perdía la noción espacial de dónde está cada hueco y a qué nivel/altura pertenece. Hacerlo VISUAL: dibujar el almacén como en STOCK ALMACÉN pero en miniatura, dentro del desplegable.
+
+Work Log:
+- entrada-view.tsx · UbicacionCombo rediseñado:
+  * Nuevo estado `vista: 'mapa' | 'lista'` (default 'mapa') + conmutador
+    segmentado MAPA/LISTA en la barra superior del desplegable.
+  * Desplegable ahora w-[min(560px,94vw)] max-h-[78vh] (antes 300px×260px)
+    para alojar el mapa; mantén input+chevron iguales.
+  * VISTA MAPA: cada rack dibujado como panel con cabecera (icono Warehouse
+    + "ESTANTERÍA E1" + chip "3 niveles" + total "5/36 palets"). Filas
+    top-down: 3º nivel → Suelo. Cada columna = 1 hueco; cada casilla = 1
+    palet. Colores: verde LIBRE · ámbar CON STOCK · rojo LLENO · azul
+    grisáceo SIN LÍMITE. Marca ⚡ en esquina del óptimo (solo fila suelo).
+    Clic en cualquier casilla = elegir ese hueco. Ring azul en el
+    seleccionado. Pie con etiqueta completa del hueco (E1-01, E1-02...).
+    Sin config → como antes: input libre.
+  * VISTA LISTA: lista compacta con chips (LIBRE/2-3/LLENO/N∞) — igual que
+    antes, para quien prefiera listado.
+  * Leyenda compacta al pie (Libre/Con stock/Lleno/Sin límite/Óptimo +
+    "filas = niveles/alturas · casilla = 1 palet").
+- sidebar.tsx: build marker V27-UBIC-MAPA-VISUAL · 2026-09-17.
+
+Verificación (agent-browser, localhost rebuild + supervisor):
+- Login transporteshualsa@gmail.com / hualsa2024. Config test: E1
+  estantería 12 huecos niveles [3,3,3,...], P1 pared 8 huecos alturas
+  [3,3,...]. Stock: E1-01×2 (2/3 ámbar), E1-07×3 (3/3 LLENO rojo),
+  P1-02×1 (1/3 ámbar suelo, libre 2ª+3ª).
+- Desplegable abre MAPA por defecto: panel E1 (3 filas×12 cols) + panel P1
+  (3 filas×8 cols). E1-01 niveles 1-2 ámbar con punto, nivel 3 verde
+  "LIBRE" ✓. E1-07 los 3 niveles rojos sin "LIBRE" ✓ (LLENO). P1-02
+  suelo ámbar + 2ª/3ª altura verde ✓. Contadores "5/36" y "1/24" ✓.
+- VLM screenshot desktop: "Sí, se ve perfectamente claro el estado de
+  cada hueco" — mapa visual con leyenda, pestañas MAPA/LISTA, dos
+  unidades dibujadas.
+- Móvil 375px: desplegable 94vw encaja, scroll horizontal para ver los 12
+  huecos. VLM: "Cumple mínimo táctil 32-36px, contraste bueno, sin
+  recortes". Scroll horizontal suave.
+- Toggle LISTA: muestra chips "E1-01 2/3", "E1-07 LLENO 3/3", "P1-02
+  1/3" ✓.
+- Clic en casilla E1-05 nivel 3 → input se rellena "E1-05" ✓.
+- 0 errores consola/página. tsc: 0 errores nuevos (los preexistentes de
+  auth/backup catalogo-view siguen). npm run build OK.
+- Limpieza: 6 registros TEST borrados, cfg servidor reseteada a [].
+
+Stage Summary:
+- Commit pendiente V27-UBIC-MAPA-VISUAL.
+- El campo UBICACIÓN en ENTRADAS ahora OFRECE el almacén DIBUJADO:
+  estanterías con sus niveles/alturas, cada palet en su casilla con color
+  según estado. Seleccionable con un clic. Vista Lista como alternativa.
+  Misma info que el mapa de STOCK ALMACÉN pero en miniatura para elegir
+  rápido al meter una entrada.
