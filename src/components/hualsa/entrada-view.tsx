@@ -15,7 +15,7 @@ import { QrEtiquetaDialog, type EtiquetaPalet } from '@/components/hualsa/qr-eti
 import { CriteriosEditor } from '@/components/hualsa/criterios-editor'
 import {
   loadAlmacenCfg, saveAlmacenCfg, fetchAlmacenCfg, pushAlmacenCfg, clasificarUbicacion, contadoresHuecos, listadoHuecos,
-  esC2EntradaPalet, normAlm, getIdent, getUbicacion, identDeCustomValues,
+  esC2EntradaPalet, esConceptoFacturacion, normAlm, getIdent, getUbicacion, identDeCustomValues,
   isQrAuto, setQrAuto, buildStock, huecoOptimo,
   pesosDeZona, resumenCriterios, puntuarPorRack, mejorHuecoGlobal, agruparLotesPorHueco,
   nivelEntradaTexto, huecoConNivel,
@@ -1201,10 +1201,19 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   // Cascading filters based on catalog + selections.
   // normStr was defined earlier (above detectedCliente) so it can be reused.
 
+  // V29.5: catálogo filtrado para los SELECTORES de CONCEPTO. Los items
+  // PORTE y COSTE DIARIO (p.ej. SMURFIT WESTROCK) quedan en el CATÁLOGO
+  // (PRE-FACTURA los necesita para precios) pero NO se ofrecen aquí: no son
+  // movimientos físicos de almacén.
+  const catEntrada = useMemo(
+    () => data.catalogo.filter(x => !esConceptoFacturacion(x.c1, x.c2)),
+    [data.catalogo],
+  )
+
   // C1 options: if client field is visible and a client is selected, filter by client
   // If client field is hidden, show ALL (auto-detect will resolve later)
   const c1Options = [...new Set(
-    data.catalogo
+    catEntrada
       .filter(x => !clienteVisible || !clienteId || !x.clienteId || x.clienteId === clienteId)
       .map(x => x.c1)
   )].sort()
@@ -1213,13 +1222,13 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   const c1n = normStr(c1)
   const c2Options = c1
     ? [...new Set(
-        data.catalogo
+        catEntrada
           .filter(x => (!clienteVisible || !clienteId || !x.clienteId || x.clienteId === clienteId) && normStr(x.c1) === c1n)
           .map(x => x.c2)
       )].sort()
-    : [...new Set(data.catalogo.map(x => x.c2))].sort()
+    : [...new Set(catEntrada.map(x => x.c2))].sort()
 
-  const allC2Options = [...new Set(data.catalogo.map(x => x.c2))].sort()
+  const allC2Options = [...new Set(catEntrada.map(x => x.c2))].sort()
 
   // Auto-price: works with or without client selected
   const autoPrice = useMemo(() => {
@@ -1448,7 +1457,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
             // seleccionado, se respeta el ámbito (igual que c2Options).
             const vn = normStr(v)
             const c2matches = [...new Set(
-              data.catalogo
+              catEntrada
                 .filter(x => (!clienteVisible || !clienteId || !x.clienteId || x.clienteId === clienteId) && normStr(x.c1) === vn)
                 .map(x => x.c2)
                 .filter(Boolean)

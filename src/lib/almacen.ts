@@ -99,6 +99,18 @@ export function isSalidaPalet(r: Registro): boolean {
   return /salida palet/.test(normAlm(`${r.c1} ${r.c2}`))
 }
 
+// V29.5: ¿Concepto de FACTURACIÓN interna (no movimiento físico)?
+// Los items PORTE y COSTE DIARIO (p.ej. del cliente SMURFIT WESTROCK) DEBEN
+// existir en el CATÁLOGO porque PRE-FACTURA los usa para calcular precios
+// (1 porte por cada salida de palet + coste diario de almacenaje), pero NO
+// deben ofrecerse en los selectores de CONCEPTO de ENTRADA: el operario no
+// registra entradas de esos conceptos.
+// \b (word boundary) evita falsos positivos como "TRANSPORTE".
+export function esConceptoFacturacion(c1?: string, c2?: string): boolean {
+  const t = normAlm(`${c1 || ''} ${c2 || ''}`)
+  return /\bporte\b/.test(t) || /\bcoste diario\b/.test(t)
+}
+
 export function extractIdents(r: Registro): { strong: Record<string, string>; weak: Record<string, string> } {
   const strong: Record<string, string> = {}
   const weak: Record<string, string> = {}

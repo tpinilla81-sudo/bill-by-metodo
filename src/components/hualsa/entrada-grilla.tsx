@@ -10,7 +10,7 @@ import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/
 import { useConfig, parseCustomData, serializeCustomData, fieldAppliesToClient, getFieldLabel, type FieldDef } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 import {
-  loadAlmacenCfg, fetchAlmacenCfg, huecoOptimo, contadoresHuecos, listadoHuecos, esC2EntradaPalet, normAlm, identDeCustomValues,
+  loadAlmacenCfg, fetchAlmacenCfg, huecoOptimo, contadoresHuecos, listadoHuecos, esC2EntradaPalet, esConceptoFacturacion, normAlm, identDeCustomValues,
   isQrAuto, setQrAuto,
   type EstanteriaCfg,
 } from '@/lib/almacen'
@@ -231,24 +231,30 @@ export function EntradaGrilla() {
   useEffect(() => { setRowCountInput(String(rows.length)) }, [rows.length])
 
   // Build c1 option list for dropdowns (all unique c1 values from catalog)
+  // V29.5: se excluyen los conceptos de facturación (PORTE, COSTE DIARIO):
+  // siguen en el CATÁLOGO para PRE-FACTURA, pero no se ofrecen en ENTRADA.
+  const catGrilla = useMemo(
+    () => data.catalogo.filter(c => !esConceptoFacturacion(c.c1, c.c2)),
+    [data.catalogo],
+  )
   const c1Options = useMemo(() => {
-    const all = data.catalogo.map(c => c.c1).filter(Boolean)
+    const all = catGrilla.map(c => c.c1).filter(Boolean)
     return [...new Set(all)].sort()
-  }, [data.catalogo])
+  }, [catGrilla])
 
   // C2 options depend on selected c1 (per row) - computed inline in render
   // using the helper below so each row filters its own c2 list.
   const allC2Options = useMemo(() => {
-    const all = data.catalogo.map(c => c.c2).filter(Boolean)
+    const all = catGrilla.map(c => c.c2).filter(Boolean)
     return [...new Set(all)].sort()
-  }, [data.catalogo])
+  }, [catGrilla])
 
   // Per-row c2 options: filter catalog by the row's c1, then unique sort.
   // Falls back to allC2Options when no c1 is selected yet.
   function c2OptionsFor(c1: string): string[] {
     if (!c1) return allC2Options
     const set = new Set<string>()
-    for (const c of data.catalogo) {
+    for (const c of catGrilla) {
       if (c.c1 === c1 && c.c2) set.add(c.c2)
     }
     // If no matching catalog entries, fall back so user can still type a value
@@ -780,7 +786,7 @@ export function EntradaGrilla() {
                         // Si hay varias c2 distintas para esa c1, se mantiene
                         // la actual solo si sigue siendo válida; si no, se limpia.
                         const c2matches = v
-                          ? [...new Set(data.catalogo.filter(x => x.c1 === v && x.c2).map(x => x.c2))].sort()
+                          ? [...new Set(catGrilla.filter(x => x.c1 === v && x.c2).map(x => x.c2))].sort()
                           : []
                         const nextC2 = c2matches.length === 1
                           ? c2matches[0]
