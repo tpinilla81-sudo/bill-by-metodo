@@ -1692,3 +1692,22 @@ Work Log:
 Stage Summary:
 - Factura de SALIDA ahora con 3 costes: SALIDA + ALMACENAJE (días) + PORTE. La ENTRADA se factura aparte en su propio mes.
 - Commit 69426d8 pushed a origin/main (despliegue Vercel automático).
+
+---
+Task ID: V29.5
+Agent: Main Agent
+Task: Quitar PORTE y COSTE DIARIO del selector de CONCEPTO en ENTRADA (siguen en CATÁLOGO para SMURFIT WESTROCK / PRE-FACTURA)
+
+Work Log:
+- Analizada la petición: los items PORTE y COSTE DIARIO (cliente SMURFIT WESTROCK en producción) deben permanecer en el CATÁLOGO porque PRE-FACTURA los usa (1 porte por salida de palet + coste diario de almacenaje), pero NO deben ofrecerse en los selectores de CONCEPTO de ENTRADA (no son movimientos físicos).
+- Verificado en DB de dev: aún no existe cliente SMURFIT WESTROCK (solo FLORETTE/VEGAMAYOR), pero el patrón queda implementado genérico por nombre de concepto.
+- Añadido helper esConceptoFacturacion(c1, c2) en src/lib/almacen.ts: match /\bporte\b/ o /\bcoste diario\b/ sobre c1+c2 normalizado con normAlm (minúsculas, sin acentos, espacios colapsados). Word boundaries evitan falsos positivos (TRANSPORTE, SOPORTE no filtran).
+- entrada-view.tsx: nuevo memo catEntrada (catálogo filtrado sin conceptos de facturación); usado en c1Options, c2Options, allC2Options y en el auto-match de c2→DESCRIPCIÓN del campo c1. autoPrice y rellenarDescripcionDeCatalogo siguen usando el catálogo completo (búsqueda exacta, sin riesgo).
+- entrada-grilla.tsx: mismo filtro en catGrilla → c1Options, allC2Options, c2OptionsFor() por fila y c2matches del autocompletado de c1.
+- Test unitario rápido de la regex: 11 casos OK (PORTE PALET ✓, COSTE DIARIO PALET ✓, TRANSPORTE ✗, SOPORTE ✗, ENTRADA PALET ✗...).
+- tsc --noEmit: los 4 errores en archivos tocados son PREEXISTENTES (verificado con git stash: idénticos antes de los cambios). Commit 8859ac2, push a main.
+
+Stage Summary:
+- PORTE y COSTE DIARIO desaparecen de los selectores CONCEPTO 1/CONCEPTO 2 de ENTRADA (formulario y grilla).
+- Siguen visibles en CATÁLOGO y usables por PRE-FACTURA (porte por salida + coste diario).
+- Si en el futuro otro concepto interno debe ocultarse, basta añadir el patrón en esConceptoFacturacion().
