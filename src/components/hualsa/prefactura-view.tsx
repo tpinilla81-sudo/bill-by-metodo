@@ -25,17 +25,22 @@ type LineaFactura = { fecha: string; c1: string; c2: string; cant: number; clien
 
 // ─── Almacenaje de palets (p.ej. cliente SMURFIT) ──────────────────────
 //
-// Para cada SALIDA de palet del cliente SMURFIT se generan CUATRO costes
-// en la factura:
-//   1. ENTRADA del palet (c2="ENTRADA PALET") — línea normal del registro.
-//   2. SALIDA del palet (c2="SALIDA PALET")  — línea normal del registro.
-//   3. ALMACENAJE: días desde entrada hasta salida × coste diario del catálogo
+// Para cada SALIDA de palet se generan TRES costes en la factura:
+//   1. SALIDA del palet (c2="SALIDA PALET")  — línea normal del registro.
+//   2. ALMACENAJE: días desde entrada hasta salida × coste diario del catálogo
 //      (item c2="COSTE DIARIO PALET" o similar).
-//   4. PORTE: 1 por cada salida, con el precio del item "PORTE" del catálogo
+//   3. PORTE: 1 por cada salida, con el precio del item "PORTE" del catálogo
 //      (c2 o c1 que contenga "PORTE"). Si no existe, se avisa y se omite.
 //
-// El matching ENTRADA↔SALIDA se hace por identificadores del customData:
-// "lote" o "palet" (fuertes) o "ubicac" (débil) con el mismo valor.
+// V29.9: la ENTRADA del palet YA NO se factura junto a la salida — se
+// factura POR SU LADO, en el mes que le toque (selección normal de entradas
+// en la pre-factura). Si hay entradas de palet en la selección actual, se
+// EXCLUYEN de la factura de salida y quedan sin marcar como facturadas
+// para que se facturen en su propio mes.
+//
+// El matching ENTRADA↔SALIDA se sigue usando SOLO para calcular los días
+// de almacenaje. Se hace por identificadores del customData: "lote" o
+// "palet" (fuertes) o "ubicac" (débil) con el mismo valor.
 // Convenciones (sin acentos, minúsculas, espacios colapsados):
 //  · ENTRADA: registro cuyo C1 o C2 contiene "entrada palet"
 //  · SALIDA:  registro cuyo C1 o C2 contiene "salida palet"
@@ -47,10 +52,6 @@ type LineaFactura = { fecha: string; c1: string; c2: string; cant: number; clien
 //    "lote" o "palet" (fuertes) o "ubicac" (débil) con el mismo valor.
 //    Si no hay campos, se comparan las observaciones.
 //  · DÍAS facturados: fechaSalida − fechaEntrada + 1 (ambos inclusive), mínimo 1.
-//  · La ENTRADA emparejada se factura aquí si aún no lo estaba (aunque su
-//    registro sea de otro periodo); si ya estaba facturada solo se usan sus
-//    fechas para calcular los días. Si está en la selección actual ya sale
-//    como línea normal (no se duplica).
 
 function normAlm(s: string): string {
   return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
@@ -114,19 +115,17 @@ function procesarAlmacenajePalets(
   sel: Registro[],
   allRegistros: Registro[],
   catalogo: CatalogoItem[],
-  targetCliId: string,
-  getPrecio: (r: Registro) => number
+  targetCliId: string
 ): {
   lineas: LineaFactura[]
   extraIds: string[]
-  entradasAnadidas: number
-  entradasYaFacturadas: number
+  entradasEmparejadas: number
   sinMatch: number
   precioCero: number
   portesAnadidos: number
   sinPorte: number
 } {
-  const empty = { lineas: [] as LineaFactura[], extraIds: [] as string[], entradasAnadidas: 0, entradasYaFacturadas: 0, sinMatch: 0, precioCero: 0, portesAnadidos: 0, sinPorte: 0 }
+  const empty = { lineas: [] as LineaFactura[], extraIds: [] as string[], entradasEmparejadas: 0, sinMatch: 0, precioCero: 0, portesAnadidos: 0, sinPorte: 0 }
   const salidas = sel.filter(isSalidaPalet)
   if (!targetCliId || salidas.length === 0) return empty
 
@@ -147,17 +146,16 @@ function procesarAlmacenajePalets(
   const porteLabel = porteItem ? (porteItem.c2 || porteItem.c1 || 'PORTE PALET') : 'PORTE PALET'
   const porteFound = !!porteItem
 
-  // TODAS las entradas de palet del cliente (facturadas o no):
-  //  · Las sin facturar se facturan ahora (coste de ENTRADA)
-  //  · Las ya facturadas solo sirven para calcular los días
-  const todasEntradas = allRegistros.filter(r => isEntradaPalet(r) && r.clienteId === targetCliId)
-  const libres = todasEntradas.filter(r => !r.facturado)
-  const selIds = new Set(sel.map(r => r.id))
+  // TODAS las entradas de palet del cliente — V29.9: sirven SOLO para
+  // calcular los días de almacenaje (la entrada se factura por su lado,
+  // en su propio mes). Orden por fecha: la más antigua empareja primero
+  // (FIFO — un ciclo de palet es entrada → salida).
+  const todasEntradas = allRegistros
+    .filter(r => isEntradaPalet(r) && r.clienteId === targetCliId)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha))
   const usados = new Set<string>()
   const lineas: LineaFactura[] = []
-  const extraIds: string[] = []
-  let entradasAnadidas = 0
-  let entradasYaFacturadas = 0
+  let emparejadas = 0
   let sinMatch = 0
   let precioCero = 0
   let portesAnadidos = 0
@@ -165,42 +163,22 @@ function procesarAlmacenajePalets(
 
   for (const s of [...salidas].sort((a, b) => a.fecha.localeCompare(b.fecha))) {
     const si = extractIdents(s)
-    // 1) Preferir entradas sin facturar (se facturan con esta factura)
-    let ent = libres.find(e => !usados.has(e.id) && matchIdents(extractIdents(e), si))
-    let yaFacturada = false
+    // Emparejar con la ENTRADA del palet (lote/nº palet o ubicación) —
+    // SOLO para calcular los días. No se factura aquí (V29.9).
+    let ent = todasEntradas.find(e => !usados.has(e.id) && matchIdents(extractIdents(e), si))
     if (!ent) {
       // Fallback 1:1 — si solo queda una entrada libre para ese cliente, emparejar
-      const libresRest = libres.filter(e => !usados.has(e.id))
-      if (libresRest.length === 1) ent = libresRest[0]
-    }
-    if (!ent) {
-      // Fallback 1:1 sobre TODAS las entradas (ya facturadas incluidas):
-      // sirve solo para calcular los días, no se factura otra vez
       const restantes = todasEntradas.filter(e => !usados.has(e.id))
-      if (restantes.length === 1) { ent = restantes[0]; yaFacturada = true }
+      if (restantes.length === 1) ent = restantes[0]
     }
     if (!ent) { sinMatch++; continue }  // la salida queda como línea normal, sin días
     usados.add(ent.id)
+    emparejadas++
 
-    // COSTE 1 — ENTRADA: se añade como línea si aún no está facturada
-    // y no está en la selección actual (ahí ya saldría como línea normal)
-    if (!yaFacturada && !selIds.has(ent.id)) {
-      extraIds.push(ent.id)
-      entradasAnadidas++
-      lineas.push({
-        fecha: ent.fecha,
-        c1: ent.c1,
-        c2: ent.c2,
-        cant: ent.cant,
-        clienteId: ent.clienteId,
-        obs: ent.obs || '',
-        precioUnitario: getPrecio(ent),
-      })
-    } else if (yaFacturada) {
-      entradasYaFacturadas++
-    }
+    // V29.9: el COSTE de la ENTRADA ya NO se añade a esta factura —
+    // se factura por su lado, en el mes que le toque.
 
-    // COSTE 3 — DÍAS de almacenaje (la SALIDA, coste 2, ya va como línea normal)
+    // COSTE — DÍAS de almacenaje (la SALIDA ya va como línea normal)
     const dias = diasAlmacenaje(ent.fecha, s.fecha)
     const ident = [...Object.values(si.strong), ...Object.values(si.weak)][0] || ''
     const identTxt = ident ? ` ${ident.toUpperCase()}` : ''
@@ -215,7 +193,7 @@ function procesarAlmacenajePalets(
     })
     if (costeDiario === 0) precioCero++
 
-    // COSTE 4 — PORTE por cada SALIDA de palet (item "PORTE" del catálogo).
+    // COSTE — PORTE por cada SALIDA de palet (item "PORTE" del catálogo).
     // Si no se encuentra el item PORTE en el catálogo para este cliente
     // (ni general), se cuenta como sinPorte y se avisa al usuario — la
     // factura se sigue generando con los demás costes.
@@ -235,7 +213,7 @@ function procesarAlmacenajePalets(
     }
   }
 
-  return { lineas, extraIds, entradasAnadidas, entradasYaFacturadas, sinMatch, precioCero, portesAnadidos, sinPorte }
+  return { lineas, extraIds: [], entradasEmparejadas: emparejadas, sinMatch, precioCero, portesAnadidos, sinPorte }
 }
 interface InvoiceData {
   cli: Cliente; lineas: LineaFactura[]
@@ -444,23 +422,33 @@ export function PreFacturaView() {
     const targetCliId = effectiveFCliente || cliIds[0]
     const cli = clientes.find(c => c.id === targetCliId) || { id: '', nombre: '(varios)', cif: '', dir: '', cp: '', ciudad: '', prov: '', mail: '', tel: '' }
 
-    // Almacenaje de palets (SMURFIT): CUATRO costes por ciclo — ENTRADA y
-    // SALIDA al precio del catálogo (líneas normales), DÍAS × coste diario,
-    // y PORTE (1 por cada salida, item "PORTE" del catálogo).
-    const alm = procesarAlmacenajePalets(sel, registros, catalogo, targetCliId, getPrecio)
-    if (alm.entradasAnadidas > 0 || alm.entradasYaFacturadas > 0 || alm.sinMatch > 0 || alm.precioCero > 0 || alm.portesAnadidos > 0 || alm.sinPorte > 0) {
+    // Almacenaje de palets (SMURFIT): TRES costes por ciclo — SALIDA al precio
+    // del catálogo (línea normal), DÍAS × coste diario y PORTE (1 por salida).
+    // V29.9: la ENTRADA ya no se factura aquí — va en su propia factura
+    // (en el mes que le toque).
+    const alm = procesarAlmacenajePalets(sel, registros, catalogo, targetCliId)
+
+    // V29.9: si esta factura incluye SALIDAS de palet, las ENTRADAS de palet
+    // de la selección se EXCLUYEN de la factura (y NO se marcan como
+    // facturadas) — se facturan por su lado, en su propio mes.
+    const haySalidas = sel.some(isSalidaPalet)
+    const entradasExcluidas = haySalidas ? sel.filter(isEntradaPalet) : []
+    const excluidasIds = new Set(entradasExcluidas.map(r => r.id))
+    const selFacturable = haySalidas ? sel.filter(r => !excluidasIds.has(r.id)) : sel
+
+    if (alm.entradasEmparejadas > 0 || alm.sinMatch > 0 || alm.precioCero > 0 || alm.portesAnadidos > 0 || alm.sinPorte > 0 || entradasExcluidas.length > 0) {
       const msgs: string[] = []
-      if (alm.entradasAnadidas > 0) msgs.push(`✓ ${alm.entradasAnadidas} entrada(s) de palet añadidas con su coste (además de salida, días y porte)${alm.portesAnadidos > 0 ? '' : ''}`)
+      if (entradasExcluidas.length > 0) msgs.push(`ℹ ${entradasExcluidas.length} entrada(s) de palet EXCLUIDAS de esta factura — se facturan por su lado, en su propio mes (quedan sin facturar)`)
+      if (alm.entradasEmparejadas > 0) msgs.push(`✓ ${alm.entradasEmparejadas} entrada(s) emparejada(s) para calcular los días de almacenaje`)
       if (alm.portesAnadidos > 0) msgs.push(`✓ ${alm.portesAnadidos} porte(s) añadidos (1 por cada salida de palet) — item «${catalogo.find(x => x.clienteId === targetCliId && /porte/i.test(normAlm(`${x.c1} ${x.c2}`)))?.c2 || 'PORTE'}» del catálogo`)
-      if (alm.entradasYaFacturadas > 0) msgs.push(`ℹ ${alm.entradasYaFacturadas} entrada(s) ya facturadas antes — solo se factura salida + días + porte`)
       if (alm.sinMatch > 0) msgs.push(`⚠ ${alm.sinMatch} salida(s) de palet SIN entrada coincidente — se facturan sin días ni porte`)
       if (alm.precioCero > 0) msgs.push(`⚠ No se encontró "COSTE DIARIO" en el catálogo para este cliente — precio 0`)
       if (alm.sinPorte > 0) msgs.push(`⚠ ${alm.sinPorte} salida(s) SIN PORTE: no se encontró ningún item con "PORTE" en el catálogo para este cliente — añádelo (p.ej. c2="PORTE PALET")`)
       alert('Almacenaje de palets:\n' + msgs.join('\n'))
     }
 
-    // La SALIDA de palet ya NO se excluye: se factura como línea normal (coste 2).
-    const lineasBase: LineaFactura[] = sel
+    // Líneas normales: la selección facturable (sin entradas si hay salidas).
+    const lineasBase: LineaFactura[] = selFacturable
       .map(r => ({ fecha: r.fecha, c1: r.c1, c2: r.c2, cant: r.cant, clienteId: r.clienteId, obs: r.obs || '', precioUnitario: getPrecio(r) }))
     if (alm.lineas.length > 0) lineasBase.push(...alm.lineas)
     lineasBase.sort((a, b) => a.fecha.localeCompare(b.fecha))
@@ -484,7 +472,9 @@ export function PreFacturaView() {
     const base = lineas.reduce((s, r) => s + (r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)) * r.cant, 0)
     const ivaImp = base * iva / 100
     const total = base + ivaImp
-    const registroIds = [...sel.map(r => r.id), ...alm.extraIds]
+    // Solo los registros facturables se marcan como facturados — las entradas
+    // excluidas quedan libres para facturarse en su propio mes.
+    const registroIds = [...selFacturable.map(r => r.id)]
 
     setInvoiceData({ cli, lineas, iva, numero: '', fechaFact: fFechaFact, modo: fModo, base, ivaImp, total, registroIds })
     setModalOpen(true)
