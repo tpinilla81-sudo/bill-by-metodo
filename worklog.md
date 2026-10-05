@@ -1674,3 +1674,21 @@ Stage Summary:
   (zona → hueco) que PROPONE el hueco según FIFO/familia/lote/compactar
   con el motivo visible, mapa táctil y un clic para usarlo. El desplegable
   rápido de V26/V27 se conserva.
+
+---
+Task ID: V29.9
+Agent: Super Z (main)
+Task: Quitar la ENTRADA de la factura de SALIDA (cliente SMURFIT) — las entradas se facturan por su lado, en su propio mes.
+
+Work Log:
+- Analizado el flujo de facturación en prefactura-view.tsx (procesarAlmacenajePalets): antes añadía 4 costes por ciclo (ENTRADA + SALIDA + ALMACENAJE + PORTE).
+- Eliminado el COSTE 1 (línea de ENTRADA) de la factura de salida; el matching entrada↔salida se conserva SOLO para calcular los días de almacenaje.
+- Simplificado el matching: todas las entradas ordenadas por fecha (FIFO), sin distinción facturadas/no-facturadas.
+- En handleGenerar: si la factura incluye SALIDAS de palet, las ENTRADAS de palet de la selección se EXCLUYEN de las líneas y de registroIds (quedan sin facturar para su propia factura).
+- Mensajes actualizados: "N entrada(s) EXCLUIDAS de esta factura — se facturan por su lado, en su propio mes" + "N entrada(s) emparejada(s) para calcular los días".
+- Verificado en navegador con ciclo de prueba (entrada 25/09 + salida 05/10, mismo lote): factura generada con exactamente 2 líneas (SALIDA 2,50 € + ALMACENAJE 11 DÍAS), SIN línea de ENTRADA; salida marcada facturado=true, entrada facturado=false en BD.
+- Conflicto de rebase con remoto (V29.8 duplicado de otra sesión) resuelto: parche de V29.9 aplicado sobre origin/main y push limpio (69426d8).
+
+Stage Summary:
+- Factura de SALIDA ahora con 3 costes: SALIDA + ALMACENAJE (días) + PORTE. La ENTRADA se factura aparte en su propio mes.
+- Commit 69426d8 pushed a origin/main (despliegue Vercel automático).
