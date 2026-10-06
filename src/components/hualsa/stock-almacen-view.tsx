@@ -1,18 +1,19 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef, type DragEvent } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2, Layers, ChevronDown, Plus, Trash2, Scale, Copy } from 'lucide-react'
+import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2, Layers, ChevronDown, Plus, Trash2, Scale, Copy, Move, GripVertical } from 'lucide-react'
 import { Hint } from '@/components/hualsa/hint'
 import { CriteriosEditor } from '@/components/hualsa/criterios-editor'
+import { triggerBackup } from '@/lib/trigger-backup'
 import { fmtDate, type Cliente, type Registro } from '@/lib/hualsa-utils'
 import {
-  normAlm, isEntradaPalet, isSalidaPalet, getUbicacion, getIdent, splitUbicacion,
+  normAlm, isEntradaPalet, isSalidaPalet, getUbicacion, getIdent, splitUbicacion, normHuecoKey,
   diasEnAlmacen, buildStock, buildRacks, nombresHuecos, detectarEstanterias,
   loadAlmacenCfg, saveAlmacenCfg, fetchAlmacenCfg, pushAlmacenCfg, pesosDeZona, resumenCriterios, type EstanteriaCfg, type LoteStock, type CeldaStock, type PesosCriterios,
 } from '@/lib/almacen'
@@ -521,6 +522,17 @@ export function StockAlmacenView() {
   // Escáner QR
   const [qrOpen, setQrOpen] = useState(false)
   const [qrMsg, setQrMsg] = useState<{ txt: string; kind: 'ok' | 'err' | 'info' } | null>(null)
+
+  // ─── V29.6: MOVER CARGAS ARRASTRANDO (drag & drop en el mapa) ─────────
+  // Arrastras un palet (o un lote entero) desde el mapa o desde "fuera de
+  // configuración" y lo sueltas en otro hueco. El cambio de UBICACIÓN se
+  // guarda en el registro (PATCH /api/registros) y el mapa, los contadores
+  // y TODOS los listados se recalculan al momento (todo deriva de registros).
+  const [dragLote, setDragLote] = useState<LoteStock | null>(null)
+  const [dragOverUb, setDragOverUb] = useState<string | null>(null)   // hueco destino bajo el cursor
+  const [moviendoId, setMoviendoId] = useState<string | null>(null)   // registro en vuelo (guardando)
+  const [movMsg, setMovMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const movMsgTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qrScannerRef = useRef<Html5QrcodeLike | null>(null)
   const qrRegionId = 'qr-reader-region'
 
@@ -704,6 +716,101 @@ export function StockAlmacenView() {
     if (cap <= 0) return { cap: 0, pct: 0, full: false }
     const pct = Math.min(100, Math.round((total / cap) * 100))
     return { cap, pct, full: total >= cap }
+  }
+
+  // ─── V29.6: handlers de drag & drop ──────────────────────────────────
+  function avisoMov(type: 'ok' | 'err', text: string, ms = 4000) {
+    if (movMsgTimer.current) clearTimeout(movMsgTimer.current)
+    setMovMsg({ type, text })
+    movMsgTimer.current = setTimeout(() => setMovMsg(null), ms)
+  }
+
+  // Empieza el arrastre de un lote (palet del mapa o chip "fuera de config")
+  function iniciarDrag(e: DragEvent<HTMLDivElement>, lote: LoteStock) {
+    if (moviendoId) { e.preventDefault(); return }
+    setDragLote(lote)
+    try {
+      e.dataTransfer.setData('text/plain', lote.id) // necesario para que el drag arranque en Firefox/Safari
+      e.dataTransfer.effectAllowed = 'move'
+    } catch { /* sin dataTransfer — el estado interno basta (Chrome) */ }
+  }
+
+  function terminarDrag() {
+    setDragLote(null)
+    setDragOverUb(null)
+  }
+
+  // Estado de una celda como DESTINO del arrastre en curso
+  function estadoDestino(c: CeldaStock): 'ok' | 'full' | 'same' | null {
+    if (!dragLote) return null
+    if (normHuecoKey(dragLote.ubicacion) === normHuecoKey(c.ubicacion)) return 'same'
+    if (c.cap > 0 && c.total + dragLote.cantRestante > c.cap) return 'full'
+    return 'ok'
+  }
+
+  function sobreCelda(e: DragEvent<HTMLDivElement>, c: CeldaStock) {
+    if (!dragLote) return
+    if (estadoDestino(c) === 'ok') {
+      e.preventDefault() // sin esto el navegador no permite el drop
+      e.dataTransfer.dropEffect = 'move'
+    }
+    setDragOverUb(prev => (prev === c.ubicacion ? prev : c.ubicacion))
+  }
+
+  function salirCelda(c: CeldaStock) {
+    setDragOverUb(prev => (prev === c.ubicacion ? null : prev))
+  }
+
+  function soltarEnCelda(e: DragEvent<HTMLDivElement>, c: CeldaStock) {
+    e.preventDefault()
+    const lote = dragLote
+    terminarDrag()
+    if (lote) moverLote(lote, c)
+  }
+
+  // Mueve el lote (registro de ENTRADA) a la columna del hueco destino.
+  // La nueva ubicación sigue el formato del motor: RACK F fila H altura
+  // (p.ej. E2F4H2 = estantería E2, hueco 4, altura 2 — la 1ª libre de la
+  // columna destino). La UBICACIÓN es por REGISTRO: un lote de N palets
+  // se mueve entero (todos sus palets van juntos).
+  async function moverLote(lote: LoteStock, destino: CeldaStock) {
+    if (moviendoId) return
+    if (normHuecoKey(lote.ubicacion) === normHuecoKey(destino.ubicacion)) return
+    // Capacidad: respeta la ALTURA configurada del hueco destino
+    if (destino.cap > 0 && destino.total + lote.cantRestante > destino.cap) {
+      avisoMov('err', `«${destino.ubicacion}» está lleno (${destino.total}/${destino.cap}): no caben ${lote.cantRestante} palet${lote.cantRestante > 1 ? 's' : ''}`)
+      return
+    }
+    const fila = parseInt(destino.pos, 10) || 1
+    const nuevaUb = `${destino.rack}F${fila}H${destino.total + 1}`
+    setMoviendoId(lote.id)
+    try {
+      const res = await fetch('/api/registros', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: lote.id, ubicacion: nuevaUb }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}) as { error?: string })
+        throw new Error(j.error || 'No se pudo guardar la ubicación')
+      }
+      // Actualiza el registro en memoria → mapa, contadores y TODOS los
+      // listados (detalle, fuera de configuración, KPIs) se refrescan solos.
+      setRegistros(prev => prev.map(r => {
+        if (r.id !== lote.id) return r
+        let cd: Record<string, unknown> = {}
+        try { cd = JSON.parse(r.customData || '{}') } catch { cd = {} }
+        const k = Object.keys(cd).find(kk => /ubicac/.test(normAlm(String(kk))))
+        if (k) cd[k] = nuevaUb
+        else cd['ubicacion'] = nuevaUb
+        return { ...r, customData: JSON.stringify(cd) }
+      }))
+      triggerBackup()
+      avisoMov('ok', `${lote.ident || 'Palet'} movido a ${nuevaUb}`)
+    } catch (err) {
+      avisoMov('err', err instanceof Error ? err.message : 'Error moviendo el palet')
+    }
+    setMoviendoId(null)
   }
 
   return (
@@ -1332,6 +1439,9 @@ export function StockAlmacenView() {
                 {racks.some(rk => rk.celdas.some(c => c.cap > 1)) && (
                   <span className="text-gray-400 font-semibold">filas = niveles/alturas · cada casilla = 1 palet</span>
                 )}
+                <span className="flex items-center gap-1 text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">
+                  <Move className="h-3 w-3" /> Arrastra un palet a otro hueco para moverlo
+                </span>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1348,6 +1458,16 @@ export function StockAlmacenView() {
                 </Button>
               </div>
             </div>
+            {/* V29.6: avisos del drag & drop (palet movido / errores) */}
+            {(movMsg || moviendoId) && (
+              <div className={`mb-3 rounded-lg px-3 py-2 text-xs font-bold print-hide ${
+                moviendoId && !movMsg ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                  : movMsg?.type === 'ok' ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                    : 'bg-red-50 text-red-700 border border-red-200'
+              }`}>
+                {moviendoId && !movMsg ? 'Guardando movimiento…' : movMsg?.text}
+              </div>
+            )}
             <div className="flex flex-wrap gap-4 print-racks">
               {racks.map(rk => {
                 const cap = capInfo(rk.name, rk.total)
@@ -1440,17 +1560,29 @@ export function StockAlmacenView() {
                                   const llena = c.cap > 0 && c.total >= c.cap
                                   const desborda = esTope && c.total > altura
                                   const match = cellMatch(c)
+                                  // V29.6: drag & drop — la casilla ocupada es ARRASTRABLE
+                                  // (mueve su lote) y TODA la columna acepta el drop.
+                                  const destSt = dragLote ? estadoDestino(c) : null
+                                  const esDestOk = dragOverUb === c.ubicacion && destSt === 'ok'
+                                  const esDestFull = dragOverUb === c.ubicacion && destSt === 'full'
+                                  const arrastrandoEste = ocupada && dragLote && palet?.id === dragLote.id
                                   return (
                                     <div
                                       key={i}
-                                      title={`${c.ubicacion} · ${j === 1 ? 'suelo' : `${j}${esParedRack ? 'ª altura' : 'º nivel'}`}${ocupada ? ` · palet ${palet?.ident || '—'} · ${dias} días` : ' · LIBRE'}${llena ? ' · LLENO' : ''}`}
-                                      className={`rounded-md border-2 p-1 shadow-sm min-h-[3.2rem] flex flex-col ${
+                                      title={`${c.ubicacion} · ${j === 1 ? 'suelo' : `${j}${esParedRack ? 'ª altura' : 'º nivel'}`}${ocupada ? ` · palet ${palet?.ident || '—'} · ${dias} días${palet && palet.cantRestante > 1 ? ` · arrastra el lote (${palet.cantRestante} palets)` : ' · arrastra para mover'}` : ' · LIBRE · suelta aquí para colocar'}${llena ? ' · LLENO' : ''}`}
+                                      draggable={ocupada && !moviendoId}
+                                      onDragStart={ocupada && palet ? e => iniciarDrag(e, palet) : undefined}
+                                      onDragEnd={terminarDrag}
+                                      onDragOver={e => sobreCelda(e, c)}
+                                      onDragLeave={() => salirCelda(c)}
+                                      onDrop={e => soltarEnCelda(e, c)}
+                                      className={`rounded-md border-2 p-1 shadow-sm min-h-[3.2rem] flex flex-col transition-all ${
                                         match
                                           ? 'ring-4 ring-sky-500 ring-offset-1 relative z-10'
                                           : queryNorm
                                             ? 'opacity-30'
                                             : ''
-                                      } ${ocupada ? colorPorDias(dias) : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'} ${llena && esTope && !match ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
+                                      } ${ocupada ? colorPorDias(dias) : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'} ${llena && esTope && !match ? 'ring-2 ring-red-500 ring-offset-1' : ''} ${ocupada ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoEste ? 'opacity-40' : ''} ${esDestOk ? 'ring-4 ring-teal-500 ring-offset-1 bg-teal-50/80 scale-105' : ''} ${esDestFull ? 'ring-4 ring-rose-500 ring-offset-1 opacity-60' : ''}`}
                                     >
                                       <div className="flex items-center justify-between gap-0.5 pb-0.5 border-b border-gray-300/70">
                                         <span className="text-[8px] font-bold text-gray-400 truncate">{c.rack}</span>
@@ -1503,11 +1635,25 @@ export function StockAlmacenView() {
                         const lotesUnicos = [...new Map(c.lotes.map(l => [l.ident || l.id, l])).values()]
                         const diasMax = c.dias
                         const match = cellMatch(c)
+                        // V29.6: drag & drop — con UN solo lote la celda entera
+                        // se arrastra; con varios, cada lote de la lista. La
+                        // celda SIEMPRE acepta el drop de otro lote.
+                        const destSt = dragLote ? estadoDestino(c) : null
+                        const esDestOk = dragOverUb === c.ubicacion && destSt === 'ok'
+                        const esDestFull = dragOverUb === c.ubicacion && destSt === 'full'
+                        const celdaDraggable = lotesUnicos.length === 1 && !moviendoId
+                        const arrastrandoCelda = !!dragLote && lotesUnicos.some(l => l.id === dragLote.id)
                         return (
                           <div
                             key={`${c.rack}-${c.ubicacion}`}
-                            title={`${c.ubicacion}${c.cap > 0 ? ` · altura ${c.cap}` : ''}${ocupada ? ` · ${c.total}${c.cap > 0 ? `/${c.cap}` : ''} palet(s) · ${diasMax} días${c.cap > 0 && c.total >= c.cap ? ' · LLENO' : ''}` : ' · LIBRE'}${lotesUnicos.some(l => l.ident) ? ' · ' + lotesUnicos.map(l => l.ident).join(', ') : ''}`}
-                            className={`rounded-md border-2 p-1.5 shadow-sm cursor-default transition-all ${
+                            title={`${c.ubicacion}${c.cap > 0 ? ` · altura ${c.cap}` : ''}${ocupada ? ` · ${c.total}${c.cap > 0 ? `/${c.cap}` : ''} palet(s) · ${diasMax} días${c.cap > 0 && c.total >= c.cap ? ' · LLENO' : ''}` : ' · LIBRE · suelta aquí para colocar'}${lotesUnicos.some(l => l.ident) ? ' · ' + lotesUnicos.map(l => l.ident).join(', ') : ''}${ocupada ? ' · arrastra para mover' : ''}`}
+                            draggable={celdaDraggable}
+                            onDragStart={celdaDraggable && lotesUnicos[0] ? e => iniciarDrag(e, lotesUnicos[0]) : undefined}
+                            onDragEnd={terminarDrag}
+                            onDragOver={e => sobreCelda(e, c)}
+                            onDragLeave={() => salirCelda(c)}
+                            onDrop={e => soltarEnCelda(e, c)}
+                            className={`rounded-md border-2 p-1.5 shadow-sm transition-all ${
                               match
                                 ? 'ring-4 ring-sky-500 ring-offset-1 scale-105 z-10 relative'
                                 : queryNorm
@@ -1517,7 +1663,7 @@ export function StockAlmacenView() {
                               ocupada
                                 ? colorPorDias(c.dias)
                                 : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'
-                            } ${c.cap > 0 && c.total >= c.cap ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
+                            } ${c.cap > 0 && c.total >= c.cap ? 'ring-2 ring-red-500 ring-offset-1' : ''} ${celdaDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoCelda ? 'opacity-40' : ''} ${esDestOk ? 'ring-4 ring-teal-500 ring-offset-1 bg-teal-50/80 scale-105' : ''} ${esDestFull ? 'ring-4 ring-rose-500 ring-offset-1 opacity-60' : ''}`}
                           >
                             {/* Nº de UBICACIÓN — visible siempre, aunque esté libre */}
                             <div className="flex items-center justify-between gap-1 pb-1 border-b border-gray-300">
@@ -1538,13 +1684,22 @@ export function StockAlmacenView() {
                                 <div className={`text-[8px] font-bold uppercase tracking-wide -mt-0.5 ${c.cap > 0 && c.total >= c.cap ? 'text-red-600' : 'text-gray-500'}`}>
                                   {c.cap > 0 && c.total >= c.cap ? 'lleno' : c.total === 1 ? 'palet' : 'palets'}
                                 </div>
-                                {/* Lista de todos los lotes con sus días */}
+                                {/* Lista de todos los lotes con sus días —
+                                    V29.6: cada lote es ARRASTRABLE a otro hueco */}
                                 {lotesUnicos.length > 0 && (
                                   <div className="mt-1 space-y-0.5">
                                     {lotesUnicos.map(l => {
                                       const dl = diasEnAlmacen(l.fecha, now)
+                                      const arrastrandoEsteLote = !!dragLote && dragLote.id === l.id
                                       return (
-                                        <div key={l.id} className="text-[9px] font-semibold text-gray-600 flex items-center justify-between gap-1">
+                                        <div
+                                          key={l.id}
+                                          draggable={!moviendoId}
+                                          onDragStart={e => iniciarDrag(e, l)}
+                                          onDragEnd={terminarDrag}
+                                          title={`Arrastra «${l.ident || 'sin lote'}» a otro hueco para moverlo`}
+                                          className={`text-[9px] font-semibold text-gray-600 flex items-center justify-between gap-1 cursor-grab active:cursor-grabbing ${arrastrandoEsteLote ? 'opacity-40' : ''}`}
+                                        >
                                           <span className="truncate">{l.ident || '—'}</span>
                                           <span className={`${textoPorDias(dl)} font-bold`}>{dl}d</span>
                                         </div>
@@ -1590,7 +1745,7 @@ export function StockAlmacenView() {
               <Settings2 className="h-4 w-4" /> PALETS FUERA DE LA CONFIGURACIÓN ({paletsFuera} palets)
             </h3>
             <Hint variant="warning" className="block mb-3 w-full print-hide">
-              Palets en ubicaciones que no existen en la configuración (o sin ubicación). Añade la estantería con esos huecos en <b>Configurar almacén</b> o revisa la ubicación del movimiento.
+              Palets en ubicaciones que no existen en la configuración (o sin ubicación). <b>Arrastra cada palet a un hueco del mapa</b> para colocarlo, o añade la estantería con esos huecos en <b>Configurar almacén</b>.
             </Hint>
             <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
               {fueraCfg.map(c => {
@@ -1604,11 +1759,30 @@ export function StockAlmacenView() {
                     <div className="text-[10px] font-bold text-amber-700 uppercase truncate">{c.ubicacion}</div>
                     <div className="text-xl font-extrabold text-amber-700 leading-tight">{c.total}</div>
                     <div className="text-[8px] font-bold text-amber-600 uppercase">palets · {c.dias} días</div>
-                    {c.lotes.some(l => l.ident) && (
-                      <div className="text-[9px] font-semibold text-gray-500 mt-1 truncate">
-                        {c.lotes.map(l => l.ident).filter(Boolean).join(', ')}
-                      </div>
-                    )}
+                    {/* V29.6: cada lote es ARRASTRABLE — suéltalo sobre un hueco
+                        del mapa para colocarlo (así se corrigen los palets que
+                        quedaron fuera de la configuración) */}
+                    <div className="mt-1 space-y-0.5">
+                      {c.lotes.map(l => {
+                        const arrastrandoEsteLote = !!dragLote && dragLote.id === l.id
+                        return (
+                          <div
+                            key={l.id}
+                            draggable={!moviendoId}
+                            onDragStart={e => iniciarDrag(e, l)}
+                            onDragEnd={terminarDrag}
+                            title={`Arrastra «${l.ident || 'sin lote'}» a un hueco del mapa para colocarlo`}
+                            className={`text-[9px] font-semibold text-gray-600 flex items-center justify-between gap-1 bg-white/70 border border-amber-200 rounded px-1 py-0.5 cursor-grab active:cursor-grabbing hover:border-teal-400 ${arrastrandoEsteLote ? 'opacity-40' : ''}`}
+                          >
+                            <span className="truncate">{l.ident || '(sin lote)'}</span>
+                            <span className="flex items-center gap-0.5 shrink-0 font-bold">
+                              {l.cantRestante > 1 && <span>×{l.cantRestante}</span>}
+                              <GripVertical className="h-3 w-3 text-gray-400" />
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 )
               })}

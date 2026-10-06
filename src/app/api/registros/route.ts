@@ -245,6 +245,45 @@ export async function PUT(req: Request) {
   }
 }
 
+// PATCH — cambiar SOLO la UBICACIÓN de un registro (V29.6: drag & drop en el
+// mapa de STOCK ALMACÉN). No toca ningún otro campo: lee customData, actualiza
+// (o crea) la clave cuyo nombre contiene "ubicac" —misma regla que el motor
+// de stock, ver extractIdents()— y deja el resto de customData intacto.
+export async function PATCH(req: Request) {
+  try {
+    const tid = await requireTenantId(req)
+    if (typeof tid !== 'string') return tid
+
+    const body = await req.json().catch(() => ({}))
+    const { id, ubicacion } = body as { id?: string; ubicacion?: string }
+    if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
+    if (ubicacion === undefined) return NextResponse.json({ error: 'Ubicación requerida' }, { status: 400 })
+
+    // Verify ownership
+    const registro = await db.registro.findFirst({ where: { id, tenantId: tid } })
+    if (!registro) return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 })
+
+    let cd: Record<string, unknown> = {}
+    try { cd = JSON.parse(registro.customData || '{}') } catch { cd = {} }
+    // Normalización idéntica a normAlm() (minúsculas, sin acentos, espacios limpios)
+    const norm = (s: string) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    let ubKey = Object.keys(cd).find(k => /ubicac/.test(norm(k)))
+    const ub = String(ubicacion || '').trim().toUpperCase()
+    if (ub) {
+      if (!ubKey) ubKey = 'ubicacion'
+      cd[ubKey] = ub
+    } else if (ubKey) {
+      delete cd[ubKey]
+    }
+    const updated = await db.registro.update({ where: { id }, data: { customData: JSON.stringify(cd) } })
+    return NextResponse.json(updated)
+  } catch (err) {
+    console.error('Registros PATCH error:', err)
+    return NextResponse.json({ error: 'Error actualizando la ubicación' }, { status: 500 })
+  }
+}
+
 export async function DELETE(req: Request) {
   try {
     const tid = await requireTenantId(req)
