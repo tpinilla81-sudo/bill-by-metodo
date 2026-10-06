@@ -1711,3 +1711,22 @@ Stage Summary:
 - PORTE y COSTE DIARIO desaparecen de los selectores CONCEPTO 1/CONCEPTO 2 de ENTRADA (formulario y grilla).
 - Siguen visibles en CATÁLOGO y usables por PRE-FACTURA (porte por salida + coste diario).
 - Si en el futuro otro concepto interno debe ocultarse, basta añadir el patrón en esConceptoFacturacion().
+
+---
+Task ID: V29.6
+Agent: Main Agent
+Task: Mover cargas arrastrando con el ratón en el dibujo de STOCK ALMACÉN, con listados actualizándose en vivo
+
+Work Log:
+- Añadido PATCH /api/registros (route.ts): cambia SOLO la ubicación de un registro. Lee customData, actualiza/crea la primera clave cuyo nombre normalizado contiene "ubicac" (misma regla que extractIdents del motor) y deja todo lo demás intacto. Validación de tenant (requireTenantId) y ownership como PUT.
+- stock-almacen-view.tsx: drag & drop nativo HTML5 (sin dependencias nuevas).
+  · Fuentes de arrastre: casillas ocupadas del ALZADO (cada casilla = 1 palet de un lote), celda entera en vista simple cuando hay 1 solo lote, filas de lote individuales cuando hay varios, y chips de lote en tarjetas FUERA DE CONFIGURACIÓN (para recolocarlos en el mapa).
+  · Destinos: TODAS las celdas/huecos del mapa (ocupadas y libres). Highlight verde (ring-teal) si el drop es válido, rojo (ring-rose) si el hueco está lleno; cursor bloqueado por el navegador si no cabe.
+  · moverLote(): valida capacidad destino (destino.total + cantRestante <= cap), calcula nueva ubicación en formato del motor RACK F fila H altura con la primera altura libre (p.ej. E2F4H2), llama PATCH, actualiza el registro en el estado local (setRegistros) → mapa, KPIs, DETALLE DEL STOCK, fuera de configuración y contadores se recalculan al instante. triggerBackup() tras mover.
+  · Avisos: banner ok/error en el mapa + 'Guardando movimiento…' durante el PATCH; leyenda nueva 'Arrastra un palet a otro hueco para moverlo'.
+- Entorno: node_modules había desaparecido → bun install + prisma generate regenerados. Verificado con git stash que el único error TS en el archivo (cast Html5Qrcode) es preexistente. next build OK. Commit 8933fd6, push a main.
+
+Stage Summary:
+- El mapa de STOCK ALMACÉN permite mover palets/lotes arrastrando con el ratón a cualquier hueco, respetando alturas configuradas.
+- Los cambios persisten en la DB (ubicación del registro ENTRADA en customData) y todos los listados se refrescan sin recargar.
+- Los palets 'fuera de configuración' ahora se pueden colocar arrastrándolos a un hueco del mapa.
