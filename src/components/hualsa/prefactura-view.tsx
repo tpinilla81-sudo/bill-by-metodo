@@ -119,13 +119,14 @@ function procesarAlmacenajePalets(
 ): {
   lineas: LineaFactura[]
   extraIds: string[]
+  entradasUsadas: string[]
   entradasEmparejadas: number
   sinMatch: number
   precioCero: number
   portesAnadidos: number
   sinPorte: number
 } {
-  const empty = { lineas: [] as LineaFactura[], extraIds: [] as string[], entradasEmparejadas: 0, sinMatch: 0, precioCero: 0, portesAnadidos: 0, sinPorte: 0 }
+  const empty = { lineas: [] as LineaFactura[], extraIds: [] as string[], entradasUsadas: [] as string[], entradasEmparejadas: 0, sinMatch: 0, precioCero: 0, portesAnadidos: 0, sinPorte: 0 }
   const salidas = sel.filter(isSalidaPalet)
   if (!targetCliId || salidas.length === 0) return empty
 
@@ -213,7 +214,12 @@ function procesarAlmacenajePalets(
     }
   }
 
-  return { lineas, extraIds: [], entradasEmparejadas: emparejadas, sinMatch, precioCero, portesAnadidos, sinPorte }
+  // V29.11: ids de las entradas EMPAREJADAS con salidas de esta selección —
+  // SOLO esas se excluyen de la factura (su ciclo se factura aquí como
+  // SALIDA + ALMACENAJE + PORTE y la entrada se factura por su lado). Las
+  // demás entradas de palet seleccionadas (palets aún en almacén, o cuya
+  // salida no se factura ahora) son líneas normales y SÍ entran en la factura.
+  return { lineas, extraIds: [], entradasUsadas: [...usados], entradasEmparejadas: emparejadas, sinMatch, precioCero, portesAnadidos, sinPorte }
 }
 interface InvoiceData {
   cli: Cliente; lineas: LineaFactura[]
@@ -428,17 +434,26 @@ export function PreFacturaView() {
     // (en el mes que le toque).
     const alm = procesarAlmacenajePalets(sel, registros, catalogo, targetCliId)
 
-    // V29.9: si esta factura incluye SALIDAS de palet, las ENTRADAS de palet
-    // de la selección se EXCLUYEN de la factura (y NO se marcan como
-    // facturadas) — se facturan por su lado, en su propio mes.
+    // V29.11: si esta factura incluye SALIDAS de palet, SOLO se excluyen las
+    // entradas de palet EMPAREJADAS con esas salidas (su ciclo se factura aquí
+    // como SALIDA + ALMACENAJE + PORTE, y la entrada se factura por su lado).
+    // Antes se excluyan TODAS las entradas de la selección en cuanto había una
+    // salida — por eso en SMURFIT WESTROCK faltaban líneas y conceptos en la
+    // tabla: las entradas de palets AÚN EN ALMACÉN (sin salida) desaparecían.
     const haySalidas = sel.some(isSalidaPalet)
-    const entradasExcluidas = haySalidas ? sel.filter(isEntradaPalet) : []
+    const entradasExcluidas = haySalidas
+      ? sel.filter(r => isEntradaPalet(r) && alm.entradasUsadas.includes(r.id))
+      : []
+    const entradasLibres = haySalidas
+      ? sel.filter(r => isEntradaPalet(r) && !alm.entradasUsadas.includes(r.id))
+      : []
     const excluidasIds = new Set(entradasExcluidas.map(r => r.id))
     const selFacturable = haySalidas ? sel.filter(r => !excluidasIds.has(r.id)) : sel
 
-    if (alm.entradasEmparejadas > 0 || alm.sinMatch > 0 || alm.precioCero > 0 || alm.portesAnadidos > 0 || alm.sinPorte > 0 || entradasExcluidas.length > 0) {
+    if (alm.entradasEmparejadas > 0 || alm.sinMatch > 0 || alm.precioCero > 0 || alm.portesAnadidos > 0 || alm.sinPorte > 0 || entradasExcluidas.length > 0 || entradasLibres.length > 0) {
       const msgs: string[] = []
-      if (entradasExcluidas.length > 0) msgs.push(`ℹ ${entradasExcluidas.length} entrada(s) de palet EXCLUIDAS de esta factura — se facturan por su lado, en su propio mes (quedan sin facturar)`)
+      if (entradasExcluidas.length > 0) msgs.push(`ℹ ${entradasExcluidas.length} entrada(s) de palet EXCLUIDAS — emparejadas con salidas de esta factura (su ciclo se factura como SALIDA + ALMACENAJE + PORTE; la entrada se factura por su lado, en su propio mes)`)
+      if (entradasLibres.length > 0) msgs.push(`ℹ ${entradasLibres.length} entrada(s) de palet se facturan AQUÍ como líneas normales (palets aún en almacén o sin salida en esta selección)`)
       if (alm.entradasEmparejadas > 0) msgs.push(`✓ ${alm.entradasEmparejadas} entrada(s) emparejada(s) para calcular los días de almacenaje`)
       if (alm.portesAnadidos > 0) msgs.push(`✓ ${alm.portesAnadidos} porte(s) añadidos (1 por cada salida de palet) — item «${catalogo.find(x => x.clienteId === targetCliId && /porte/i.test(normAlm(`${x.c1} ${x.c2}`)))?.c2 || 'PORTE'}» del catálogo`)
       if (alm.sinMatch > 0) msgs.push(`⚠ ${alm.sinMatch} salida(s) de palet SIN entrada coincidente — se facturan sin días ni porte`)
