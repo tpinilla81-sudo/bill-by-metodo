@@ -531,7 +531,7 @@ export function StockAlmacenView() {
   const [dragLote, setDragLote] = useState<LoteStock | null>(null)
   const [dragOverUb, setDragOverUb] = useState<string | null>(null)   // hueco destino bajo el cursor
   const [moviendoId, setMoviendoId] = useState<string | null>(null)   // registro en vuelo (guardando)
-  const [movMsg, setMovMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [movMsg, setMovMsg] = useState<{ type: 'ok' | 'err' | 'info'; text: string } | null>(null)
   const movMsgTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qrScannerRef = useRef<Html5QrcodeLike | null>(null)
   const qrRegionId = 'qr-reader-region'
@@ -719,14 +719,15 @@ export function StockAlmacenView() {
   }
 
   // ─── V29.6: handlers de drag & drop ──────────────────────────────────
-  function avisoMov(type: 'ok' | 'err', text: string, ms = 4000) {
+  function avisoMov(type: 'ok' | 'err' | 'info', text: string, ms = 4000) {
     if (movMsgTimer.current) clearTimeout(movMsgTimer.current)
     setMovMsg({ type, text })
     movMsgTimer.current = setTimeout(() => setMovMsg(null), ms)
   }
 
-  // Empieza el arrastre de un lote (palet del mapa o chip "fuera de config")
-  function iniciarDrag(e: DragEvent<HTMLDivElement>, lote: LoteStock) {
+  // Empieza el arrastre de un lote (palet del mapa, fila del DETALLE o chip
+  // "fuera de config")
+  function iniciarDrag(e: DragEvent<HTMLElement>, lote: LoteStock) {
     if (moviendoId) { e.preventDefault(); return }
     setDragLote(lote)
     try {
@@ -740,17 +741,26 @@ export function StockAlmacenView() {
     setDragOverUb(null)
   }
 
-  // Estado de una celda como DESTINO del arrastre en curso
-  function estadoDestino(c: CeldaStock): 'ok' | 'full' | 'same' | null {
+  // Estado de una celda como DESTINO del arrastre en curso.
+  // V29.10: el drop NUNCA se bloquea por capacidad. Antes un hueco "lleno"
+  // RECHAZABA el drop en silencio (el navegador no disparaba onDrop y no
+  // aparecía ningún aviso) y un lote grande —p.ej. el palet más antiguo con
+  // muchos palets juntos— no se podía mover a NINGÚN sitio. Ahora:
+  //   'ok'   → cabe dentro de la altura configurada
+  //   'warn' → se pasa de la altura configurada: se permite igualmente y se
+  //            avisa (el mapa ya pinta columnas desbordadas con "+N")
+  //   'same' → su propia columna: no-op
+  function estadoDestino(c: CeldaStock): 'ok' | 'warn' | 'same' | null {
     if (!dragLote) return null
     if (normHuecoKey(dragLote.ubicacion) === normHuecoKey(c.ubicacion)) return 'same'
-    if (c.cap > 0 && c.total + dragLote.cantRestante > c.cap) return 'full'
+    if (c.cap > 0 && c.total + dragLote.cantRestante > c.cap) return 'warn'
     return 'ok'
   }
 
   function sobreCelda(e: DragEvent<HTMLDivElement>, c: CeldaStock) {
     if (!dragLote) return
-    if (estadoDestino(c) === 'ok') {
+    const st = estadoDestino(c)
+    if (st === 'ok' || st === 'warn') {
       e.preventDefault() // sin esto el navegador no permite el drop
       e.dataTransfer.dropEffect = 'move'
     }
@@ -773,14 +783,18 @@ export function StockAlmacenView() {
   // (p.ej. E2F4H2 = estantería E2, hueco 4, altura 2 — la 1ª libre de la
   // columna destino). La UBICACIÓN es por REGISTRO: un lote de N palets
   // se mueve entero (todos sus palets van juntos).
+  // V29.10: la ALTURA configurada es un aviso, no un veto — si el lote se
+  // pasa de la altura del hueco se guarda igualmente y el aviso ok lo dice.
   async function moverLote(lote: LoteStock, destino: CeldaStock) {
     if (moviendoId) return
-    if (normHuecoKey(lote.ubicacion) === normHuecoKey(destino.ubicacion)) return
-    // Capacidad: respeta la ALTURA configurada del hueco destino
-    if (destino.cap > 0 && destino.total + lote.cantRestante > destino.cap) {
-      avisoMov('err', `«${destino.ubicacion}» está lleno (${destino.total}/${destino.cap}): no caben ${lote.cantRestante} palet${lote.cantRestante > 1 ? 's' : ''}`)
+    if (normHuecoKey(lote.ubicacion) === normHuecoKey(destino.ubicacion)) {
+      // V29.10: soltarlo en SU propia columna (a otra altura) no es un
+      // movimiento — la ubicación del motor es por COLUMNA. Aviso en vez
+      // de no-op silencioso para que nunca parezca que "no responde".
+      avisoMov('info', `«${lote.ident || 'Palet'}» ya está en esa columna (${lote.ubicacion || 'sin ubicación'}) — la ubicación es por columna, no por altura`)
       return
     }
+    const sobra = destino.cap > 0 && destino.total + lote.cantRestante > destino.cap
     const fila = parseInt(destino.pos, 10) || 1
     const nuevaUb = `${destino.rack}F${fila}H${destino.total + 1}`
     setMoviendoId(lote.id)
@@ -806,7 +820,7 @@ export function StockAlmacenView() {
         return { ...r, customData: JSON.stringify(cd) }
       }))
       triggerBackup()
-      avisoMov('ok', `${lote.ident || 'Palet'} movido a ${nuevaUb}`)
+      avisoMov('ok', `${lote.ident || 'Palet'} movido a ${nuevaUb}${sobra ? ` — ojo: la columna queda por encima de su altura (${destino.total + lote.cantRestante}/${destino.cap})` : ''}`)
     } catch (err) {
       avisoMov('err', err instanceof Error ? err.message : 'Error moviendo el palet')
     }
@@ -1440,7 +1454,7 @@ export function StockAlmacenView() {
                   <span className="text-gray-400 font-semibold">filas = niveles/alturas · cada casilla = 1 palet</span>
                 )}
                 <span className="flex items-center gap-1 text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">
-                  <Move className="h-3 w-3" /> Arrastra un palet a otro hueco para moverlo
+                  <Move className="h-3 w-3" /> Arrastra un palet a otro hueco para moverlo (vale aunque esté lleno)
                 </span>
                 <Button
                   variant="outline"
@@ -1463,7 +1477,8 @@ export function StockAlmacenView() {
               <div className={`mb-3 rounded-lg px-3 py-2 text-xs font-bold print-hide ${
                 moviendoId && !movMsg ? 'bg-sky-50 text-sky-700 border border-sky-200'
                   : movMsg?.type === 'ok' ? 'bg-teal-50 text-teal-800 border border-teal-200'
-                    : 'bg-red-50 text-red-700 border border-red-200'
+                    : movMsg?.type === 'info' ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                      : 'bg-red-50 text-red-700 border border-red-200'
               }`}>
                 {moviendoId && !movMsg ? 'Guardando movimiento…' : movMsg?.text}
               </div>
@@ -1564,7 +1579,7 @@ export function StockAlmacenView() {
                                   // (mueve su lote) y TODA la columna acepta el drop.
                                   const destSt = dragLote ? estadoDestino(c) : null
                                   const esDestOk = dragOverUb === c.ubicacion && destSt === 'ok'
-                                  const esDestFull = dragOverUb === c.ubicacion && destSt === 'full'
+                                  const esDestWarn = dragOverUb === c.ubicacion && destSt === 'warn'
                                   const arrastrandoEste = ocupada && dragLote && palet?.id === dragLote.id
                                   return (
                                     <div
@@ -1582,7 +1597,7 @@ export function StockAlmacenView() {
                                           : queryNorm
                                             ? 'opacity-30'
                                             : ''
-                                      } ${ocupada ? colorPorDias(dias) : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'} ${llena && esTope && !match ? 'ring-2 ring-red-500 ring-offset-1' : ''} ${ocupada ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoEste ? 'opacity-40' : ''} ${esDestOk ? 'ring-4 ring-teal-500 ring-offset-1 bg-teal-50/80 scale-105' : ''} ${esDestFull ? 'ring-4 ring-rose-500 ring-offset-1 opacity-60' : ''}`}
+                                      } ${ocupada ? colorPorDias(dias) : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'} ${llena && esTope && !match ? 'ring-2 ring-red-500 ring-offset-1' : ''} ${ocupada ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoEste ? 'opacity-40' : ''} ${esDestOk ? 'ring-4 ring-teal-500 ring-offset-1 bg-teal-50/80 scale-105' : ''} ${esDestWarn ? 'ring-4 ring-amber-500 ring-offset-1 bg-amber-50/80' : ''}`}
                                     >
                                       <div className="flex items-center justify-between gap-0.5 pb-0.5 border-b border-gray-300/70">
                                         <span className="text-[8px] font-bold text-gray-400 truncate">{c.rack}</span>
@@ -1640,7 +1655,7 @@ export function StockAlmacenView() {
                         // celda SIEMPRE acepta el drop de otro lote.
                         const destSt = dragLote ? estadoDestino(c) : null
                         const esDestOk = dragOverUb === c.ubicacion && destSt === 'ok'
-                        const esDestFull = dragOverUb === c.ubicacion && destSt === 'full'
+                        const esDestWarn = dragOverUb === c.ubicacion && destSt === 'warn'
                         const celdaDraggable = lotesUnicos.length === 1 && !moviendoId
                         const arrastrandoCelda = !!dragLote && lotesUnicos.some(l => l.id === dragLote.id)
                         return (
@@ -1663,7 +1678,7 @@ export function StockAlmacenView() {
                               ocupada
                                 ? colorPorDias(c.dias)
                                 : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'
-                            } ${c.cap > 0 && c.total >= c.cap ? 'ring-2 ring-red-500 ring-offset-1' : ''} ${celdaDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoCelda ? 'opacity-40' : ''} ${esDestOk ? 'ring-4 ring-teal-500 ring-offset-1 bg-teal-50/80 scale-105' : ''} ${esDestFull ? 'ring-4 ring-rose-500 ring-offset-1 opacity-60' : ''}`}
+                            } ${c.cap > 0 && c.total >= c.cap ? 'ring-2 ring-red-500 ring-offset-1' : ''} ${celdaDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoCelda ? 'opacity-40' : ''} ${esDestOk ? 'ring-4 ring-teal-500 ring-offset-1 bg-teal-50/80 scale-105' : ''} ${esDestWarn ? 'ring-4 ring-amber-500 ring-offset-1 bg-amber-50/80' : ''}`}
                           >
                             {/* Nº de UBICACIÓN — visible siempre, aunque esté libre */}
                             <div className="flex items-center justify-between gap-1 pb-1 border-b border-gray-300">
@@ -1817,9 +1832,10 @@ export function StockAlmacenView() {
       {detalle.length > 0 && (
         <Card>
           <CardContent className="p-4">
-            <h3 className="font-bold text-gray-800 mb-3 text-sm flex items-center gap-2">
+            <h3 className="font-bold text-gray-800 mb-0.5 text-sm flex items-center gap-2">
               <Package className="h-4 w-4 text-teal-600" /> DETALLE DEL STOCK ({totalStock} palets)
             </h3>
+            <p className="text-[11px] text-gray-400 mb-3 print-hide">Consejo: arrastra una fila al mapa para mover ese lote a otro hueco.</p>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -1837,8 +1853,18 @@ export function StockAlmacenView() {
                   {detalle.map(l => {
                     const d = diasEnAlmacen(l.fecha, now)
                     const { rack, pos } = splitUbicacion(l.ubicacion)
+                    const arrastrandoEsteLote = !!dragLote && dragLote.id === l.id
                     return (
-                      <tr key={l.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <tr
+                        key={l.id}
+                        // V29.10: TODAS las cargas se pueden mover — también
+                        // desde esta tabla: arrastra la fila a un hueco del mapa
+                        draggable={!moviendoId}
+                        onDragStart={e => iniciarDrag(e, l)}
+                        onDragEnd={terminarDrag}
+                        title={`Arrastra «${l.ident || l.ubicacion || 'este lote'}» a un hueco del mapa para moverlo`}
+                        className={`border-b border-gray-100 hover:bg-gray-50 cursor-grab active:cursor-grabbing ${arrastrandoEsteLote ? 'opacity-40' : ''}`}
+                      >
                         <td className="py-2 pr-3 font-semibold text-gray-700">{l.ubicacion || '—'}</td>
                         <td className="py-2 pr-3 text-gray-600">{rack}{pos ? ` · ${pos}` : ''}</td>
                         <td className="py-2 pr-3 text-gray-600">{l.ident || '—'}</td>
