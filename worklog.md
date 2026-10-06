@@ -1730,3 +1730,23 @@ Stage Summary:
 - El mapa de STOCK ALMACÉN permite mover palets/lotes arrastrando con el ratón a cualquier hueco, respetando alturas configuradas.
 - Los cambios persisten en la DB (ubicación del registro ENTRADA en customData) y todos los listados se refrescan sin recargar.
 - Los palets 'fuera de configuración' ahora se pueden colocar arrastrándolos a un hueco del mapa.
+
+---
+Task ID: V29.10
+Agent: Main Agent
+Task: "Que se puedan mover TODOS" — arreglar el lote que no se podía mover (p.ej. el de 56 días) en el mapa de STOCK ALMACÉN
+
+Work Log:
+- Diagnóstico: en V29.6 un hueco "lleno" (cap>0 y total+cantRestante>cap) devolvía 'full' → sobreCelda NO hacía preventDefault → el navegador rechazaba el drop EN SILENCIO (onDrop no llegaba a dispararse y no había ningún aviso). Un lote antiguo suele tener varios palets (se mueve el lote ENTERO) y si no cabía entero en ninguna columna no se podía mover a NINGÚN sitio → "no mueve". Los lotes pequeños sí se movían.
+- estadoDestino(): 'full' → 'warn'. La altura configurada es ahora un AVISO, no un veto: el drop SIEMPRE se acepta en cualquier columna distinta de la suya. Resalte ámbar (ring-amber) en vez del rojo de "bloqueado".
+- moverLote(): eliminado el veto de capacidad; si la columna destino queda por encima de su altura configurada, el aviso ok añade "— ojo: la columna queda por encima de su altura (N/M)". El mapa ya pintaba columnas desbordadas (+N), así que esto es coherente.
+- Soltar un palet en SU PROPIA columna (a otra altura) antes era no-op silencioso ('same'); ahora muestra aviso info "ya está en esa columna — la ubicación es por columna, no por altura" (nuevo tipo 'info' en avisoMov + banner azul).
+- Filas del DETALLE DEL STOCK ahora ARRASTRABLES al mapa (draggable + iniciarDrag + cursor-grab + title): el lote se puede mover desde el mapa O desde el listado donde mejor se ve su antigüedad. iniciarDrag acepta DragEvent<HTMLElement> (div y tr).
+- Textos: leyenda del mapa "Arrastra un palet a otro hueco para moverlo (vale aunque esté lleno)" + consejo bajo DETALLE DEL STOCK.
+- tsc: solo queda el error preexistente del cast Html5Qrcode. next build OK. Smoke test E2E del PATCH (login→crear registro→PATCH ubicación→verificar customData intacto→borrar) OK: "Ubicación" actualizada a E9F9H9 y "Lote" intacto. Servidor daemon reiniciado con el build nuevo (scripts/start-bill-server.sh). Commit 188bdf0, push a main.
+- Scripts auxiliares: scripts/check-stock-56d.ts (consulta lotes en stock + días) y scripts/smoke-patch-ubicacion.ts (E2E del PATCH).
+
+Stage Summary:
+- TODAS las cargas se pueden mover arrastrando: palets del ALZADO, celdas de vista simple, filas de lote, chips "fuera de configuración" y ahora también las filas del DETALLE DEL STOCK.
+- Ningún drop se rechaza en silencio: hueco lleno → aviso ámbar + se permite; misma columna → aviso informativo; error de guardado → banner rojo.
+- La altura configurada deja de ser un bloqueo físico: el usuario decide (queda avisada en el banner).
