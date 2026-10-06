@@ -1768,3 +1768,26 @@ Stage Summary:
 - PRE-FACTURA: al haber salidas de palet en la selección SOLO se excluyen las entradas emparejadas con esas salidas. Todas las demás líneas seleccionadas (incluidas entradas de palets aún en almacén) aparecen en la factura con su concepto.
 - La regla V29.9 se mantiene para ciclos reales (entrada↔salida 1:1): la entrada del ciclo se factura por su lado.
 - Si faltan conceptos PORTE/COSTE DIARIO en la factura, los avisos lo dicen (no hay item en el catálogo del cliente).
+
+---
+Task ID: V29.12
+Agent: Main Agent
+Task: STOCK ALMACÉN — «vale aunque esté lleno» NO puede ser: un hueco, un palet; si hay huecos por encima de su altura, corregirlos
+
+Work Log:
+- El usuario veta el comportamiento V29.10 («se permite aunque esté lleno»): la regla física es UN HUECO, UN PALET — no se apila por encima de la altura configurada del hueco.
+- estadoDestino: 'warn' → 'full'. Un hueco lleno (total + cantRestante del lote > cap) NO admite el drop. cap=0 (sin límite) sigue admitiendo siempre.
+- A diferencia del veto original (que rechazaba en silencio), ahora sobreCelda SIEMPRE hace preventDefault: el drop se acepta como evento y se EXPLICA el rechazo — dropEffect 'none' (cursor prohibido) + al soltar banner rojo: «X no cabe en P1-02: 1/3 plazas ocupadas y el lote trae 3 — un hueco, un palet».
+- Soltar en su propia columna ahora SÍ dispara su aviso informativo (antes el drop ni se aceptaba y el aviso era código muerto).
+- moverLote: restaurado el veto de capacidad con mensaje explicativo; eliminado el aviso «queda por encima de su altura» del éxito (ya no puede pasar).
+- Resalte del destino lleno en el mapa: rojo (ring-red-500) en alzado por niveles y en celdas simples (antes ámbar = permitido).
+- Leyenda del mapa: «(un hueco, un palet)».
+- Nuevo contador DESBORDES en la cabecera del mapa: si hay columnas con total > cap, chip rojo «⚠ N hueco(s) por encima de su altura» para localizarlas y arrastrar el exceso a un hueco libre.
+- Auditoría de datos (scripts/check-huecos-duplicados.ts): replica el motor de stock por tenant y cruza con Config.almacenCfg → 0 columnas por encima de su altura y 0 plazas duplicadas en la DB actual (solo había 2 lotes de smoke tests antiguos). No hizo falta corregir datos.
+- Validación E2E con navegador (usuario temporal de test, borrado al terminar; seed scripts/seed-v2911-test.ts): (1) drop en columna llena 3/3 → vetado + banner de error ✓; (2) drop en hueco libre → movido a P1F2H1 ✓; (3) lote de 3 palets sobre hueco 1/3 → vetado con mensaje exacto ✓; (4) drop en su propia columna → aviso informativo ✓; (5) desborde forzado en DB (5 palets en hueco cap 2) → chip «⚠ 1 hueco por encima de su altura» ✓; (6) arrastrar el exceso a un hueco libre corrige el desborde y el chip desaparece ✓.
+- next build + reinicio del daemon (el bundle de producción estaba cacheado con la leyenda antigua). Limpieza: lotes L-V2911-*, cliente de test y usuario test-v2911@hualsa.es eliminados.
+
+Stage Summary:
+- Regla «UN HUECO, UN PALET» restaurada y visible: lleno = vetado, pero NUNCA en silencio (rojo + cursor prohibido + banner con la explicación).
+- El mapa avisa de huecos históricos por encima de su altura y la propia UI permite corregirlos arrastrando el exceso a un hueco libre.
+- Auditoría: la base de datos actual no tiene ningún hueco desbordado; la regla impide crearlos a partir de ahora.

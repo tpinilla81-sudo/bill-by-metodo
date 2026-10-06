@@ -650,6 +650,11 @@ export function StockAlmacenView() {
   const fueraCfg = racksCalc.fuera
   const totalHuecos = racksCalc.totalHuecos
   const huecosOcupados = racksCalc.huecosOcupados
+  // V29.11: columnas con MÁS palets de los que admite su altura (desbordes
+  // históricos, p.ej. creados antes de la regla «un hueco, un palet»). Se
+  // avisan en la cabecera del mapa para que sea fácil localizarlos y
+  // arrastrar el exceso a un hueco libre.
+  const desbordes = racks.reduce((n, rk) => n + rk.celdas.filter(c => c.cap > 0 && c.total > c.cap).length, 0)
   const paletsFuera = useMemo(() => fueraCfg.reduce((s, c) => s + c.total, 0), [fueraCfg])
 
   // Estanterías detectadas en los movimientos y aún sin configurar (sugerencias).
@@ -742,28 +747,30 @@ export function StockAlmacenView() {
   }
 
   // Estado de una celda como DESTINO del arrastre en curso.
-  // V29.10: el drop NUNCA se bloquea por capacidad. Antes un hueco "lleno"
-  // RECHAZABA el drop en silencio (el navegador no disparaba onDrop y no
-  // aparecía ningún aviso) y un lote grande —p.ej. el palet más antiguo con
-  // muchos palets juntos— no se podía mover a NINGÚN sitio. Ahora:
+  // V29.11: regla «UN HUECO, UN PALET» — un hueco lleno NO admite otro palet
+  // (V29.10 lo permitía «aunque esté lleno» y se ha vetado: no se apila por
+  // encima de la altura configurada). A diferencia del veto original, el
+  // rechazo NUNCA es silencioso: la celda se marca en rojo al pasar por
+  // encima y, si se suelta igualmente, aviso de error explicando por qué.
   //   'ok'   → cabe dentro de la altura configurada
-  //   'warn' → se pasa de la altura configurada: se permite igualmente y se
-  //            avisa (el mapa ya pinta columnas desbordadas con "+N")
-  //   'same' → su propia columna: no-op
-  function estadoDestino(c: CeldaStock): 'ok' | 'warn' | 'same' | null {
+  //   'full' → NO cabe: total + palets del lote superan la altura del hueco
+  //   'same' → su propia columna: no-op con aviso informativo
+  function estadoDestino(c: CeldaStock): 'ok' | 'full' | 'same' | null {
     if (!dragLote) return null
     if (normHuecoKey(dragLote.ubicacion) === normHuecoKey(c.ubicacion)) return 'same'
-    if (c.cap > 0 && c.total + dragLote.cantRestante > c.cap) return 'warn'
+    if (c.cap > 0 && c.total + dragLote.cantRestante > c.cap) return 'full'
     return 'ok'
   }
 
   function sobreCelda(e: DragEvent<HTMLDivElement>, c: CeldaStock) {
     if (!dragLote) return
     const st = estadoDestino(c)
-    if (st === 'ok' || st === 'warn') {
-      e.preventDefault() // sin esto el navegador no permite el drop
-      e.dataTransfer.dropEffect = 'move'
-    }
+    // SIEMPRE se acepta el evento (preventDefault) para poder EXPLICAR el
+    // rechazo con un aviso — antes un hueco lleno lo rechazaba en silencio
+    // (el navegador ni siquiera disparaba onDrop). Con dropEffect 'none' el
+    // cursor marca prohibido, y soltar dispara el aviso de error.
+    e.preventDefault()
+    e.dataTransfer.dropEffect = st === 'full' ? 'none' : 'move'
     setDragOverUb(prev => (prev === c.ubicacion ? prev : c.ubicacion))
   }
 
@@ -783,18 +790,22 @@ export function StockAlmacenView() {
   // (p.ej. E2F4H2 = estantería E2, hueco 4, altura 2 — la 1ª libre de la
   // columna destino). La UBICACIÓN es por REGISTRO: un lote de N palets
   // se mueve entero (todos sus palets van juntos).
-  // V29.10: la ALTURA configurada es un aviso, no un veto — si el lote se
-  // pasa de la altura del hueco se guarda igualmente y el aviso ok lo dice.
+  // V29.11: regla «UN HUECO, UN PALET» — si el lote no cabe en la altura
+  // del hueco destino, NO se mueve y se explica (plazas libres vs palets
+  // que trae el lote). Nunca se apila por encima de la altura configurada.
   async function moverLote(lote: LoteStock, destino: CeldaStock) {
     if (moviendoId) return
     if (normHuecoKey(lote.ubicacion) === normHuecoKey(destino.ubicacion)) {
-      // V29.10: soltarlo en SU propia columna (a otra altura) no es un
-      // movimiento — la ubicación del motor es por COLUMNA. Aviso en vez
-      // de no-op silencioso para que nunca parezca que "no responde".
+      // Soltarlo en SU propia columna (a otra altura) no es un movimiento —
+      // la ubicación del motor es por COLUMNA. Aviso en vez de no-op
+      // silencioso para que nunca parezca que "no responde".
       avisoMov('info', `«${lote.ident || 'Palet'}» ya está en esa columna (${lote.ubicacion || 'sin ubicación'}) — la ubicación es por columna, no por altura`)
       return
     }
-    const sobra = destino.cap > 0 && destino.total + lote.cantRestante > destino.cap
+    if (destino.cap > 0 && destino.total + lote.cantRestante > destino.cap) {
+      avisoMov('err', `«${lote.ident || 'Palet'}» no cabe en ${destino.ubicacion}: ${destino.total}/${destino.cap} plazas ocupadas y el lote trae ${lote.cantRestante} — un hueco, un palet`)
+      return
+    }
     const fila = parseInt(destino.pos, 10) || 1
     const nuevaUb = `${destino.rack}F${fila}H${destino.total + 1}`
     setMoviendoId(lote.id)
@@ -820,7 +831,7 @@ export function StockAlmacenView() {
         return { ...r, customData: JSON.stringify(cd) }
       }))
       triggerBackup()
-      avisoMov('ok', `${lote.ident || 'Palet'} movido a ${nuevaUb}${sobra ? ` — ojo: la columna queda por encima de su altura (${destino.total + lote.cantRestante}/${destino.cap})` : ''}`)
+      avisoMov('ok', `${lote.ident || 'Palet'} movido a ${nuevaUb}`)
     } catch (err) {
       avisoMov('err', err instanceof Error ? err.message : 'Error moviendo el palet')
     }
@@ -1454,8 +1465,16 @@ export function StockAlmacenView() {
                   <span className="text-gray-400 font-semibold">filas = niveles/alturas · cada casilla = 1 palet</span>
                 )}
                 <span className="flex items-center gap-1 text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">
-                  <Move className="h-3 w-3" /> Arrastra un palet a otro hueco para moverlo (vale aunque esté lleno)
+                  <Move className="h-3 w-3" /> Arrastra un palet a otro hueco para moverlo (un hueco, un palet)
                 </span>
+                {desbordes > 0 && (
+                  <span
+                    className="flex items-center gap-1 text-red-700 bg-red-50 border border-red-300 rounded-full px-2 py-0.5"
+                    title="Hay columnas con más palets de los que admite su altura configurada. Arrastra el exceso a un hueco libre para corregirlo."
+                  >
+                    ⚠ {desbordes} {desbordes === 1 ? 'hueco por encima de su altura' : 'huecos por encima de su altura'}
+                  </span>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -1579,7 +1598,7 @@ export function StockAlmacenView() {
                                   // (mueve su lote) y TODA la columna acepta el drop.
                                   const destSt = dragLote ? estadoDestino(c) : null
                                   const esDestOk = dragOverUb === c.ubicacion && destSt === 'ok'
-                                  const esDestWarn = dragOverUb === c.ubicacion && destSt === 'warn'
+                                  const esDestFull = dragOverUb === c.ubicacion && destSt === 'full'
                                   const arrastrandoEste = ocupada && dragLote && palet?.id === dragLote.id
                                   return (
                                     <div
@@ -1597,7 +1616,7 @@ export function StockAlmacenView() {
                                           : queryNorm
                                             ? 'opacity-30'
                                             : ''
-                                      } ${ocupada ? colorPorDias(dias) : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'} ${llena && esTope && !match ? 'ring-2 ring-red-500 ring-offset-1' : ''} ${ocupada ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoEste ? 'opacity-40' : ''} ${esDestOk ? 'ring-4 ring-teal-500 ring-offset-1 bg-teal-50/80 scale-105' : ''} ${esDestWarn ? 'ring-4 ring-amber-500 ring-offset-1 bg-amber-50/80' : ''}`}
+                                      } ${ocupada ? colorPorDias(dias) : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'} ${llena && esTope && !match ? 'ring-2 ring-red-500 ring-offset-1' : ''} ${ocupada ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoEste ? 'opacity-40' : ''} ${esDestOk ? 'ring-4 ring-teal-500 ring-offset-1 bg-teal-50/80 scale-105' : ''} ${esDestFull ? 'ring-4 ring-red-500 ring-offset-1 bg-red-50/80' : ''}`}
                                     >
                                       <div className="flex items-center justify-between gap-0.5 pb-0.5 border-b border-gray-300/70">
                                         <span className="text-[8px] font-bold text-gray-400 truncate">{c.rack}</span>
@@ -1652,10 +1671,10 @@ export function StockAlmacenView() {
                         const match = cellMatch(c)
                         // V29.6: drag & drop — con UN solo lote la celda entera
                         // se arrastra; con varios, cada lote de la lista. La
-                        // celda SIEMPRE acepta el drop de otro lote.
+                        // celda acepta el drop si cabe (V29.11: un hueco, un palet).
                         const destSt = dragLote ? estadoDestino(c) : null
                         const esDestOk = dragOverUb === c.ubicacion && destSt === 'ok'
-                        const esDestWarn = dragOverUb === c.ubicacion && destSt === 'warn'
+                        const esDestFull = dragOverUb === c.ubicacion && destSt === 'full'
                         const celdaDraggable = lotesUnicos.length === 1 && !moviendoId
                         const arrastrandoCelda = !!dragLote && lotesUnicos.some(l => l.id === dragLote.id)
                         return (
@@ -1678,7 +1697,7 @@ export function StockAlmacenView() {
                               ocupada
                                 ? colorPorDias(c.dias)
                                 : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'
-                            } ${c.cap > 0 && c.total >= c.cap ? 'ring-2 ring-red-500 ring-offset-1' : ''} ${celdaDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoCelda ? 'opacity-40' : ''} ${esDestOk ? 'ring-4 ring-teal-500 ring-offset-1 bg-teal-50/80 scale-105' : ''} ${esDestWarn ? 'ring-4 ring-amber-500 ring-offset-1 bg-amber-50/80' : ''}`}
+                            } ${c.cap > 0 && c.total >= c.cap ? 'ring-2 ring-red-500 ring-offset-1' : ''} ${celdaDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoCelda ? 'opacity-40' : ''} ${esDestOk ? 'ring-4 ring-teal-500 ring-offset-1 bg-teal-50/80 scale-105' : ''} ${esDestFull ? 'ring-4 ring-red-500 ring-offset-1 bg-red-50/80' : ''}`}
                           >
                             {/* Nº de UBICACIÓN — visible siempre, aunque esté libre */}
                             <div className="flex items-center justify-between gap-1 pb-1 border-b border-gray-300">
