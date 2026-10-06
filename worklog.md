@@ -1791,3 +1791,20 @@ Stage Summary:
 - Regla «UN HUECO, UN PALET» restaurada y visible: lleno = vetado, pero NUNCA en silencio (rojo + cursor prohibido + banner con la explicación).
 - El mapa avisa de huecos históricos por encima de su altura y la propia UI permite corregirlos arrastrando el exceso a un hueco libre.
 - Auditoría: la base de datos actual no tiene ningún hueco desbordado; la regla impide crearlos a partir de ahora.
+
+---
+Task ID: V29.13
+Agent: Main Agent
+Task: PRE-FACTURA — que en la tabla de datos aparezcan TODOS los campos (SMURFIT WESTROCK)
+
+Work Log:
+- La tabla de datos de PRE-FACTURA (selección con checkboxes) tenía columnas FIJAS: Fecha/Cliente/C1/C2/Cant/P.Unit/Importe/Obs — los campos personalizados del customData no aparecían.
+- Solución GENÉRICA (SMURFIT solo existe en producción; la DB de desarrollo no tiene sus registros): columnas dinámicas = campos custom configurados en ENTRADA (visibles, con su etiqueta) + cualquier clave que traigan los PROPIOS registros filtrados (importaciones Excel o campos propios del cliente). Union ordenada, sin duplicados (camposCustom, useMemo sobre filtered + config.fieldsEntrada).
+- Filtrando por cliente, la tabla muestra exactamente TODOS los campos de ese cliente; sin datos custom la tabla queda como siempre. Celdas con truncado + tooltip (title) para valores largos; colSpan del estado vacío ajustado (9 + camposCustom.length).
+- Los customData de ENTRADA guardan las claves de fieldsEntrada (custom_lote, custom_ubicacion, custom_descripcion…) — verificado en la config del tenant y en los registros.
+- Validación E2E en navegador (usuario temporal con permisos stock/registros/entrada/prefactura/facturas, borrado al terminar): seed de cliente «SMURFIT WESTROCK TEST» + 3 registros con estructura nueva (c1="SMURFIT ENTRADA/SALIDA PALET", c2=código) y customData con custom_lote, custom_ubicacion + campos NO configurados (ALBARÁN, MATRÍCULA, BULTOS). La tabla muestra las 11 columnas: fijas + LOTE/Nº PALET + UBICACIÓN + DESCRIPCION + ALBARÁN + MATRÍCULA + BULTOS, con valores correctos; registros de otros clientes quedan con celdas vacías sin error. Regresión: «Crear Pre-Factura» con la estructura SMURFIT sigue generando líneas SALIDA + ALMACENAJE (emparejamiento por lote) y aviso de PORTE.
+- next build + reinicio del daemon. Limpieza: registros/cliente de test y usuario temporal eliminados (scripts/clean-v2913-test.ts, clean-v2911-user.ts).
+
+Stage Summary:
+- PRE-FACTURA: la tabla de datos ahora muestra TODOS los campos de los registros seleccionados — los configurados en ENTRADA y cualquier campo propio que traiga el cliente (SMURFIT WESTROCK incluido), sin tocar la configuración ni la DB.
+- Genérico y a prueba de futuro: si mañana se añade un campo nuevo a los registros de un cliente, aparece solo en la tabla al filtrar por él.

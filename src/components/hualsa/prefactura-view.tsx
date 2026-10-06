@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Printer, FileSpreadsheet, Receipt, RotateCcw, ArrowLeftRight, CheckCircle2, X, Filter, ChevronDown, ClipboardList, Plus } from 'lucide-react'
 import { fmtCurrency, fmtDate, fmtMonth, todayISO, currentYear, type Cliente, type CatalogoItem, type Registro } from '@/lib/hualsa-utils'
-import { useConfig, DEFAULT_LABELS_FACTURAS, type ResolvedConfig } from '@/lib/config'
+import { useConfig, DEFAULT_LABELS_FACTURAS, parseCustomData, type ResolvedConfig } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 import * as XLSX from 'xlsx'
 
@@ -358,6 +358,30 @@ export function PreFacturaView() {
   const selectedItems = filtered.filter(r => selection[r.id] !== false)
   const totalCant = selectedItems.reduce((s, r) => s + r.cant, 0)
   const totalBase = selectedItems.reduce((s, r) => s + getPrecio(r) * r.cant, 0)
+
+  // ─── V29.13: TODOS los campos de los registros en la tabla de datos ────
+  // Columnas personalizadas = campos custom configurados en ENTRADA (visibles)
+  // + cualquier clave que traigan los PROPIOS registros filtrados (importaciones
+  // Excel o campos propios de un cliente — p.ej. SMURFIT WESTROCK). Filtrando
+  // por cliente, la tabla muestra exactamente TODOS los campos de ese cliente,
+  // aunque no estén en la configuración. Sin datos custom → tabla como siempre.
+  const camposCustom = useMemo(() => {
+    const out: { key: string; label: string }[] = []
+    const seen = new Set<string>()
+    for (const f of (config?.fieldsEntrada || [])) {
+      if (!f.isCustom || !f.visible || seen.has(f.key)) continue
+      seen.add(f.key)
+      out.push({ key: f.key, label: f.label })
+    }
+    for (const r of filtered) {
+      for (const k of Object.keys(parseCustomData(r.customData || ''))) {
+        if (seen.has(k)) continue
+        seen.add(k)
+        out.push({ key: k, label: k })
+      }
+    }
+    return out
+  }, [config?.fieldsEntrada, filtered])
 
   function toggleItem(id: string) {
     setSelection(prev => ({ ...prev, [id]: prev[id] === false ? true : false }))
@@ -894,6 +918,9 @@ export function PreFacturaView() {
                 <th className="p-2 text-left font-semibold border-b bg-orange-50">P.Unit</th>
                 <th className="p-2 text-left font-semibold border-b bg-orange-50">Importe</th>
                 <th className="p-2 text-left font-semibold border-b bg-orange-50">Obs</th>
+                {camposCustom.map(c => (
+                  <th key={c.key} className="p-2 text-left font-semibold border-b bg-orange-50 whitespace-nowrap">{c.label}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -902,6 +929,7 @@ export function PreFacturaView() {
                 const imp = pu * r.cant
                 const sel = selection[r.id] !== false
                 const isFacturado = r.facturado === true
+                const cd = parseCustomData(r.customData || '')
                 return (
                   <tr key={r.id} className={`border-b ${sel ? '' : 'opacity-40'} ${isFacturado ? 'border-l-4 border-l-green-500 bg-green-50/40' : ''}`}>
                     <td className="p-2 flex items-center gap-1">
@@ -921,11 +949,19 @@ export function PreFacturaView() {
                     <td className="p-2">{fmtCurrency(pu)}</td>
                     <td className="p-2 font-bold">{fmtCurrency(imp)}</td>
                     <td className="p-2">{r.obs}</td>
+                    {camposCustom.map(c => {
+                      const val = String(cd[c.key] ?? '')
+                      return (
+                        <td key={c.key} className="p-2 max-w-[200px] truncate" title={val}>
+                          {val}
+                        </td>
+                      )
+                    })}
                   </tr>
                 )
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={9} className="p-6 text-center text-gray-400">No hay registros para facturar</td></tr>
+                <tr><td colSpan={9 + camposCustom.length} className="p-6 text-center text-gray-400">No hay registros para facturar</td></tr>
               )}
             </tbody>
           </table>
