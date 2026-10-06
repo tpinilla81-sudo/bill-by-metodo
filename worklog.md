@@ -1750,3 +1750,21 @@ Stage Summary:
 - TODAS las cargas se pueden mover arrastrando: palets del ALZADO, celdas de vista simple, filas de lote, chips "fuera de configuración" y ahora también las filas del DETALLE DEL STOCK.
 - Ningún drop se rechaza en silencio: hueco lleno → aviso ámbar + se permite; misma columna → aviso informativo; error de guardado → banner rojo.
 - La altura configurada deja de ser un bloqueo físico: el usuario decide (queda avisada en el banner).
+
+---
+Task ID: V29.11
+Agent: Main Agent
+Task: PRE-FACTURA SMURFIT WESTROCK no muestra todas las líneas seleccionadas / faltan conceptos en la tabla
+
+Work Log:
+- Diagnóstico: en handleGenerar (prefactura-view.tsx), la exclusión de V29.9 era EN BLOQUE: con UNA sola salida de palet en la selección se excluían TODAS las entradas de palet. Con la estructura nueva del catálogo SMURFIT (c1="SMURFIT ENTRADA PALET" / "SMURFIT SALIDA PALET"), un mes normal tiene entradas + salidas → las entradas de palets AÚN EN ALMACÉN (sin salida, o cuya salida no se factura ahora) desaparecían de la factura → "no salen todas las líneas seleccionadas" y faltan conceptos en la tabla.
+- procesarAlmacenajePalets ahora devuelve entradasUsadas: ids de las entradas EMPAREJADAS (FIFO / lote-palet / ubicación) con las salidas de ESTA selección.
+- handleGenerar: entradasExcluidas = solo las entradas de la selección que están en entradasUsadas (su ciclo se factura como SALIDA + ALMACENAJE + PORTE, la entrada se factura por su lado — se conserva V29.9). Las demás entradas seleccionadas pasan a selFacturable como líneas normales (se marcan facturado al confirmar).
+- Alertas ampliadas: "N entradas EXCLUIDAS — emparejadas con salidas de esta factura" y "M entradas se facturan AQUÍ como líneas normales (palets aún en almacén o sin salida en esta selección)".
+- Tests de simulación con 4 escenarios (scripts/test-v2911-exclusion.ts): (1) 10 entradas oct + 2 salidas de palets de sept → 12 líneas facturan + 4 extra ✓ (antes solo 2 líneas); (2) ciclo completo mismo mes → entradas excluidas ✓; (3) solo entradas → todo facturable ✓; (4) mezcla 5 entradas + 2 salidas → solo 2 excluidas, 3 facturan ✓.
+- node_modules había vuelto a desaparecer → bun install + prisma generate + next build regenerados. Servidor daemon reiniciado. Commit dfd5745, push a main.
+
+Stage Summary:
+- PRE-FACTURA: al haber salidas de palet en la selección SOLO se excluyen las entradas emparejadas con esas salidas. Todas las demás líneas seleccionadas (incluidas entradas de palets aún en almacén) aparecen en la factura con su concepto.
+- La regla V29.9 se mantiene para ciclos reales (entrada↔salida 1:1): la entrada del ciclo se factura por su lado.
+- Si faltan conceptos PORTE/COSTE DIARIO en la factura, los avisos lo dicen (no hay item en el catálogo del cliente).
