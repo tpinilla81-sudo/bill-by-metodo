@@ -1828,3 +1828,24 @@ Stage Summary:
 - El almacén queda configurado EXACTAMENTE como la imagen del usuario: PARED 1 (P1) y PARED 2 (P2), pirámide 9/9/8/7/6 (5 alturas, 39 palets por pared), sin otras zonas.
 - Sin cambios de código — solo configuración (Config.almacenCfg); el mapa, el editor y el asistente de ubicación la pintan/usan tal cual.
 - Backup de la config anterior en scripts/backup-almacen-cfg-anterior.json para rollback si hiciera falta.
+
+---
+Task ID: V29.15
+Agent: Main Agent
+Task: EL DIBUJO DEL ALMACÉN DEBE SER EXACTAMENTE EL PLANO — filas etiquetadas FILA 1..5 y huecos llamados F1-1, F1-2… (en las dos paredes)
+
+Work Log:
+- El usuario rechaza V29.14: el mapa seguía pintando casillas por COLUMNA (P1-01…P1-09 repetidas en cada altura, etiquetas «SUELO / 2ª ALTURA…» y casillas fantasma punteadas). Pide que el dibujo sea EXACTAMENTE su plano y que los huecos se llamen F1-1, F1-2… etc., tanto en PARED 1 como en PARED 2.
+- NUEVO NOMBREADO ESTILO PLANO: cada casilla del dibujo es F{fila}-{hueco}, donde fila = FILA de palets desde el suelo (FILA 1 = suelo … FILA 5 arriba) y hueco = posición dentro de la fila. La pirámide 9/9/8/7/6 se pinta como el papel: filas acortándose arriba, sin casillas fantasma. En las dos paredes las etiquetas son las mismas (como el plano físico); la pared va delante en la ubicación completa.
+- UBICACIONES que se guardan en los registros: RACK F{fila}-{hueco} → «P1F1-1», «P2F3-7» (pared P1/P2 + casilla del plano). El asistente propone, el drag & drop escribe y el mapa lee TODO en este formato.
+- src/lib/almacen.ts: nombrePlanoHueco(); normHuecoKey/normPlazaKey con prioridad 0 para el formato plano («P1F2-3» → columna P1-3, misma columna que F1-3 porque apilan en vertical; plaza P1-3-2, equivalente al antiguo P1F3H2). Formatos antiguos (P1F1H1, P1-01, P1-1-1) siguen parseándose — datos históricos sin migrar. huecoOptimo() y listadoHuecos() ya generan nombres planos (columna llena → se nombra por su casilla del suelo F1-n). nivelEntradaTexto() devuelve '' (la fila va dentro del nombre) y huecoConNivel() explica «PARED P1 · FILA n · HUECO m».
+- stock-almacen-view.tsx: alzado reescrito — cabecera «PARED 1»/«PARED 2» (antes «PARED P1»), filas etiquetadas FILA 1..FILA 5 (sin subetiqueta de huecos), casillas etiquetadas F{fila}-{n} con ancho fijo y filas de longitud variable (flex, sin placeholders en paredes; estanterías conservan el dibujo antiguo), totales por columna alineados con las casillas. moverLote() escribe la ubicación en formato plano. Editor de configuración: filas «FILA 1 · suelo … FILA 5», chips de huecos «P1F1-1·5 … P1F1-9·2».
+- entrada-view.tsx: picker (mapa y lista) y asistente en 2 pasos con el mismo estilo — tarjetas «PARED 1/PARED 2», filas FILA j, plazas «P1F1-1»… (plazaHueco = RACK F{fila}-{hueco}), etiquetas inferiores por columna «P1F1-n». entrada-grilla.tsx: ejemplo de importación P1F1-1. sidebar.tsx: etiqueta de build «V29.15-PLANO-FILAS · 2026-10-09» para que el usuario pueda VER que carga la versión nueva.
+- Tests de parseo (scripts/test-v2915-nombres.ts): 17 aserciones OK — plano nuevo, compatibilidad antigua y equivalencias plaza nueva⇄antigua.
+- E2E en navegador (usuario temporal del tenant, borrado al terminar): mapa = plano exacto en ambas paredes; ENTRADA ALMACEN/ENTRADA PALET lote L-V2915-A → «HUECO AUTO» propone P1F1-1; asistente paso 1 «PARED 1 recomendada · P1F1-1», paso 2 con filas FILA 1-5 y verdes F1-1…F1-9; guardar → QR; mapa pinta el palet EN F1-1 con TOTAL 1/5; drag sintético F1-1→F1-3 → detalle «p1f1-3» y DB confirma custom_ubicacion="P1F1-3". Limpieza: registro y usuario de test borrados (0 registros con ubicación).
+- node_modules desapareció OTRA VEZ → bun install + prisma generate + next build + reinicio del daemon.
+
+Stage Summary:
+- El mapa de STOCK ALMACÉN dibuja PARED 1 y PARED 2 EXACTAMENTE como el plano del usuario: filas FILA 1..FILA 5 (9/9/8/7/6) y casillas F1-1…F5-6, sin casillas fantasma.
+- Los huecos SE LLAMAN como el plano: F1-1, F1-2… en las dos paredes; la ubicación completa que guarda el sistema es P1F1-1 / P2F1-1 (pared + casilla) — necesario para distinguir paredes con el mismo nombre de casilla.
+- Asistente de entrada, hueco automático, drag & drop y editor de configuración alineados con el nuevo nombrado; formatos antiguos siguen entendidos.

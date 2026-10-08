@@ -412,7 +412,7 @@ export function EntradaGrilla() {
         case 'cantidad': ejemplo[h.label] = '1'; break
         case 'cliente': ejemplo[h.label] = '(opcional)'; break
         case 'observaciones': ejemplo[h.label] = '(opcional)'; break
-        default: ejemplo[h.label] = h.key === ubicKey ? 'P1F1H1' : (h.key.startsWith('custom_lote') ? 'L-24001' : '')
+        default: ejemplo[h.label] = h.key === ubicKey ? 'P1F1-1' : (h.key.startsWith('custom_lote') ? 'L-24001' : '')
       }
     }
     const ws = XLSX.utils.json_to_sheet([ejemplo], { header: headers })

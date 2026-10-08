@@ -182,10 +182,17 @@ export function splitUbicacion(ub: string): { rack: string; pos: string } {
 //   "P1-01"   (formato antiguo)   → "P1-1" (sigue funcionando)
 //   "P1-1-1"  (formato V29.3)     → "P1-1"
 //   "E1-04"   (formato antiguo)   → "E1-4"
+// V29.15: prioridad 0 — formato PLANO RACK F fila - hueco (el del plano en
+//   papel del usuario): "P1F1-1" = Pared P1, FILA 1 (suelo), hueco 1;
+//   "P1F2-3" = Pared P1, FILA 2 (2ª altura), hueco 3. La clave de COLUMNA
+//   es rack + HUECO (la posición dentro de la fila): "P1F2-3" → "P1-3",
+//   la misma columna que "P1F1-3" — los palets apilan en vertical.
 export function normHuecoKey(s: string): string {
   const t = String(s || '').trim().toUpperCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   if (!t) return ''
+  const mPlano = t.match(/^([A-ZÀ-ÿ]+[0-9]*)F([0-9]+)-([0-9]+)$/)
+  if (mPlano) return `${mPlano[1]}-${parseInt(mPlano[3], 10)}`
   // V29.4: prioridad 1 — formato nuevo RACK F fila [H altura]
   const m = t.match(/^([A-ZÀ-ÿ]+[0-9]*)F([0-9]+)(?:H([0-9]+))?/)
   if (m) {
@@ -216,6 +223,10 @@ export function normPlazaKey(s: string): string {
   const t = String(s || '').trim().toUpperCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   if (!t) return ''
+  // V29.15: formato PLANO RACK F fila - hueco ("P1F2-3" = fila 2, hueco 3):
+  // la PLAZA es rack-hueco-fila → "P1-3-2" (misma plaza que "P1F3H2").
+  const mPlano = t.match(/^([A-ZÀ-ÿ]+[0-9]*)F([0-9]+)-([0-9]+)$/)
+  if (mPlano) return `${mPlano[1]}-${parseInt(mPlano[3], 10)}-${parseInt(mPlano[2], 10)}`
   const m = t.match(/^([A-ZÀ-ÿ]+[0-9]*)F([0-9]+)(?:H([0-9]+))?/)
   if (m) {
     const rack = m[1]
@@ -238,6 +249,17 @@ export function normPlazaKey(s: string): string {
 // Número de hueco con ceros: hueco 3 de 12 → "03" · hueco 5 de 120 → "005"
 export function padPos(n: number, total: number): string {
   return String(n).padStart(Math.max(2, String(total).length), '0')
+}
+
+// V29.15: nombre de una casilla del PLANO (el plano en papel del usuario):
+// "F{fila}-{hueco}" — fila = FILA de palets contando desde el suelo (FILA 1
+// = suelo, FILA 2 = 2ª altura…) y hueco = posición dentro de esa fila.
+// Con el nombre de la zona delante forma la UBICACIÓN completa que se
+// guarda en el registro: "P1F1-1" (Pared 1, fila 1, hueco 1), "P2F3-7"…
+// Sin rack queda la etiqueta que se pinta en el mapa: "F1-1", "F2-3"…
+// (igual en las dos paredes, exactamente como el plano).
+export function nombrePlanoHueco(rack: string, fila: number, hueco: number): string {
+  return `${String(rack || '').trim().toUpperCase()}F${fila}-${hueco}`
 }
 
 // Días que un palet lleva en almacén: fechaEntrada → ahora.
@@ -653,10 +675,12 @@ export function huecoOptimo(
       // Sin altura (0): solo libre si no hay ningún palet (como antes).
       const libre = altura > 0 ? ocupacion < altura : ocupacion === 0
       if (libre) {
-        // V29.4: el nombre del hueco incluye la ALTURA donde entrará el palet.
+        // V29.15: nombre estilo PLANO — RACK F{fila}-{hueco}: fila = la altura
+        // donde entrará el palet (nivel) y hueco = la posición en la fila.
+        // p.ej. P1F1-1 (suelo, hueco 1) · P2F3-7 (3ª fila, hueco 7).
         // altura > 0 → min(ocupacion+1, altura); altura = 0 → 1 (suelo).
         const nivel = altura > 0 ? Math.min(ocupacion + 1, altura) : 1
-        return { hueco: `${e.nombre}F${n}H${nivel}`, rack: e.nombre, pos }
+        return { hueco: nombrePlanoHueco(e.nombre, nivel, n), rack: e.nombre, pos }
       }
     }
   }
@@ -707,8 +731,9 @@ export function clasificarUbicacion(cfg: EstanteriaCfg[], ocupadas: Set<string> 
 // usan el desplegable de UBICACIÓN del formulario de ENTRADA y el datalist
 // de la grilla: al meter un palet, el sistema OFRECE estas ubicaciones.
 export interface HuecoInfo {
-  hueco: string     // V29.3: nombre con altura donde entrará el palet, p.ej. "P1-1-1"
-                    // (rack-fila-altura). Sin ceros para que sea compacto: P1-1-1 / E1-3-2.
+  hueco: string     // V29.15: nombre estilo PLANO con la fila donde entrará el
+                    // palet: "P1F1-1" (pared P1, fila 1 = suelo, hueco 1) —
+                    // antes "P1-1-1" / "P1F1H1" (siguen entendiéndose).
   rack: string      // zona, p.ej. "P1"
   pos: string        // nº de hueco con ceros (para tooltips/labels), p.ej. "01"
   filaNum: number    // nº de hueco sin ceros, p.ej. 1 (V29.3: para el nombre)
@@ -742,12 +767,13 @@ export function listadoHuecos(cfg: EstanteriaCfg[], ocupadas: Set<string> | Map<
       //  · altura > 0  → min(ocupacion+1, altura)  (respeta apilado: debajo debe estar lleno)
       //  · altura = 0  → 1 (suelo, apilado libre)
       const nivelEntrada = altura > 0 ? Math.min(ocupacion + 1, altura) : 1
-      // V29.4: nombre del hueco con altura = RACK F fila H altura (sin ceros)
-      // p.ej. P1F1H1, E1F3H2. Si la columna está LLENA, no lleva H
-      // (no se puede poner más palets) — el nombre es RACK F fila solo.
+      // V29.15: nombre del hueco estilo PLANO = RACK F{fila}-{hueco}, donde
+      // fila = la altura donde ENTRARÁ el siguiente palet y hueco = la
+      // posición en la fila (p.ej. P1F1-1, P2F3-7). Si la columna está LLENA
+      // se nombra por su casilla del suelo (F1-{n}): no admite más palets.
       const hueco = estado === 'ocupado'
-        ? `${e.nombre}F${n}`
-        : `${e.nombre}F${n}H${nivelEntrada}`
+        ? nombrePlanoHueco(e.nombre, 1, n)
+        : nombrePlanoHueco(e.nombre, nivelEntrada, n)
       out.push({ hueco, rack: e.nombre, pos, filaNum: n, tipo: e.est.tipo === 'pared' ? 'pared' : 'estanteria', altura, ocupacion, estado, nivelEntrada })
     }
   }
@@ -765,19 +791,20 @@ export function listadoHuecos(cfg: EstanteriaCfg[], ocupadas: Set<string> | Map<
 //  · altura > 0 → min(ocupacion+1, altura) — el siguiente nivel libre (apilado: debajo debe estar lleno)
 //  · altura = 0 → 1 (suelo, apilado libre)
 //  · columna LLENA → 0 (no se puede poner más palets)
-// Es el número que va al final del nombre del hueco: P1F1H1, E1F3H2, etc.
-export function nivelEntradaTexto(h: HuecoInfo): string {
-  if (h.altura > 0 && h.ocupacion >= h.altura) return ''
-  return `H${h.nivelEntrada}`
+// V29.15: la FILA ya va DENTRO del nombre del hueco estilo plano
+// ("P1F2-3" = pared P1, fila 2, hueco 3), así que el antiguo sufijo "H{n}"
+// desaparece: esta función devuelve '' para que chips y listas no dupliquen
+// la información. Se conserva el export por compatibilidad.
+export function nivelEntradaTexto(_h: HuecoInfo): string {
+  return ''
 }
 
-// V29.4: nombre HUMANO del hueco para mostrar al usuario. El nombre del hueco
-// YA incluye la altura (P1F1H1), así que esta función devuelve una etiqueta
-// más legible: "PARED P1 · FILA 1 · ALTURA 1" para tooltips y lista detallada.
-export function huecoConNivel(h: HuecoInfo, nivel?: string): string {
-  const lv = nivel || nivelEntradaTexto(h)
+// V29.15: etiqueta HUMANA del hueco (estilo plano): el nombre ya es
+// "P1F1-1" — la etiqueta lo explica: "PARED P1 · FILA 1 · HUECO 1".
+export function huecoConNivel(h: HuecoInfo, _nivel?: string): string {
+  void _nivel
   const tipo = h.tipo === 'pared' ? 'PARED' : 'ESTANTERIA'
-  return lv ? `${tipo} ${h.rack} · FILA ${h.filaNum} · ${lv}` : `${tipo} ${h.rack} · FILA ${h.filaNum}`
+  return `${tipo} ${h.rack} · FILA ${h.nivelEntrada || 1} · HUECO ${h.filaNum}`
 }
 
 export type CriterioId =

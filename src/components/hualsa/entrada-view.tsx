@@ -298,8 +298,6 @@ function UbicacionCombo({
                 {Array.from(racksMap.entries()).map(([rack, huecosRack]: [string, HuecoInfo[]]) => {
                   const esPared = huecosRack[0]?.tipo === 'pared'
                   const maxAltura = huecosRack.reduce((m, h) => Math.max(m, h.altura > 0 ? h.altura : 1), 0)
-                  const palabra = esPared ? 'altura' : 'nivel'
-                  const ordinal = esPared ? 'ª' : 'º'
                   const totalOcup = huecosRack.reduce((s, h) => s + h.ocupacion, 0)
                   const totalCap = huecosRack.reduce((s, h) => s + (h.altura > 0 ? h.altura : 0), 0)
                   return (
@@ -307,11 +305,14 @@ function UbicacionCombo({
                       <div className="flex items-center gap-1.5 mb-1.5 px-0.5">
                         <Warehouse className="h-3.5 w-3.5 text-teal-600 shrink-0" />
                         <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
-                          {esPared ? 'PARED' : 'ESTANTERÍA'} {rack}
+                          {/* V29.15: "PARED 1" (zona P{n} → sin la P duplicada) */}
+                          {esPared
+                            ? (/^P\d+$/i.test(rack) ? `PARED ${rack.slice(1)}` : `PARED ${rack}`)
+                            : `ESTANTERÍA ${rack}`}
                         </span>
                         {maxAltura >= 2 && (
                           <span className="text-[9px] font-bold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-1.5 py-0.5">
-                            {maxAltura} {esPared ? 'alturas' : 'niveles'}
+                            {maxAltura} {esPared ? 'filas' : 'niveles'}
                           </span>
                         )}
                         <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${totalCap > 0 && totalOcup >= totalCap ? 'bg-red-50 text-red-700 border-red-300' : totalCap > 0 && totalOcup > 0 ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-300'}`}>
@@ -320,74 +321,77 @@ function UbicacionCombo({
                       </div>
                       <div className="overflow-x-auto">
                         <div className="min-w-full w-max">
-                          {/* Filas: del nivel más alto al suelo (top-down) */}
+                          {/* Filas: de la más alta al suelo (top-down). V29.15:
+                              en PAREDES la fila j solo dibuja las casillas que
+                              llegan (como el plano) con nombre F{j}-{hueco}. */}
                           {Array.from({ length: maxAltura }, (_, idx) => maxAltura - idx).map(j => (
                             <div key={j} className="flex items-stretch gap-1 mb-1 last:mb-0">
                               <div className="w-[3.5rem] shrink-0 flex flex-col items-end justify-center pr-1 text-right leading-tight">
                                 <span className="text-[8px] font-extrabold text-gray-500 uppercase tracking-wide">
-                                  {j === 1 ? 'ALTURA 1' : `ALTURA ${j}`}
+                                  {esPared ? `FILA ${j}` : `ALTURA ${j}`}
                                 </span>
                               </div>
-                              <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${huecosRack.length}, minmax(38px, 1fr))` }}>
-                                {huecosRack.map(h => {
-                                  // Sin límite de altura → solo se dibuja en la fila del suelo
-                                  if (h.altura > 0 && h.altura < j) {
-                                    return <div key={h.hueco} className="rounded border-2 border-dashed border-gray-200/60 bg-gray-50/30 min-h-[2.2rem]" title="A esta altura no llega este hueco" />
-                                  }
-                                  if (h.altura === 0 && j !== 1) {
-                                    return <div key={h.hueco} className="rounded border-2 border-dashed border-gray-200/60 bg-gray-50/30 min-h-[2.2rem]" title="Sin límite de altura" />
-                                  }
-                                  const ocupada = h.altura > 0 ? j <= h.ocupacion : h.ocupacion > 0
-                                  const llena = h.altura > 0 && h.ocupacion >= h.altura
-                                  const esSeleccionado = valueNorm && normAlm(h.hueco) === valueNorm
-                                  const esOptimo = optimo && normAlm(h.hueco) === normAlm(optimo)
-                                  // Clases por estado
-                                  let cls = ''
-                                  if (h.altura === 0) {
-                                    // Sin límite: azul grisáceo
-                                    cls = ocupada ? 'bg-sky-100 border-sky-300 text-sky-700' : 'bg-emerald-50 border-sky-200 text-sky-600'
-                                  } else if (ocupada) {
-                                    cls = llena ? 'bg-red-100 border-red-400 text-red-700' : 'bg-amber-100 border-amber-400 text-amber-800'
-                                  } else {
-                                    cls = 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-400'
-                                  }
-                                  return (
-                                    <button
-                                      key={h.hueco}
-                                      type="button"
-                                      onMouseDown={e => { e.preventDefault(); elegir(h.hueco) }}
-                                      title={`${h.hueco} · FILA ${h.pos} · ALTURA ${j} · ${ocupada ? 'ocupado' : 'libre'}${h.altura > 0 ? ` (${h.ocupacion}/${h.altura})` : ` (${h.ocupacion}/∞)`}`}
-                                      className={`relative rounded-md border-2 p-0.5 min-h-[2.2rem] flex flex-col items-center justify-center transition-all ${cls} ${esSeleccionado ? 'ring-2 ring-[#005bb5] ring-offset-1' : ''} cursor-pointer`}
-                                    >
-                                      {/* Marca ⚡ en el óptimo (solo fila suelo para no duplicar) */}
-                                      {esOptimo && j === 1 && (
-                                        <span className="absolute -top-1.5 -right-1.5 bg-amber-400 rounded-full p-0.5 shadow-sm border border-white">
-                                          <Zap className="h-2 w-2 text-white" />
-                                        </span>
-                                      )}
-                                      <span className="text-[10px] font-extrabold leading-none">{h.pos}</span>
-                                      {h.altura === 0 && h.ocupacion > 0 ? (
-                                        <span className="text-[8px] font-bold leading-none mt-0.5">{h.ocupacion}/∞</span>
-                                      ) : ocupada ? (
-                                        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70 mt-0.5" />
-                                      ) : (
-                                        <span className="text-[7px] font-bold uppercase leading-none mt-0.5 opacity-80">libre</span>
-                                      )}
-                                    </button>
-                                  )
-                                })}
+                              <div className="flex flex-1 gap-1">
+                                {huecosRack
+                                  .map(h => ({ h }))
+                                  .filter(x => x.h.altura > 0 ? x.h.altura >= j : j === 1)
+                                  .map(({ h }, ix) => {
+                                    const n = ix + 1
+                                    const ocupada = h.altura > 0 ? j <= h.ocupacion : h.ocupacion > 0
+                                    const llena = h.altura > 0 && h.ocupacion >= h.altura
+                                    const esSeleccionado = valueNorm && normAlm(h.hueco) === valueNorm
+                                    const esOptimo = optimo && normAlm(h.hueco) === normAlm(optimo)
+                                    // V29.15: nombre estilo plano de esta casilla
+                                    const nombreCasilla = esPared ? `${rack}F${j}-${h.filaNum}` : h.hueco
+                                    // Clases por estado
+                                    let cls = ''
+                                    if (h.altura === 0) {
+                                      // Sin límite: azul grisáceo
+                                      cls = ocupada ? 'bg-sky-100 border-sky-300 text-sky-700' : 'bg-emerald-50 border-sky-200 text-sky-600'
+                                    } else if (ocupada) {
+                                      cls = llena ? 'bg-red-100 border-red-400 text-red-700' : 'bg-amber-100 border-amber-400 text-amber-800'
+                                    } else {
+                                      cls = 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-400'
+                                    }
+                                    return (
+                                      <button
+                                        key={`${h.hueco}-${j}`}
+                                        type="button"
+                                        onMouseDown={e => { e.preventDefault(); elegir(h.hueco) }}
+                                        title={`${nombreCasilla} · FILA ${j}${esPared ? '' : ` · ALTURA ${j}`} · ${ocupada ? 'ocupado' : 'libre'}${h.altura > 0 ? ` (${h.ocupacion}/${h.altura})` : ` (${h.ocupacion}/∞)`}`}
+                                        className={`relative rounded-md border-2 p-0.5 min-h-[2.2rem] w-12 shrink-0 flex flex-col items-center justify-center transition-all ${cls} ${esSeleccionado ? 'ring-2 ring-[#005bb5] ring-offset-1' : ''} cursor-pointer`}
+                                      >
+                                        {/* Marca ⚡ en el óptimo (solo fila suelo para no duplicar) */}
+                                        {esOptimo && j === 1 && (
+                                          <span className="absolute -top-1.5 -right-1.5 bg-amber-400 rounded-full p-0.5 shadow-sm border border-white">
+                                            <Zap className="h-2 w-2 text-white" />
+                                          </span>
+                                        )}
+                                        <span className="text-[9px] font-extrabold leading-none opacity-70">{esPared ? `F${j}-${n}` : h.pos}</span>
+                                        {h.altura === 0 && h.ocupacion > 0 ? (
+                                          <span className="text-[8px] font-bold leading-none mt-0.5">{h.ocupacion}/∞</span>
+                                        ) : ocupada ? (
+                                          <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70 mt-0.5" />
+                                        ) : (
+                                          <span className="text-[7px] font-bold uppercase leading-none mt-0.5 opacity-80">libre</span>
+                                        )}
+                                      </button>
+                                    )
+                                  })}
                               </div>
                             </div>
                           ))}
-                          {/* Etiquetas inferiores: nombre completo del hueco */}
+                          {/* Etiquetas inferiores: nombre completo del hueco.
+                              V29.15: en PAREDES la columna n se identifica por
+                              su casilla del suelo → "P1F1-1", "P1F1-2"… */}
                           <div className="flex items-stretch gap-1 mt-1 pt-1 border-t border-gray-200">
                             <div className="w-[3.5rem] shrink-0 text-right pr-1 text-[8px] font-extrabold text-gray-400 uppercase tracking-wide">Hueco</div>
-                            <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${huecosRack.length}, minmax(38px, 1fr))` }}>
+                            <div className="flex flex-1 gap-1">
                               {huecosRack.map(h => {
                                 const esSeleccionado = valueNorm && normAlm(h.hueco) === valueNorm
                                 return (
-                                  <div key={`lbl-${h.hueco}`} className={`text-center text-[9px] font-mono leading-none ${esSeleccionado ? 'text-[#005bb5] font-extrabold' : 'text-gray-400 font-bold'}`}>
-                                    {rack}-{h.pos}
+                                  <div key={`lbl-${h.hueco}`} className={`w-12 shrink-0 text-center text-[8px] font-mono leading-none ${esSeleccionado ? 'text-[#005bb5] font-extrabold' : 'text-gray-400 font-bold'}`}>
+                                    {esPared ? `${rack}F1-${h.filaNum}` : `${rack}-${h.pos}`}
                                   </div>
                                 )
                               })}
@@ -613,7 +617,7 @@ function UbicacionWizard({
                   >
                     <div className="flex items-center gap-1.5">
                       <Warehouse className="h-4 w-4 text-teal-600 shrink-0" />
-                      <span className="font-bold text-gray-800 text-sm">{r.esPared ? 'PARED' : 'ESTANTERÍA'} {r.nombre}</span>
+                      <span className="font-bold text-gray-800 text-sm">{r.esPared ? (/^P\d+$/i.test(r.nombre) ? `PARED ${r.nombre.slice(1)}` : `PARED ${r.nombre}`) : `ESTANTERÍA ${r.nombre}`}</span>
                       {esRec && (
                         <span className="ml-auto flex items-center gap-0.5 text-[8px] font-extrabold bg-teal-500 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wider">
                           <Zap className="h-2 w-2" /> recomendada
@@ -705,8 +709,6 @@ function UbicacionWizard({
               {huecosRack.length > 0 && (() => {
                 const esPared = huecosRack[0]?.tipo === 'pared'
                 const maxAltura = huecosRack.reduce((m, h) => Math.max(m, h.altura > 0 ? h.altura : 1), 0)
-                const palabra = esPared ? 'altura' : 'nivel'
-                const ordinal = esPared ? 'ª' : 'º'
                 const totalOcup = huecosRack.reduce((s, h) => s + h.ocupacion, 0)
                 const totalCap = huecosRack.reduce((s, h) => s + (h.altura > 0 ? h.altura : 0), 0)
                 const rankDe = (hueco: string) => propuestasRack.findIndex(p => p.hueco.hueco === hueco)
@@ -718,9 +720,12 @@ function UbicacionWizard({
                       </button>
                       <Warehouse className="h-4 w-4 text-teal-600 ml-1" />
                       <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-                        {esPared ? 'PARED' : 'ESTANTERÍA'} {rack}
+                        {/* V29.15: "PARED 1" (zona P{n} → sin la P duplicada) */}
+                        {esPared
+                          ? (/^P\d+$/i.test(rack) ? `PARED ${rack.slice(1)}` : `PARED ${rack}`)
+                          : `ESTANTERÍA ${rack}`}
                       </span>
-                      {maxAltura >= 2 && <span className="text-[9px] font-bold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-1.5 py-0.5">{maxAltura} {esPared ? 'alturas' : 'niveles'}</span>}
+                      {maxAltura >= 2 && <span className="text-[9px] font-bold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-1.5 py-0.5">{maxAltura} {esPared ? 'filas' : 'niveles'}</span>}
                       <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${totalCap > 0 && totalOcup >= totalCap ? 'bg-red-50 text-red-700 border-red-300' : totalOcup > 0 ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-300'}`}>
                         {totalOcup}{totalCap > 0 ? `/${totalCap}` : ''} palets
                       </span>
@@ -731,31 +736,29 @@ function UbicacionWizard({
                           <div key={j} className="flex items-stretch gap-1.5 mb-1.5 last:mb-0">
                             <div className="w-[3.6rem] shrink-0 flex items-end justify-end pr-1 pb-1">
                               <span className="text-[8px] font-extrabold text-gray-500 uppercase tracking-wide leading-tight text-right">
-                                {j === 1 ? 'ALTURA 1' : `ALTURA ${j}`}
+                                {esPared ? `FILA ${j}` : `ALTURA ${j}`}
                               </span>
                             </div>
-                            <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${huecosRack.length}, minmax(44px, 1fr))` }}>
-                              {huecosRack.map(h => {
-                                if (h.altura > 0 && h.altura < j) {
-                                  return <div key={h.hueco} className="rounded-lg border-2 border-dashed border-gray-200/60 bg-gray-50/30 min-h-[3rem]" title="A esta altura no llega este hueco" />
-                                }
-                                if (h.altura === 0 && j !== 1) {
-                                  return <div key={h.hueco} className="rounded-lg border-2 border-dashed border-gray-200/60 bg-gray-50/30 min-h-[3rem]" title="Sin límite de altura" />
-                                }
-                                const ocupada = h.altura > 0 ? j <= h.ocupacion : h.ocupacion > 0
-                                const llena = h.altura > 0 && h.ocupacion >= h.altura
-                                const rank = rankDe(h.hueco)
-                                // V29.4: cada celda es una PLAZA concreta (fila+altura).
-                                // Solo se puede elegir la celda DISPONIBLE = la siguiente
-                                // altura libre (respetando apilado). Las demás son
-                                // informativas: las ocupadas muestran el palet, las
-                                // libres-futuras no se pueden elegir (primero hay que
-                                // llenar la de abajo).
-                                const nivelEntrada = h.altura === 0 ? 1 : Math.min(h.ocupacion + 1, h.altura)
-                                const esDisponible = !llena && j === nivelEntrada
-                                // Nombre de la PLAZA concreta: RACK F fila H altura
-                                const plazaHueco = `${rack}F${h.filaNum}H${j}`
-                                const esSel = sel === plazaHueco
+                            <div className="flex flex-1 gap-1.5">
+                              {huecosRack
+                                .map(h => ({ h }))
+                                .filter(x => x.h.altura > 0 ? x.h.altura >= j : j === 1)
+                                .map(({ h }) => {
+                                  const ocupada = h.altura > 0 ? j <= h.ocupacion : h.ocupacion > 0
+                                  const llena = h.altura > 0 && h.ocupacion >= h.altura
+                                  const rank = rankDe(h.hueco)
+                                  // V29.4: cada celda es una PLAZA concreta (fila+hueco).
+                                  // Solo se puede elegir la celda DISPONIBLE = la siguiente
+                                  // fila libre (respetando apilado). Las demás son
+                                  // informativas: las ocupadas muestran el palet, las
+                                  // libres-futuras no se pueden elegir (primero hay que
+                                  // llenar la de abajo).
+                                  const nivelEntrada = h.altura === 0 ? 1 : Math.min(h.ocupacion + 1, h.altura)
+                                  const esDisponible = !llena && j === nivelEntrada
+                                  // V29.15: nombre de la PLAZA estilo plano: RACK F{fila}-{hueco}
+                                  // p.ej. P1F2-3 = pared 1, fila 2, hueco 3.
+                                  const plazaHueco = `${rack}F${j}-${h.filaNum}`
+                                  const esSel = sel === plazaHueco
                                 let cls = ''
                                 if (h.altura === 0) cls = ocupada ? 'bg-sky-100 border-sky-300 text-sky-700' : 'bg-emerald-50 border-sky-200 text-sky-600'
                                 else if (ocupada) cls = llena ? 'bg-red-100 border-red-400 text-red-700' : 'bg-amber-100 border-amber-400 text-amber-800'
@@ -768,7 +771,7 @@ function UbicacionWizard({
                                     disabled={!esDisponible}
                                     onClick={() => esDisponible && setSel(plazaHueco)}
                                     title={`${plazaHueco} · ${ocupada ? 'ocupado' : esDisponible ? 'disponible — pincha para elegir' : 'no disponible (llena primero la altura de abajo)'}${h.altura > 0 ? ` (${h.ocupacion}/${h.altura})` : ` (${h.ocupacion}/∞)`}${rank >= 0 && rank < 3 && esDisponible ? ` · propuesta ${rank + 1}ª` : ''}`}
-                                    className={`relative rounded-lg border-2 min-h-[3rem] flex flex-col items-center justify-center transition-all ${cls} ${esSel ? 'ring-4 ring-[#005bb5] ring-offset-1' : ''} ${esDisponible ? '' : 'cursor-not-allowed'}`}
+                                    className={`relative rounded-lg border-2 min-h-[3rem] w-14 shrink-0 flex flex-col items-center justify-center transition-all ${cls} ${esSel ? 'ring-4 ring-[#005bb5] ring-offset-1' : ''} ${esDisponible ? '' : 'cursor-not-allowed'}`}
                                   >
                                     {rank >= 0 && rank < 3 && esDisponible && (
                                       <span className={`absolute -top-2 -left-1.5 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-extrabold shadow-sm border-2 border-white ${rank === 0 ? 'bg-[#005bb5] text-white' : 'bg-white text-[#005bb5]'}`}>
@@ -781,9 +784,9 @@ function UbicacionWizard({
                                     ) : ocupada ? (
                                       <span className="w-2 h-2 rounded-full bg-current opacity-70 mt-0.5" />
                                     ) : esDisponible ? (
-                                      <span className="text-[8px] font-bold uppercase leading-none mt-0.5 opacity-90">H{j}</span>
+                                      <span className="text-[8px] font-bold uppercase leading-none mt-0.5 opacity-90">{esPared ? `F${j}` : `H${j}`}</span>
                                     ) : (
-                                      <span className="text-[8px] font-bold uppercase leading-none mt-0.5 opacity-50">H{j}</span>
+                                      <span className="text-[8px] font-bold uppercase leading-none mt-0.5 opacity-50">{esPared ? `F${j}` : `H${j}`}</span>
                                     )}
                                   </button>
                                 )
@@ -793,10 +796,10 @@ function UbicacionWizard({
                         ))}
                         <div className="flex items-stretch gap-1.5 mt-1.5 pt-1.5 border-t border-gray-200">
                           <div className="w-[3.6rem] shrink-0 text-right pr-1 text-[8px] font-extrabold text-gray-400 uppercase tracking-wide">Hueco</div>
-                          <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${huecosRack.length}, minmax(44px, 1fr))` }}>
+                          <div className="flex flex-1 gap-1.5">
                             {huecosRack.map(h => (
-                              <div key={`lbl-${h.hueco}`} className={`text-center text-[9px] font-mono leading-none ${sel === h.hueco ? 'text-[#005bb5] font-extrabold' : 'text-gray-400 font-bold'}`}>
-                                {rack}-{h.pos}
+                              <div key={`lbl-${h.hueco}`} className={`w-14 shrink-0 text-center text-[8px] font-mono leading-none ${sel === h.hueco ? 'text-[#005bb5] font-extrabold' : 'text-gray-400 font-bold'}`}>
+                                {esPared ? `${rack}F1-${h.filaNum}` : `${rack}-${h.pos}`}
                               </div>
                             ))}
                           </div>

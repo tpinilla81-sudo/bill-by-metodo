@@ -156,8 +156,8 @@ function FilasAlturaEditor({
   onQuitarLimite: () => void
 }) {
   const esPared = est.tipo === 'pared'
-  const palabra = esPared ? 'altura' : 'nivel'
-  const plural = esPared ? 'alturas' : 'niveles'
+  const palabra = esPared ? 'fila' : 'nivel'
+  const plural = esPared ? 'filas' : 'niveles'
   const ordinal = esPared ? 'ª' : 'º'   // 2ª altura · 2º nivel
   const niveles = alturasDesdeCaps(est)        // [] → apilado libre
   const tieneLimite = niveles.length > 0
@@ -169,7 +169,7 @@ function FilasAlturaEditor({
       <div className="flex flex-wrap items-center gap-2 mb-1.5">
         <Layers className="h-3.5 w-3.5 text-teal-700 shrink-0" />
         <span className="text-[10px] font-bold uppercase tracking-wide text-teal-800">
-          {esPared ? 'Alturas de palet (apilado)' : 'Niveles (estantería)'}
+          {esPared ? 'Filas de palet (apilado)' : 'Niveles (estantería)'}
         </span>
         {tieneLimite ? (
           <span className="text-[10px] font-semibold text-teal-700 bg-teal-100 border border-teal-200 rounded-full px-2 py-0.5">
@@ -212,15 +212,15 @@ function FilasAlturaEditor({
           <button
             onClick={() => onCambiarNumFilas(1)}
             className="ml-auto h-5 px-2 rounded bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold"
-            title={`Definir ${esPared ? 'las alturas' : 'los niveles'}: empieza con 1 fila (solo suelo) y sube con +`}
+            title={`Definir ${esPared ? 'las filas' : 'los niveles'}: empieza con 1 fila (solo suelo) y sube con +`}
           >
-            Definir {esPared ? 'alturas' : 'niveles'}
+            Definir {esPared ? 'filas' : 'niveles'}
           </button>
         )}
       </div>
       <p className="text-[10px] text-gray-600 leading-tight mb-2">
         {esPared ? (
-          <>Elige el <b>nº de alturas</b> (− N +) y luego cuántos <b>huecos</b> llegan a cada una — pueden ser distintas.</>
+          <>Elige el <b>nº de filas</b> (− N +) y luego cuántos <b>huecos</b> llegan a cada una — pueden ser distintas.</>
         ) : (
           <>Elige el <b>nº de niveles</b> (− N +) y luego cuántos <b>huecos</b> tiene cada uno — pueden ser distintos.</>
         )}
@@ -229,9 +229,9 @@ function FilasAlturaEditor({
       {/* Fila 1 — SUELO (siempre presente): nº de huecos de la zona */}
       <label
         className="flex items-center gap-2 rounded border border-gray-300 bg-white px-2 py-1 mb-1"
-        title={`Suelo: nº de huecos de la zona (${est.nombre}-01, ${est.nombre}-02…)`}
+        title={`${esPared ? `FILA 1 (suelo): nº de huecos de la zona (${est.nombre}F1-1, ${est.nombre}F1-2…)` : `Suelo: nº de huecos de la zona (${est.nombre}-01, ${est.nombre}-02…)`}`}
       >
-        <span className="text-[10px] font-bold text-gray-700 w-24 shrink-0">1 · Suelo</span>
+        <span className="text-[10px] font-bold text-gray-700 w-24 shrink-0">{esPared ? 'FILA 1 · suelo' : '1 · Suelo'}</span>
         <div className="flex-1 min-w-[50px] h-2 rounded-full bg-gray-100 overflow-hidden">
           <div className="h-full bg-teal-600" style={{ width: '100%' }} />
         </div>
@@ -255,7 +255,7 @@ function FilasAlturaEditor({
             className="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1 mb-1"
             title={`Fila ${fila}: ${n} huecos llegan a esta ${palabra}`}
           >
-            <span className="text-[10px] font-bold text-gray-600 w-24 shrink-0">{fila} · {fila}{ordinal} {palabra}</span>
+            <span className="text-[10px] font-bold text-gray-600 w-24 shrink-0">{esPared ? `FILA ${fila}` : `${fila} · ${fila}${ordinal} ${palabra}`}</span>
             <div className="flex-1 min-w-[50px] h-2 rounded-full bg-gray-100 overflow-hidden">
               <div className="h-full bg-teal-500 transition-all" style={{ width: `${pct}%` }} />
             </div>
@@ -803,11 +803,16 @@ export function StockAlmacenView() {
       return
     }
     if (destino.cap > 0 && destino.total + lote.cantRestante > destino.cap) {
-      avisoMov('err', `«${lote.ident || 'Palet'}» no cabe en ${destino.ubicacion}: ${destino.total}/${destino.cap} plazas ocupadas y el lote trae ${lote.cantRestante} — un hueco, un palet`)
+      const posD = parseInt(destino.pos, 10) || 1
+      avisoMov('err', `«${lote.ident || 'Palet'}» no cabe en ${destino.rack} · F1-${posD}: ${destino.total}/${destino.cap} plazas ocupadas y el lote trae ${lote.cantRestante} — un hueco, un palet`)
       return
     }
-    const fila = parseInt(destino.pos, 10) || 1
-    const nuevaUb = `${destino.rack}F${fila}H${destino.total + 1}`
+    const pos = parseInt(destino.pos, 10) || 1
+    // V29.15: ubicación estilo PLANO — RACK F{fila}-{hueco}. El palet cae en
+    // la fila libre más baja de la columna (fila = destino.total + 1) y
+    // "hueco" es la posición de la columna dentro de la fila (p.ej. P1F2-3 =
+    // pared 1, fila 2, hueco 3 — la misma columna que P1F1-3).
+    const nuevaUb = `${destino.rack}F${destino.total + 1}-${pos}`
     setMoviendoId(lote.id)
     try {
       const res = await fetch('/api/registros', {
@@ -1076,22 +1081,25 @@ export function StockAlmacenView() {
                           onQuitarLimite={() => quitarLimiteAlturas(e.id)}
                         />
                       )}
-                      {/* Huecos con nombre automático — muestran su altura (·N) si está definida */}
+                      {/* Huecos con nombre automático — muestran su altura (·N) si está definida.
+                          V29.15: en PAREDES el nombre es estilo plano: la columna n se
+                          identifica por su casilla del suelo → "P1F1-1", "P1F1-2"… */}
                       {huecosNombres.length > 0 ? (
                         <div className="flex flex-wrap gap-1 mt-2 max-h-24 overflow-y-auto">
                           {huecosNombres.map((h, i) => {
                             const celda = rk?.celdas[i]
                             const ocupado = (celda?.total || 0) > 0
                             const altura = e.caps?.[i] || 0
+                            const etiqueta = esPared ? `${e.nombre}F1-${i + 1}` : h
                             return (
                               <span
                                 key={h}
-                                title={`${h}${altura > 0 ? ` · altura ${altura} (palets apilables)` : ''}${ocupado ? ` · ${celda?.total} palet(s)` : ' · libre'}`}
+                                title={`${etiqueta}${altura > 0 ? ` · altura ${altura} (palets apilables)` : ''}${ocupado ? ` · ${celda?.total} palet(s)` : ' · libre'}`}
                                 className={`px-1.5 py-0.5 rounded font-mono text-[10px] font-bold border ${
                                   ocupado ? 'bg-teal-100 border-teal-300 text-teal-800' : 'bg-gray-50 border-gray-200 text-gray-400'
                                 }`}
                               >
-                                {h}{altura > 0 && <span className="text-teal-600">·{altura}</span>}
+                                {etiqueta}{altura > 0 && <span className="text-teal-600">·{altura}</span>}
                               </span>
                             )
                           })}
@@ -1523,15 +1531,99 @@ export function StockAlmacenView() {
                 // hueco 01 se dibuja a la derecha (orden invertido).
                 const orientacionRack = cfgRack?.orientacion === 'der' ? 'der' : 'izq'
                 const columnasVis = orientacionRack === 'der' ? [...columnas].reverse() : columnas
+                // V29.15: dibujo estilo PLANO para las PAREDES — cada fila de
+                // altura es una FILA del plano (FILA 1 = suelo … FILA k arriba),
+                // con SOLO las casillas que llegan a esa fila (filas más cortas
+                // arriba, sin huecos fantasma) y cada casilla con su nombre
+                // F{fila}-{hueco} (F1-1, F1-2… F2-1…), igual en las dos paredes.
+                const casillasDeFila = (j: number) =>
+                  columnasVis
+                    .map(col => ({ col }))
+                    .filter(x => x.col.altura >= j)
+                    .map((x, ix) => ({ ...x, n: ix + 1 }))
+                // Casilla del alzado. Para PAREDES nPlano trae el nº de casilla
+                // dentro de la fila (1..L(j)) y la casilla se etiqueta F{j}-{n};
+                // para estanterías nPlano = null y se etiqueta como siempre
+                // (RACK + posición). key distingue en ambos modos.
+                const casillaAlzado = (col: typeof columnasVis[number], j: number, nPlano: number | null, key?: number | string) => {
+                  const { c, palets, altura } = col
+                  const palet = palets[j - 1]
+                  const ocupada = j <= palets.length
+                  const dias = palet ? diasEnAlmacen(palet.fecha, now) : 0
+                  const esTope = j === altura
+                  const llena = c.cap > 0 && c.total >= c.cap
+                  const desborda = esTope && c.total > altura
+                  const match = cellMatch(c)
+                  // V29.6: drag & drop — la casilla ocupada es ARRASTRABLE
+                  // (mueve su lote) y TODA la columna acepta el drop.
+                  const destSt = dragLote ? estadoDestino(c) : null
+                  const esDestOk = dragOverUb === c.ubicacion && destSt === 'ok'
+                  const esDestFull = dragOverUb === c.ubicacion && destSt === 'full'
+                  const arrastrandoEste = ocupada && dragLote && palet?.id === dragLote.id
+                  const nombreCasilla = nPlano != null ? `F${j}-${nPlano}` : c.ubicacion
+                  return (
+                    <div
+                      key={key != null ? key : `${c.ubicacion}-${j}-${nPlano ?? ''}`}
+                      title={`${nombreCasilla}${nPlano != null ? ` · ${c.rack}` : ''} · ${j === 1 ? 'suelo' : `${j}${esParedRack ? 'ª fila' : 'º nivel'}`}${ocupada ? ` · palet ${palet?.ident || '—'} · ${dias} días${palet && palet.cantRestante > 1 ? ` · arrastra el lote (${palet.cantRestante} palets)` : ' · arrastra para mover'}` : ' · LIBRE · suelta aquí para colocar'}${llena ? ' · LLENO' : ''}`}
+                      draggable={ocupada && !moviendoId}
+                      onDragStart={ocupada && palet ? e => iniciarDrag(e, palet) : undefined}
+                      onDragEnd={terminarDrag}
+                      onDragOver={e => sobreCelda(e, c)}
+                      onDragLeave={() => salirCelda(c)}
+                      onDrop={e => soltarEnCelda(e, c)}
+                      className={`rounded-md border-2 p-1 shadow-sm min-h-[3.2rem] flex flex-col transition-all ${esParedRack ? 'w-14 shrink-0' : ''} ${
+                        match
+                          ? 'ring-4 ring-sky-500 ring-offset-1 relative z-10'
+                          : queryNorm
+                            ? 'opacity-30'
+                            : ''
+                      } ${ocupada ? colorPorDias(dias) : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'} ${llena && esTope && !match ? 'ring-2 ring-red-500 ring-offset-1' : ''} ${ocupada ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoEste ? 'opacity-40' : ''} ${esDestOk ? 'ring-4 ring-teal-500 ring-offset-1 bg-teal-50/80 scale-105' : ''} ${esDestFull ? 'ring-4 ring-red-500 ring-offset-1 bg-red-50/80' : ''}`}
+                    >
+                      {nPlano != null ? (
+                        <div className="flex items-center justify-center gap-0.5 pb-0.5 border-b border-gray-300/70">
+                          <span className={`text-[11px] font-extrabold leading-none ${ocupada ? textoPorDias(dias) : 'text-gray-400'}`}>{nombreCasilla}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-0.5 pb-0.5 border-b border-gray-300/70">
+                          <span className="text-[8px] font-bold text-gray-400 truncate">{c.rack}</span>
+                          <span className={`text-[11px] font-extrabold leading-none ${ocupada ? textoPorDias(dias) : 'text-gray-300'}`}>{c.pos}</span>
+                        </div>
+                      )}
+                      {ocupada ? (
+                        <>
+                          <div className={`text-[10px] font-bold truncate mt-0.5 ${textoPorDias(dias)}`}>{palet?.ident || '—'}</div>
+                          <div className="mt-auto flex items-baseline justify-between gap-0.5">
+                            <span className={`text-sm font-extrabold leading-none ${textoPorDias(dias)}`}>{dias}<span className="text-[8px] ml-px">d</span></span>
+                            {desborda ? (
+                              <span className="text-[8px] font-extrabold text-red-600" title={`Hay ${c.total} palets y la columna llega a ${altura}`}>+{c.total - altura}</span>
+                            ) : llena && esTope ? (
+                              <span className="text-[8px] font-extrabold text-red-600">LLENO</span>
+                            ) : c.cap === 0 && esTope ? (
+                              <span className="text-[10px] font-bold text-gray-300" title="Columna sin límite de altura">∞</span>
+                            ) : null}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center">
+                          <span className="text-sm font-extrabold text-gray-300 leading-none">—</span>
+                          <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Libre</span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
                 return (
                 <div key={rk.name} className="rounded-xl border-2 border-gray-300 bg-gradient-to-b from-gray-50 to-white p-3 shadow-sm min-w-[250px] flex-1 max-w-full print-rack">
                   <div className="flex items-center justify-between mb-1 px-0.5">
                     <div className="font-bold text-gray-700 text-sm flex items-center gap-1.5">
                       <Warehouse className="h-4 w-4 text-teal-600" />
-                      {tipoRack === 'pared' ? 'PARED' : 'ESTANTERÍA'} {rk.name}
+                      {/* V29.15: "PARED 1" / "PARED 2" (zona P{n} → sin la P duplicada) */}
+                      {tipoRack === 'pared'
+                        ? (/^P\d+$/i.test(rk.name) ? `PARED ${rk.name.slice(1)}` : `PARED ${rk.name}`)
+                        : `ESTANTERÍA ${rk.name}`}
                       {kNiveles >= 2 && (
                         <span className="text-[10px] font-bold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5">
-                          {kNiveles} {esParedRack ? 'alturas' : 'niveles'}
+                          {kNiveles} {esParedRack ? 'filas' : 'niveles'}
                         </span>
                       )}
                       {/* Badge de orientación visible en el mapa */}
@@ -1560,105 +1652,68 @@ export function StockAlmacenView() {
                       />
                     </div>
                   )}
-                  {/* Postes laterales + huecos — ALZADO POR NIVELES/ALTURAS:
-                      se dibuja TODO lo configurado: una fila por nivel (la más
-                      alta arriba, columnas alineadas) y cada casilla = 1 palet
-                      (de abajo arriba, FIFO). Sin niveles definidos → fila
-                      única como antes. */}
+                  {/* Postes laterales + huecos — ALZADO ESTILO PLANO: una FILA
+                      por nivel (FILA 1 = suelo … la más alta arriba). En las
+                      PAREDES cada fila muestra SOLO las casillas que llegan a
+                      ella (filas más cortas arriba, sin huecos fantasma, como
+                      el plano en papel) y cada casilla se llama F{fila}-{hueco}
+                      (F1-1, F1-2… F2-1…), igual en las dos paredes. Estanterías:
+                      como antes. Cada casilla = 1 palet (de abajo arriba, FIFO). */}
                   <div className="border-l-[6px] border-r-[6px] border-gray-400 rounded-sm bg-white p-1.5">
                     {kNiveles >= 2 ? (
                     <div className="overflow-x-auto">
                       <div className="min-w-full w-max">
                         {Array.from({ length: kNiveles }, (_, idx) => kNiveles - idx).map(j => {
                           const visibles = columnasVis.filter(col => col.altura >= j).length
+                          const casillasFila = esParedRack ? casillasDeFila(j) : []
                           return (
                             <div key={j} className="flex items-stretch gap-1 mb-1 last:mb-0">
                               <div className="w-[4.4rem] shrink-0 flex flex-col items-end justify-center pr-1 text-right leading-tight">
                                 <span className="text-[9px] font-extrabold text-gray-500 uppercase tracking-wide">
-                                  {j === 1 ? 'Suelo' : `${j}${esParedRack ? 'ª altura' : 'º nivel'}`}
+                                  {esParedRack ? `FILA ${j}` : (j === 1 ? 'Suelo' : `${j}º nivel`)}
                                 </span>
-                                <span className="text-[8px] font-bold text-gray-400">{visibles} huecos</span>
+                                {!esParedRack && <span className="text-[8px] font-bold text-gray-400">{visibles} huecos</span>}
                               </div>
-                              <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${rk.celdas.length}, minmax(56px, 1fr))` }}>
-                                {columnasVis.map((col, i) => {
-                                  if (col.altura < j) {
-                                    return (
-                                      <div key={i} className="rounded-md border-2 border-dashed border-gray-200/70 bg-gray-50/40" title="A esta altura no llega esta columna" />
-                                    )
-                                  }
-                                  const { c, palets, altura } = col
-                                  const palet = palets[j - 1]
-                                  const ocupada = j <= palets.length
-                                  const dias = palet ? diasEnAlmacen(palet.fecha, now) : 0
-                                  const esTope = j === altura
-                                  const llena = c.cap > 0 && c.total >= c.cap
-                                  const desborda = esTope && c.total > altura
-                                  const match = cellMatch(c)
-                                  // V29.6: drag & drop — la casilla ocupada es ARRASTRABLE
-                                  // (mueve su lote) y TODA la columna acepta el drop.
-                                  const destSt = dragLote ? estadoDestino(c) : null
-                                  const esDestOk = dragOverUb === c.ubicacion && destSt === 'ok'
-                                  const esDestFull = dragOverUb === c.ubicacion && destSt === 'full'
-                                  const arrastrandoEste = ocupada && dragLote && palet?.id === dragLote.id
-                                  return (
-                                    <div
-                                      key={i}
-                                      title={`${c.ubicacion} · ${j === 1 ? 'suelo' : `${j}${esParedRack ? 'ª altura' : 'º nivel'}`}${ocupada ? ` · palet ${palet?.ident || '—'} · ${dias} días${palet && palet.cantRestante > 1 ? ` · arrastra el lote (${palet.cantRestante} palets)` : ' · arrastra para mover'}` : ' · LIBRE · suelta aquí para colocar'}${llena ? ' · LLENO' : ''}`}
-                                      draggable={ocupada && !moviendoId}
-                                      onDragStart={ocupada && palet ? e => iniciarDrag(e, palet) : undefined}
-                                      onDragEnd={terminarDrag}
-                                      onDragOver={e => sobreCelda(e, c)}
-                                      onDragLeave={() => salirCelda(c)}
-                                      onDrop={e => soltarEnCelda(e, c)}
-                                      className={`rounded-md border-2 p-1 shadow-sm min-h-[3.2rem] flex flex-col transition-all ${
-                                        match
-                                          ? 'ring-4 ring-sky-500 ring-offset-1 relative z-10'
-                                          : queryNorm
-                                            ? 'opacity-30'
-                                            : ''
-                                      } ${ocupada ? colorPorDias(dias) : 'bg-gray-50 border-dashed border-gray-300 border-b-gray-300'} ${llena && esTope && !match ? 'ring-2 ring-red-500 ring-offset-1' : ''} ${ocupada ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoEste ? 'opacity-40' : ''} ${esDestOk ? 'ring-4 ring-teal-500 ring-offset-1 bg-teal-50/80 scale-105' : ''} ${esDestFull ? 'ring-4 ring-red-500 ring-offset-1 bg-red-50/80' : ''}`}
-                                    >
-                                      <div className="flex items-center justify-between gap-0.5 pb-0.5 border-b border-gray-300/70">
-                                        <span className="text-[8px] font-bold text-gray-400 truncate">{c.rack}</span>
-                                        <span className={`text-[11px] font-extrabold leading-none ${ocupada ? textoPorDias(dias) : 'text-gray-300'}`}>{c.pos}</span>
-                                      </div>
-                                      {ocupada ? (
-                                        <>
-                                          <div className={`text-[10px] font-bold truncate mt-0.5 ${textoPorDias(dias)}`}>{palet?.ident || '—'}</div>
-                                          <div className="mt-auto flex items-baseline justify-between gap-0.5">
-                                            <span className={`text-sm font-extrabold leading-none ${textoPorDias(dias)}`}>{dias}<span className="text-[8px] ml-px">d</span></span>
-                                            {desborda ? (
-                                              <span className="text-[8px] font-extrabold text-red-600" title={`Hay ${c.total} palets y la columna llega a ${altura}`}>+{c.total - altura}</span>
-                                            ) : llena && esTope ? (
-                                              <span className="text-[8px] font-extrabold text-red-600">LLENO</span>
-                                            ) : c.cap === 0 && esTope ? (
-                                              <span className="text-[10px] font-bold text-gray-300" title="Columna sin límite de altura">∞</span>
-                                            ) : null}
-                                          </div>
-                                        </>
-                                      ) : (
-                                        <div className="flex-1 flex flex-col items-center justify-center">
-                                          <span className="text-sm font-extrabold text-gray-300 leading-none">—</span>
-                                          <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Libre</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )
-                                })}
-                              </div>
+                              {esParedRack ? (
+                                <div className="flex flex-1 gap-1">
+                                  {casillasFila.map(({ col, n }) => casillaAlzado(col, j, n))}
+                                </div>
+                              ) : (
+                                <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${rk.celdas.length}, minmax(56px, 1fr))` }}>
+                                  {columnasVis.map((col, i) => {
+                                    if (col.altura < j) {
+                                      return (
+                                        <div key={i} className="rounded-md border-2 border-dashed border-gray-200/70 bg-gray-50/40" title="A esta altura no llega esta columna" />
+                                      )
+                                    }
+                                    return casillaAlzado(col, j, null, i)
+                                  })}
+                                </div>
+                              )}
                             </div>
                           )
                         })}
-                        {/* Totales por columna: palets / altura */}
+                        {/* Totales por columna: palets / altura — en PAREDES
+                            alineados con las casillas fijas del plano */}
                         <div className="flex items-center gap-1 mt-1">
                           <div className="w-[4.4rem] shrink-0 text-right pr-1 text-[8px] font-extrabold text-gray-400 uppercase tracking-wide">Total</div>
-                          <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${rk.celdas.length}, minmax(56px, 1fr))` }}>
-                            {columnasVis.map(({ c }, i) => (
-                              <div key={i} className="text-center text-[9px] font-extrabold tabular-nums text-gray-600">
-                                {c.total}{c.cap > 0 ? <span className="text-gray-400 font-bold">/{c.cap}</span> : <span className="text-gray-300 font-bold">/∞</span>}
-                              </div>
-                            ))}
-                          </div>
+                          {esParedRack ? (
+                            <div className="flex flex-1 gap-1">
+                              {columnasVis.map(({ c }, i) => (
+                                <div key={i} className="w-14 shrink-0 text-center text-[9px] font-extrabold tabular-nums text-gray-600">
+                                  {c.total}{c.cap > 0 ? <span className="text-gray-400 font-bold">/{c.cap}</span> : <span className="text-gray-300 font-bold">/∞</span>}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${rk.celdas.length}, minmax(56px, 1fr))` }}>
+                              {columnasVis.map(({ c }, i) => (
+                                <div key={i} className="text-center text-[9px] font-extrabold tabular-nums text-gray-600">
+                                  {c.total}{c.cap > 0 ? <span className="text-gray-400 font-bold">/{c.cap}</span> : <span className="text-gray-300 font-bold">/∞</span>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
