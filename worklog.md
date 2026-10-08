@@ -1808,3 +1808,23 @@ Work Log:
 Stage Summary:
 - PRE-FACTURA: la tabla de datos ahora muestra TODOS los campos de los registros seleccionados — los configurados en ENTRADA y cualquier campo propio que traiga el cliente (SMURFIT WESTROCK incluido), sin tocar la configuración ni la DB.
 - Genérico y a prueba de futuro: si mañana se añade un campo nuevo a los registros de un cliente, aparece solo en la tabla al filtrar por él.
+
+---
+Task ID: V29.14
+Agent: Main Agent
+Task: NUEVA CONFIGURACIÓN DEL ALMACÉN — PARED 1 y PARED 2 (pirámide según imagen del usuario)
+
+Work Log:
+- El usuario envía la nueva configuración del almacén (imagen): pirámide de 5 filas de altura — FILA 1 (suelo): 9 huecos, FILA 2: 9, FILA 3: 8, FILA 4: 7, FILA 5: 6 — y dice que el almacén son PARED 1 y PARED 2, ambas iguales.
+- Config anterior (Config.almacenCfg del tenant Hualsa): 4 zonas E1 (12×3), P1 (8×3), E2 (6×2), S1 (10, sin límite). Backup previo en scripts/backup-almacen-cfg-anterior.json.
+- scripts/update-almacen-v2914.ts: reemplaza la config por SOLO dos zonas P1 y P2 (tipo 'pared', orientación 'izq', huecos 9) y elimina la única zona física que desaparece. La pirámide se expresa en caps[] (altura por columna): [5,5,5,5,5,5,4,3,2] — columnas 1-6 llegan a 5 alturas, columna 7 a 4, columna 8 a 3, columna 9 a 2. Capacidad: 39 palets por pared, 78 en total.
+- Verificación en el script (réplica de alturasDesdeCaps): ambas paredes → filas [9,9,8,7,6] ✓ coincide con la imagen.
+- Limpieza: eliminado el registro de test L-TEST-4 (cmu5ccfer0003u2y680je39ur, único con ubicación en customData, resto de sesiones anteriores) — el almacén queda a 0 con la nueva configuración.
+- Sin cambios de código: el motor (V21 filas de altura / V27 mapa visual / V29.4 formato R fila H altura) ya soporta esta configuración; solo cambia la DB. node_modules había desaparecido de nuevo → bun install + prisma generate + next build + reinicio del daemon.
+- Validación E2E en navegador (usuario temporal test-v2914@hualsa.es, borrado al terminar): mapa STOCK ALMACÉN dibuja PARED P1 y PARED P2 con SUELO 9 · 2ª 9 · 3ª 8 · 4ª 7 · 5ª 6 casillas, placeholders punteados donde la columna no llega, TOTAL por columna 0/5×6, 0/4, 0/3, 0/2 y KPI 0/18 huecos (9+9 columnas) ✓. Editor «Configurar almacén»: 2 zonas PARED, «5 filas · caben 39 palets» y huecos P1-01·5…P1-09·2 ✓. Captura de prueba: download/mapa-almacen-pared1-pared2.png.
+- Nota: el navegador del usuario migra solo — GET /api/almacen devuelve la config del servidor y la cachea en localStorage (server gana). Las ubicaciones nuevas serán P1F fila H altura / P2F fila H altura (p.ej. P2F3H2).
+
+Stage Summary:
+- El almacén queda configurado EXACTAMENTE como la imagen del usuario: PARED 1 (P1) y PARED 2 (P2), pirámide 9/9/8/7/6 (5 alturas, 39 palets por pared), sin otras zonas.
+- Sin cambios de código — solo configuración (Config.almacenCfg); el mapa, el editor y el asistente de ubicación la pintan/usan tal cual.
+- Backup de la config anterior en scripts/backup-almacen-cfg-anterior.json para rollback si hiciera falta.
