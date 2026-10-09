@@ -8,7 +8,7 @@ import crypto from 'crypto'
 const db = new Database('/home/z/my-project/db/custom.db')
 const TENANT_ID = 'cmq6uwub10000n9qluafni88m'
 const EMAIL = 'test-v2916@hualsa.es'
-const PASSWORD = 'test2914'
+const PASSWORD = 'test2916'
 
 const perms = JSON.stringify(['stock', 'registros', 'entrada'])
 const hash = await bcrypt.hash(PASSWORD, 12)

@@ -1849,3 +1849,26 @@ Stage Summary:
 - El mapa de STOCK ALMACÉN dibuja PARED 1 y PARED 2 EXACTAMENTE como el plano del usuario: filas FILA 1..FILA 5 (9/9/8/7/6) y casillas F1-1…F5-6, sin casillas fantasma.
 - Los huecos SE LLAMAN como el plano: F1-1, F1-2… en las dos paredes; la ubicación completa que guarda el sistema es P1F1-1 / P2F1-1 (pared + casilla) — necesario para distinguir paredes con el mismo nombre de casilla.
 - Asistente de entrada, hueco automático, drag & drop y editor de configuración alineados con el nuevo nombrado; formatos antiguos siguen entendidos.
+
+---
+Task ID: V29.16
+Agent: Main Agent
+Task: EL DIBUJO DEL ALMACÉN DEBE SER EXACTAMENTE EL PLANO — filas escalonadas tipo ladrillo (cada hueco de arriba descansa sobre dos de abajo)
+
+Work Log:
+- El usuario sigue rechazando V29.15: aunque las etiquetas F1-1..F5-6 estaban bien, las filas seguían alineadas en columnas rectas (no como el plano en papel, donde a partir de la fila 3 cada hueco se superpone apoyando en dos de la fila de abajo, tipo ladrillo).
+- Vuelve a analizar el plano (VLM sobre upload/pasted_image_1791479158999.png): confirma que es una PIRÁMIDE ESCALONADA — fila 1 y 2 alineadas (9 huecos), fila 3 desplazada media posición a la derecha (8 huecos, F3-1 descansa sobre la unión F2-1+F2-2), fila 4 desplazada otra media posición (7 huecos), fila 5 desplazada otra media (6 huecos). Cada hueco superior descansa sobre DOS inferiores.
+- Intento inicial con `style={{ marginLeft }}` sobre el contenedor `flex flex-1 gap-1`: NO funcionó — el contenedor flex-1 se redimensiona solo y el margin lo absorbe sin desplazar visualmente las casillas (verificado con VLM: "filas alineadas verticalmente").
+- Fix correcto: `style={{ transform: translateX(...) }}` — translateX NO afecta el layout del contenedor, solo lo desplaza visualmente. La casilla 1 de cada fila superior cae EXACTAMENTE sobre la unión de las dos casillas inferiores.
+- stock-almacen-view.tsx: cada fila j ≥ 3 recibe translateX = (j-2) * 0.5 * 3.75rem (cada celda w-14=3.5rem + gap-1=0.25rem = 3.75rem de paso; media celda = 1.875rem). F1 y F2 sin desplazar; F3 +1.875rem, F4 +3.75rem, F5 +5.625rem.
+- entrada-view.tsx: misma técnica en los DOS pickers (el compacto y el modal del asistente de 2 pasos). Cálculo distinto por ancho de celda: picker compacto (w-12, gap-1) → 3.25rem/celda, media=1.625rem; asistente (w-14, gap-1.5) → 3.875rem/celda, media=1.9375rem.
+- Etiqueta de build actualizada a V29.16-PLANO-ESCALONADO en sidebar.tsx para que el usuario vea que carga la versión nueva.
+- Validación E2E (agente en navegador, usuario temporal borrado al terminar): DOM confirma los transforms aplicados — F5 translateX(5.625rem), F4 translateX(3.75rem), F3 translateX(1.875rem), F2/F1 translateX(0rem) en STOCK ALMACÉN. VLM sobre captura ancha (2400×1400) confirma: "pirámide escalonada — fila 3 desplazada media posición a la derecha, fila 4 más, fila 5 más — cada hueco superior descansa sobre la unión de dos inferiores". Mismo patrón en el asistente de ubicación paso 2 (transform values verificados en DOM).
+- node_modules y .next desaparecidos (DE NUEVO) → bun install + prisma generate + next build + reinicio del daemon. Smoke de login+STOCK ALMACÉN+asistente OK.
+- Captura final: download/mapa-almacen-pared1-pared2-v2916.png (mapa) y download/asistente-v2916.png (asistente paso 2).
+- Limpieza: usuario test-v2916@hualsa.es eliminado.
+
+Stage Summary:
+- El mapa de STOCK ALMACÉN dibuja EXACTAMENTE el plano en papel: PARED 1 y PARED 2 con filas 1-2 alineadas y filas 3-5 desplazadas progresivamente media celda a la derecha — cada hueco superior descansa sobre DOS inferiores (pirámide escalonada tipo ladrillo). Sin casillas fantasma.
+- Huecos llamados F1-1…F5-6 en las dos paredes (como pedía el usuario). La técnica usada (transform: translateX en vez de margin/padding sobre contenedor flex-1) es la que hace el desplazamiento visible.
+- Asistente de entrada (picker compacto y modal de 2 pasos) dibuja el mismo patrón escalonado. Build V29.16 visible en el sidebar.

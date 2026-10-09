@@ -331,7 +331,7 @@ function UbicacionCombo({
                                   {esPared ? `FILA ${j}` : `ALTURA ${j}`}
                                 </span>
                               </div>
-                              <div className="flex flex-1 gap-1" style={{ marginLeft: `${esPared ? Math.max(0, j - 2) * 0.5 * 3.25 : 0}rem` }}>
+                              <div className="flex flex-1 gap-1" style={{ transform: `translateX(${esPared ? Math.max(0, j - 2) * 0.5 * 3.25 : 0}rem)` }}>
                                 {huecosRack
                                   .map(h => ({ h }))
                                   .filter(x => x.h.altura > 0 ? x.h.altura >= j : j === 1)
@@ -739,7 +739,7 @@ function UbicacionWizard({
                                 {esPared ? `FILA ${j}` : `ALTURA ${j}`}
                               </span>
                             </div>
-                            <div className="flex flex-1 gap-1.5" style={{ marginLeft: `${esPared ? Math.max(0, j - 2) * 0.5 * 3.875 : 0}rem` }}>
+                            <div className="flex flex-1 gap-1.5" style={{ transform: `translateX(${esPared ? Math.max(0, j - 2) * 0.5 * 3.875 : 0}rem)` }}>
                               {huecosRack
                                 .map(h => ({ h }))
                                 .filter(x => x.h.altura > 0 ? x.h.altura >= j : j === 1)
