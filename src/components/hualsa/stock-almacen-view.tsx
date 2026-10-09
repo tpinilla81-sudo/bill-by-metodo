@@ -1666,6 +1666,14 @@ export function StockAlmacenView() {
                         {Array.from({ length: kNiveles }, (_, idx) => kNiveles - idx).map(j => {
                           const visibles = columnasVis.filter(col => col.altura >= j).length
                           const casillasFila = esParedRack ? casillasDeFila(j) : []
+                          // V29.16: DIBUJO ESCALONADO (tipo ladrillo) — a partir de
+                          // la FILA 3 cada casilla se desplaza MEDIA posición a la
+                          // derecha y descansa sobre DOS casillas de la fila de
+                          // abajo (como el plano en papel). FILA 1 y 2 alineadas.
+                          // offset(j) = max(0, j-2) * 0.5 celdas; cada celda = w-14
+                          // (3.5rem) + gap-1 (0.25rem) = 3.75rem → media celda = 1.875rem.
+                          const offsetCeldas = esParedRack ? Math.max(0, j - 2) * 0.5 : 0
+                          const marginLeftRem = offsetCeldas * 3.75
                           return (
                             <div key={j} className="flex items-stretch gap-1 mb-1 last:mb-0">
                               <div className="w-[4.4rem] shrink-0 flex flex-col items-end justify-center pr-1 text-right leading-tight">
@@ -1675,7 +1683,7 @@ export function StockAlmacenView() {
                                 {!esParedRack && <span className="text-[8px] font-bold text-gray-400">{visibles} huecos</span>}
                               </div>
                               {esParedRack ? (
-                                <div className="flex flex-1 gap-1">
+                                <div className="flex flex-1 gap-1" style={{ marginLeft: `${marginLeftRem}rem` }}>
                                   {casillasFila.map(({ col, n }) => casillaAlzado(col, j, n))}
                                 </div>
                               ) : (
