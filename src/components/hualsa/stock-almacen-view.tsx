@@ -1656,10 +1656,16 @@ export function StockAlmacenView() {
                       )}
                       {ocupada ? (
                         <>
-                          {/* V29.18: nº de palet VISIBLE sin recortes — texto
-                              más pequeño y que envuelve (break-all) para que
-                              se lea entero en cualquier caso. */}
-                          <div className={`text-[9px] font-bold leading-tight mt-0.5 break-all ${textoPorDias(dias)}`}>{palet?.ident || '—'}</div>
+                          {/* V29.19: Nº DE PALET BIEN VISIBLE — el lote/ident
+                              en texto grande (text-[12px] font-extrabold) para
+                              que se lea SIN esfuerzo desde la pantalla. Si el
+                              palet no trae lote (custom_lote vacío), se muestra
+                              un identificador alternativo claro: "Palet N" donde
+                              N es su posición en la columna (1=suelo, 2=2ª fila…).
+                              Así SIEMPRE se ve un nº identificable en cada palet. */}
+                          <div className={`text-[12px] font-extrabold leading-tight mt-0.5 break-words ${textoPorDias(dias)}`}>
+                            {palet?.ident || `Palet ${j}`}
+                          </div>
                           <div className="mt-auto flex items-baseline justify-between gap-0.5">
                             <span className={`text-sm font-extrabold leading-none ${textoPorDias(dias)}`}>{dias}<span className="text-[8px] ml-px">d</span></span>
                             {desborda ? (
@@ -1852,10 +1858,12 @@ export function StockAlmacenView() {
                                   {c.cap > 0 && c.total >= c.cap ? 'lleno' : c.total === 1 ? 'palet' : 'palets'}
                                 </div>
                                 {/* Lista de todos los lotes con sus días —
-                                    V29.6: cada lote es ARRASTRABLE a otro hueco */}
+                                    V29.6: cada lote es ARRASTRABLE a otro hueco.
+                                    V29.19: nº de palet en texto más grande y con
+                                    fallback a "Palet N" si no tiene lote. */}
                                 {lotesUnicos.length > 0 && (
                                   <div className="mt-1 space-y-0.5">
-                                    {lotesUnicos.map(l => {
+                                    {lotesUnicos.map((l, li) => {
                                       const dl = diasEnAlmacen(l.fecha, now)
                                       const arrastrandoEsteLote = !!dragLote && dragLote.id === l.id
                                       return (
@@ -1865,9 +1873,9 @@ export function StockAlmacenView() {
                                           onDragStart={e => iniciarDrag(e, l)}
                                           onDragEnd={terminarDrag}
                                           title={`Arrastra «${l.ident || 'sin lote'}» a otro hueco para moverlo`}
-                                          className={`text-[9px] font-semibold text-gray-600 flex items-center justify-between gap-1 cursor-grab active:cursor-grabbing ${arrastrandoEsteLote ? 'opacity-40' : ''}`}
+                                          className={`text-[11px] font-bold text-gray-700 flex items-center justify-between gap-1 cursor-grab active:cursor-grabbing ${arrastrandoEsteLote ? 'opacity-40' : ''}`}
                                         >
-                                          <span className="truncate">{l.ident || '—'}</span>
+                                          <span className="truncate">{l.ident || `Palet ${li + 1}`}</span>
                                           <span className={`${textoPorDias(dl)} font-bold`}>{dl}d</span>
                                         </div>
                                       )

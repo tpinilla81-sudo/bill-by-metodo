@@ -1915,3 +1915,22 @@ Stage Summary:
 - En el mapa de STOCK ALMACÉN, cada casilla ocupada muestra ahora el nº de palet (lote) VISIBLE y entero (sin recortes), gracias a casillas más anchas y texto que envuelve.
 - Al poner el cursor sobre una casilla aparece TODA la información del palet: cliente, concepto 1/2, descripción, albarán, matrícula, bultos, obs, fecha entrada, ubicación completa y lote restante.
 - Patrón tipo ladrillo (V29.16) y pirámide 9/9/8/7/6 (V29.14) se mantienen intactos.
+
+---
+Task ID: V29.19
+Agent: Main Agent
+Task: EN EL DIBUJO — que el nº de palet salga BIEN VISIBLE en cada palet
+
+Work Log:
+- El usuario reporta que el nº de palet no se le ve en el dibujo. La V29.18 ya lo pintaba pero con text-[9px] (demasiado pequeño) y mostraba '—' si el palet no tenía custom_lote.
+- stock-almacen-view.tsx · casillaAlzado(): nº de palet ahora en text-[12px] font-extrabold (antes text-[9px] font-bold) — 33% más grande y extra-bold para que se lea sin esfuerzo desde la pantalla. break-words para que envuelva limpio si el lote es largo.
+- Fallback "Palet N" (N = posición en la columna, 1=suelo, 2=2ª fila…): si un palet no trae custom_lote (campo vacío), se ve "Palet 1", "Palet 2"… en vez de '—'. Así SIEMPRE hay un identificador visible en cada palet del mapa, venga o no con lote.
+- Mismo cambio en la vista simple (1 nivel): el listado de lotes dentro de la celda pasa de text-[9px] font-semibold a text-[11px] font-bold, con el mismo fallback "Palet N" (N = índice dentro del hueco).
+- Sidebar build label → V29.19-Nº-PALET-VISIBLE · 2026-10-14.
+- Validación E2E (usuario temporal borrado): 3 ENTRADAS PALET (L-V2917-1/2/3) + 1 SALIDA → 5 palets en stock. DOM confirma el contenido de cada casilla: "F2-1 l-v2917-1 11d", "F2-3 l-v2917-2 8d", "F1-1 l-v2917-1 11d", "F1-3 l-v2917-2 8d", "F1-1 l-v2917-3 4d". VLM confirma: "texto GRANDE y legible, entre 11px y 13px, claramente más grande que el texto pequeño de los días". Registros de test y usuario temporal borrados.
+- next build + reinicio del daemon (HTTP 200 OK). node_modules OK esta vez.
+
+Stage Summary:
+- En el mapa de STOCK ALMACÉN, cada palet muestra ahora su nº (lote) en texto GRANDE y NEGRITA, perfectamente legible.
+- Si un palet no trae lote, se ve "Palet 1", "Palet 2"… (su posición en la columna) — siempre hay un identificador visible.
+- Mismo cambio aplicado a la vista simple (1 nivel) en el listado de lotes.
