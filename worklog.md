@@ -1934,3 +1934,23 @@ Stage Summary:
 - En el mapa de STOCK ALMACÉN, cada palet muestra ahora su nº (lote) en texto GRANDE y NEGRITA, perfectamente legible.
 - Si un palet no trae lote, se ve "Palet 1", "Palet 2"… (su posición en la columna) — siempre hay un identificador visible.
 - Mismo cambio aplicado a la vista simple (1 nivel) en el listado de lotes.
+
+---
+Task ID: V29.20
+Agent: Main Agent
+Task: Unificar SMURFIT a "SMURFIT WESTROCK ESPAÑA SA" + que el desplegable de cliente solo muestre clientes del catálogo (no sueltos)
+
+Work Log:
+- El usuario confirma que el catálogo tiene todas las líneas SMURFIT unificadas, pero en la captura se ven dos cadenas de cliente distintas ("SMURFIT WESTROCK ESPAÑA SA" y "SMURFIT WESTROCK"). Quiere que se unifique TODO a "SMURFIT WESTROCK ESPAÑA SA" y que NUNCA se pueda elegir un cliente que no esté en el catálogo.
+- Scripts/audit-smurfit.ts ya entregado (sesión anterior) — solo lectura, lista clientes duplicados y SALIDAS fantasma.
+- Scripts/unify-smurfit.ts (NUEVO): busca clientes SMURFIT/WESTROCK del tenant, elige canonical = el de nombre MÁS LARGO (típicamente "SMURFIT WESTROCK ESPAÑA SA"), reasigna al canonical todos los Registros y líneas de Catálogo de los duplicados, actualiza el campo `cliente` (nombre visible) en los Registros para que aparezca el canonical, y borra los duplicados. DRY-RUN por defecto (lista qué haría sin tocar); --apply para ejecutar. Backup previo en scripts/backup-pre-unify-smurfit.json con Cliente+Catalogo+Registro del tenant.
+- Test E2E del script (BD local): sembrados 2 clientes duplicados ("SMURFIT WESTROCK" / "SMURFIT WESTROCK ESPAÑA SA") + 5 registros repartidos (3 del corto, 2 del largo). Dry-run lista correctamente (canonical = el largo, 3 registros a reasignar, 3 nombres a actualizar). --apply ejecuta: 3 UPDATEs de clienteId, 0 de catálogo (no había), 3 de nombre visible, 1 DELETE de cliente duplicado. Resultado final: 1 cliente, 5 registros con el MISMO clienteId. Limpieza posterior OK.
+- Fix de código entrada-view.tsx: clientesParaSelect = useMemo que filtra clientes a los que aparecen en el catálogo (clienteId en data.catalogo). Si el catálogo está vacío (tenant nuevo), muestra todos para no bloquear el alta. El Select del campo 'cliente' ahora usa clientesParaSelect en vez de clientes. Ordenado alfabéticamente.
+- Mismo fix en entrada-grilla.tsx: el <select> de clienteId de cada fila usa clientesParaSelect (mismo useMemo). Coherente con la vista de ENTRADA.
+- Sidebar build label → V29.20-UNIFY-SMURFIT · 2026-10-14.
+- node_modules OK, next build + reinicio del daemon (HTTP 200 OK).
+
+Stage Summary:
+- Script de unificación listo (scripts/unify-smurfit.ts): dry-run por defecto, --apply para ejecutar, backup previo. En producción unifica los SMURFIT/WESTROCK al nombre más largo (canonical = "SMURFIT WESTROCK ESPAÑA SA") y borra los duplicados.
+- Fix de código: ENTRADA y GRILLA solo dejan elegir clientes que están en el catálogo. Si un cliente no tiene líneas en el catálogo, NO aparece en el desplegable — no se puede elegir por error.
+- El usuario debe ejecutar `bun scripts/unify-smurfit.ts` (dry-run) en producción para ver el alcance, luego `bun scripts/unify-smurfit.ts --apply` para unificar.

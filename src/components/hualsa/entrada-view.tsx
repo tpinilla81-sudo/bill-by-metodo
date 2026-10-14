@@ -1070,6 +1070,18 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   const { clientes } = data
 
+  // V29.20: clientesParaSelect — solo clientes que aparecen en el CATÁLOGO.
+  // Evita elegir un cliente "suelto" de la tabla Cliente que no case con
+  // ninguna línea del catálogo (causa de palets sin descontar cuando dos
+  // clientes SMURFIT casi idénticos coexistían en la tabla).
+  // Si el catálogo está vacío (tenant nuevo), muestra todos los clientes
+  // para no bloquear el alta inicial.
+  const clientesParaSelect = useMemo(() => {
+    const ids = new Set(data.catalogo.map(c => c.clienteId).filter(Boolean))
+    const filtrados = ids.size > 0 ? clientes.filter(c => ids.has(c.id)) : clientes
+    return filtrados.slice().sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [data.catalogo, clientes])
+
   const clienteVisible = fieldDefs.some(f => f.key === 'cliente' && f.visible)
 
   // Auto-detect client from catalog when field is hidden and c1+c2 are selected.
@@ -1441,7 +1453,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
           <div className="px-3 pb-2">
             <Select value={clienteId} onValueChange={v => { setClienteId(v); setC1(''); setC2('') }}>
               <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder="Selecciona..." /></SelectTrigger>
-              <SelectContent>{clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
+              <SelectContent>{clientesParaSelect.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
             </Select>
           </div>
         </div>

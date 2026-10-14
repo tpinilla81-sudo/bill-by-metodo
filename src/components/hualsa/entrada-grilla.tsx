@@ -237,6 +237,14 @@ export function EntradaGrilla() {
     () => data.catalogo.filter(c => !esConceptoFacturacion(c.c1, c.c2)),
     [data.catalogo],
   )
+  // V29.20: solo clientes que aparecen en el CATÁLOGO (evita elegir un cliente
+  // "suelto" que no case con ninguna línea — causa de palets sin descontar).
+  // Si el catálogo está vacío, muestra todos (no bloquear alta inicial).
+  const clientesParaSelect = useMemo(() => {
+    const ids = new Set(data.catalogo.map(c => c.clienteId).filter(Boolean))
+    const filtrados = ids.size > 0 ? data.clientes.filter(c => ids.has(c.id)) : data.clientes
+    return filtrados.slice().sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [data.catalogo, data.clientes])
   const c1Options = useMemo(() => {
     const all = catGrilla.map(c => c.c1).filter(Boolean)
     return [...new Set(all)].sort()
@@ -769,7 +777,7 @@ export function EntradaGrilla() {
                         className="w-full h-8 px-1 text-sm bg-transparent border border-transparent hover:border-gray-200 focus:border-[#005bb5] focus:outline-none rounded"
                       >
                         <option value="">—</option>
-                        {data.clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        {clientesParaSelect.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                       </select>
                     </td>
                   )}
