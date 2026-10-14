@@ -313,7 +313,20 @@ export function StockAlmacenView() {
   // las fijas. Así el usuario ve lote, ubicación, cliente, concepto, obs,
   // campos custom (SMURFIT etc.) sin tener que ir a REGISTROS.
   const fieldDefsReg = config?.fieldsRegistros || DEFAULT_FIELDS_REGISTROS
-  const visibleFieldsReg = useMemo(() => fieldDefsReg.filter(f => f.visible), [fieldDefsReg])
+  // V29.24: excluir de visibleFieldsReg las columnas custom que YA están como
+  // columnas fijas del DETALLE (UBICACIÓN, LOTE/Nº PALET). Si no, aparecen
+  // DOS veces: una en la columna fija (p. ej. UBICACIÓN) y otra como custom.
+  const esColumnaDuplicada = (f: FieldDef): boolean => {
+    if (!f.isCustom) return false
+    const nk = f.key.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+    const lbl = (f.label || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+    // LOTE/Nº PALET ya está en la columna fija LOTE / Nº PALET
+    if (/lote/.test(nk) || /lote/.test(lbl) || /palet/.test(nk) || /palet/.test(lbl)) return true
+    // UBICACIÓN ya está en la columna fija UBICACIÓN
+    if (/ubicac/.test(nk) || /ubicac/.test(lbl)) return true
+    return false
+  }
+  const visibleFieldsReg = useMemo(() => fieldDefsReg.filter(f => f.visible && !esColumnaDuplicada(f)), [fieldDefsReg])
   // Mapa id→Registro para resolver el Registro original de un LoteStock (la
   // ENTRADA que abrió el lote) y poder pintar TODAS sus columnas en DETALLE.
   const registrosById = useMemo(() => {
@@ -1618,13 +1631,38 @@ export function StockAlmacenView() {
                   // customData (descripción, albarán, etc.) igual que V29.17.
                   const rOrigen = palet ? registrosById.get(palet.id) : undefined
                   const cdOrigen = rOrigen ? parseCustomData((rOrigen as Record<string, unknown>).customData as string || '') : {}
+                  // V29.24: nº de PALET — cualquier campo custom con "palet" en
+                  // la clave cuyo valor no sea el lote. El motor de stock
+                  // (extractIdents) agrupa palet+lote como "strong ident", pero
+                  // aquí queremos el nº de palet SEPARADO del lote para mostrarlo.
+                  // Buscamos en cdOrigen la primera clave con "palet" (sin "lote")
+                  // o viceversa: la clave con "lote" es el lote (palet.ident);
+                  // la otra con "palet" (sin "lote") es el nº de palet.
+                  const numPaletRaw = (() => {
+                    for (const [k, v] of Object.entries(cdOrigen)) {
+                      const nk = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+                      if (!nk.includes('lote') && nk.includes('palet')) return String(v || '').trim()
+                    }
+                    return ''
+                  })()
+                  const numLoteRaw = (() => {
+                    for (const [k, v] of Object.entries(cdOrigen)) {
+                      const nk = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+                      if (nk.includes('lote')) return String(v || '').trim()
+                    }
+                    // Sin clave "lote" → usar palet.ident (que es lo que el motor
+                    // encontró con /palet|lote/ en extractIdents).
+                    return palet?.ident || ''
+                  })()
                   const labelOrigen = (key: string, label: string) => {
                     const v = String(cdOrigen[key] || '').trim()
                     return v ? `\n${label}: ${v}` : ''
                   }
                   const tooltipPalet = ocupada && palet
-                    ? ` · palet ${palet.ident || '—'} · ${dias} días` +
-                      (palet.cantRestante > 1 ? ` · lote de ${palet.cantRestante} palets (queda${palet.cantRestante > 1 ? 'n' : ''} ${palet.cantRestante})` : '') +
+                    ? ` · ${dias} días` +
+                      (numLoteRaw ? `\nLote: ${numLoteRaw}` : '') +
+                      (numPaletRaw ? `\nNº palet: ${numPaletRaw}` : '') +
+                      (palet.cantRestante > 1 ? `\nLote de ${palet.cantRestante} palets (queda${palet.cantRestante > 1 ? 'n' : ''} ${palet.cantRestante})` : '') +
                       (rOrigen?.cliente ? `\nCliente: ${rOrigen.cliente}` : '') +
                       (rOrigen?.c1 ? `\nConcepto 1: ${rOrigen.c1}` : '') +
                       (rOrigen?.c2 ? `\nConcepto 2: ${rOrigen.c2}` : '') +
@@ -1667,15 +1705,19 @@ export function StockAlmacenView() {
                       )}
                       {ocupada ? (
                         <>
-                          {/* V29.19: Nº DE PALET BIEN VISIBLE — el lote/ident
-                              en texto grande (text-[12px] font-extrabold) para
-                              que se lea SIN esfuerzo desde la pantalla. Si el
-                              palet no trae lote (custom_lote vacío), se muestra
-                              un identificador alternativo claro: "Palet N" donde
-                              N es su posición en la columna (1=suelo, 2=2ª fila…).
-                              Así SIEMPRE se ve un nº identificable en cada palet. */}
-                          <div className={`text-[12px] font-extrabold leading-tight mt-0.5 break-words ${textoPorDias(dias)}`}>
-                            {palet?.ident || `Palet ${j}`}
+                          {/* V29.24: en cada casilla se muestra el Nº DE PALET
+                              (si existe campo custom_palet distinto del lote) Y
+                              el LOTE. Así el operador ve ambos códigos en el
+                              dibujo y puede verificar que el palet físico es
+                              el correcto. Si no hay nº de palet, se muestra
+                              solo el lote. Si no hay ninguno, "Palet N". */}
+                          {numPaletRaw ? (
+                            <div className={`text-[12px] font-extrabold leading-tight mt-0.5 break-words ${textoPorDias(dias)}`}>
+                              P{numPaletRaw}
+                            </div>
+                          ) : null}
+                          <div className={`${numPaletRaw ? 'text-[9px] font-bold leading-tight break-words opacity-90' : 'text-[12px] font-extrabold leading-tight break-words'} mt-0.5 ${textoPorDias(dias)}`}>
+                            {numLoteRaw || numPaletRaw ? (numLoteRaw || `Palet ${j}`) : (palet?.ident || `Palet ${j}`)}
                           </div>
                           <div className="mt-auto flex items-baseline justify-between gap-0.5">
                             <span className={`text-sm font-extrabold leading-none ${textoPorDias(dias)}`}>{dias}<span className="text-[8px] ml-px">d</span></span>
@@ -1871,12 +1913,24 @@ export function StockAlmacenView() {
                                 {/* Lista de todos los lotes con sus días —
                                     V29.6: cada lote es ARRASTRABLE a otro hueco.
                                     V29.19: nº de palet en texto más grande y con
-                                    fallback a "Palet N" si no tiene lote. */}
+                                    fallback a "Palet N" si no tiene lote.
+                                    V29.24: muestra P{nº palet} + lote si los hay. */}
                                 {lotesUnicos.length > 0 && (
                                   <div className="mt-1 space-y-0.5">
                                     {lotesUnicos.map((l, li) => {
                                       const dl = diasEnAlmacen(l.fecha, now)
                                       const arrastrandoEsteLote = !!dragLote && dragLote.id === l.id
+                                      // V29.24: resolver nº palet + lote del customData
+                                      const rLote = registrosById.get(l.id)
+                                      const cdLote = rLote ? parseCustomData((rLote as Record<string, unknown>).customData as string || '') : {}
+                                      const nPalet = (() => {
+                                        for (const [k, v] of Object.entries(cdLote)) {
+                                          const nk = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+                                          if (!nk.includes('lote') && nk.includes('palet')) return String(v || '').trim()
+                                        }
+                                        return ''
+                                      })()
+                                      const nLote = l.ident || ''
                                       return (
                                         <div
                                           key={l.id}
@@ -1886,7 +1940,9 @@ export function StockAlmacenView() {
                                           title={`Arrastra «${l.ident || 'sin lote'}» a otro hueco para moverlo`}
                                           className={`text-[11px] font-bold text-gray-700 flex items-center justify-between gap-1 cursor-grab active:cursor-grabbing ${arrastrandoEsteLote ? 'opacity-40' : ''}`}
                                         >
-                                          <span className="truncate">{l.ident || `Palet ${li + 1}`}</span>
+                                          <span className="truncate">
+                                            {nPalet ? `P${nPalet}` : ''}{nPalet && nLote ? ' · ' : ''}{nLote || (nPalet ? '' : `Palet ${li + 1}`)}
+                                          </span>
                                           <span className={`${textoPorDias(dl)} font-bold`}>{dl}d</span>
                                         </div>
                                       )

@@ -2015,3 +2015,24 @@ Stage Summary:
 - Backup previo automático. El usuario debe ejecutar en producción:
     bun scripts/migrate-ubicaciones.ts            (ver qué haría)
     bun scripts/migrate-ubicaciones.ts --apply    (aplicar)
+
+---
+Task ID: V29.24
+Agent: Main Agent
+Task: En el dibujo mostrar el Nº DE PALET además del lote + quitar UBICACIÓN duplicada en DETALLE DEL STOCK
+
+Work Log:
+- El usuario pide dos cosas: (1) que en el dibujo se vea el nº de palet ADEMÁS del nº de lote (para verificar que está correcto); (2) que en el listado DETALLE DEL STOCK la columna UBICACIÓN aparece DOS veces.
+- stock-almacen-view.tsx · casillaAlzado():
+  · Resuelve el customData del Registro origen del lote (registrosById) y busca DOS campos distintos: numPaletRaw (clave con "palet" sin "lote") y numLoteRaw (clave con "lote" → fallback palet.ident).
+  · En el contenido visible de cada casilla: si hay nº de palet, se pinta "P553" arriba en grande (text-[12px] font-extrabold); debajo, en texto pequeño, el lote (text-[9px] font-bold opacity-90). Si no hay nº de palet, se muestra solo el lote en grande.
+  · En el tooltip: ahora añade "Lote: X" y "Nº palet: Y" en líneas separadas (más claras), además del resto de info (cliente, concepto, descripción, albarán, matrícula, bultos, obs, fecha entrada, ubicación completa).
+  · Mismo cambio en la vista simple (1 nivel) — el listado de lotes dentro de la celda muestra "P{nº} · {lote}" o solo el lote.
+- visibleFieldsReg (V29.17): nuevo filtro esColumnaDuplicada(f) que excluye las columnas custom cuya clave/label contiene "lote", "palet" o "ubicac" — ya están como columnas fijas (UBICACIÓN, LOTE/Nº PALET). Así no aparecen DOS veces.
+- Sidebar build label → V29.24-PALET+DIBUJO+DEDUP · 2026-10-14.
+- Validación E2E (usuario temporal borrado): sembrados 2 lotes — uno con custom_lote=605430 + custom_palet=553 + ubicación P1F1-1, otro con solo custom_lote=L-SOLO-LOTE + ubicación P1F2-3. VLM confirma: casilla 1 muestra "P553" arriba y "605430" debajo (DOS códigos), casilla 2 muestra solo "L-SOLO-LOTE". En DETALLE DEL STOCK, headers visibles: UBICACIÓN, ESTANTERÍA, LOTE/Nº PALET, PALETS, DÍAS, ¿EN DIBUJO?, Fecha, Mes, Sem, Cliente, Concepto 1, Concepto 2, Cant, P.Unit, Importe, Obs, Estado → SIN duplicados. Limpieza OK.
+
+Stage Summary:
+- En el mapa de STOCK ALMACÉN, cada casilla ocupada muestra ahora el Nº DE PALET (con prefijo P) ADEMÁS del lote, para que el operador pueda verificar a simple vista que el palet físico es el correcto. Si un registro no trae custom_palet, solo se ve el lote.
+- En el tooltip al hover se ven ambos códigos claramente separados: "Lote: 605430 / Nº palet: 553 / Cliente: ... / etc."
+- DETALLE DEL STOCK ya NO duplica UBICACIÓN ni LOTE/Nº PALET — las columnas custom que coinciden con las fijas se filtran automáticamente.
