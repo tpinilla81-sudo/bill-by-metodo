@@ -322,11 +322,21 @@ export function StockAlmacenView() {
   // Campos custom dinámicos: los del fieldsEntrada (con su label bonito) +
   // cualquier otro que aparezca en el customData de los registros mostrados
   // (p. ej. un campo que trajeron de una importación Excel). Igual que V29.13.
+  // V29.26: filtrar duplicadas — si el campo custom es UBICACIÓN o LOTE/Nº PALET,
+  // ya están como columnas fijas en el DETALLE/MOV (no duplicar).
+  const esCustomDuplicada = (key: string, label: string): boolean => {
+    const nk = key.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+    const lbl = (label || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+    if (/ubicac/.test(nk) || /ubicac/.test(lbl)) return true
+    if (/lote/.test(nk) || /lote/.test(lbl)) return true
+    return false
+  }
   const camposCustom = useMemo(() => {
     const out: { key: string; label: string }[] = []
     const seen = new Set<string>()
     for (const f of (config?.fieldsEntrada || [])) {
       if (!f.isCustom || !f.visible || seen.has(f.key)) continue
+      if (esCustomDuplicada(f.key, f.label)) continue
       seen.add(f.key)
       out.push({ key: f.key, label: f.label })
     }
@@ -334,14 +344,13 @@ export function StockAlmacenView() {
       const cd = parseCustomData((r as Record<string, unknown>).customData as string || '')
       for (const k of Object.keys(cd)) {
         if (seen.has(k)) continue
-        // Solo campos custom_ (los que el sistema guarda en ENTRADA) —
-        // evita pintar basura como '_v' o metadatos internos.
         if (!k.startsWith('custom_')) continue
+        // V29.26: filtrar UBICACIÓN duplicada
+        const lbl = k.replace(/^custom_/, '').replace(/_/g, ' ').toUpperCase()
+        if (esCustomDuplicada(k, lbl)) continue
         seen.add(k)
-        // Buscar label en fieldsEntrada; si no está, pretty-print del key
-        const lbl = (config?.fieldsEntrada || []).find(f => f.key === k)?.label
-          || k.replace(/^custom_/, '').replace(/_/g, ' ').toUpperCase()
-        out.push({ key: k, label: lbl })
+        const found = (config?.fieldsEntrada || []).find(f => f.key === k)?.label || lbl
+        out.push({ key: k, label: found })
       }
     }
     return out
@@ -2086,12 +2095,11 @@ export function StockAlmacenView() {
               <table className="w-full text-sm min-w-[900px]">
                 <thead>
                   <tr className="text-left text-xs text-gray-500 border-b-2 border-gray-200 bg-gray-50">
-                    {/* V29.17: columnas fijas del stock + TODAS las columnas de
-                        REGISTROS (fieldsRegistros visibles). Mismo contenido
-                        que la tabla REGISTROS, así el usuario ve TODA la info
-                        del palet sin cambiar de vista. */}
+                    {/* V29.26: MISMAS COLUMNAS que ÚLTIMOS MOVIMIENTOS y en el
+                        MISMO ORDEN. Sin ESTANTERÍA (redundante con UBICACIÓN),
+                        sin duplicados (UBICACIÓN y LOTE/Nº PALET custom se
+                        filtran de camposCustom). */}
                     <th className="py-2 pr-3 font-semibold">UBICACIÓN</th>
-                    <th className="py-2 pr-3 font-semibold">ESTANTERÍA</th>
                     <th className="py-2 pr-3 font-semibold">LOTE / Nº PALET</th>
                     <th className="py-2 pr-3 font-semibold text-right">PALETS</th>
                     <th className="py-2 pr-3 font-semibold text-right">DÍAS</th>
@@ -2100,10 +2108,6 @@ export function StockAlmacenView() {
                     {visibleFieldsReg.map(f => (
                       <th key={f.key} className="py-2 pr-3 font-semibold whitespace-nowrap">{f.label}</th>
                     ))}
-                    {/* V29.25: columnas custom DINÁMICAS del customData — Nº PALET,
-                        DESCRIPCIÓN, ALBARÁN, MATRÍCULA, BULTOS... lo mismo que
-                        V29.13 en PRE-FACTURA. Aparecen SIEMPRE que el customData
-                        de cualquier registro visible las traiga. */}
                     {camposCustom.map(c => (
                       <th key={c.key} className="py-2 pr-3 font-semibold whitespace-nowrap">{c.label}</th>
                     ))}
@@ -2133,7 +2137,6 @@ export function StockAlmacenView() {
                         className={`border-b border-gray-100 hover:bg-gray-50 cursor-grab active:cursor-grabbing ${arrastrandoEsteLote ? 'opacity-40' : ''}`}
                       >
                         <td className="py-2 pr-3 font-semibold text-gray-700 whitespace-nowrap">{l.ubicacion || '—'}</td>
-                        <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{rack}{pos ? ` · ${pos}` : ''}</td>
                         <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{l.ident || '—'}</td>
                         <td className="py-2 pr-3 text-right font-bold text-gray-800">{l.cantRestante}</td>
                         <td className={`py-2 pr-3 text-right font-bold whitespace-nowrap ${d > 60 ? 'text-red-600' : d > 30 ? 'text-amber-600' : 'text-gray-600'}`}>{d}</td>
@@ -2177,13 +2180,19 @@ export function StockAlmacenView() {
               <table className="w-full text-sm min-w-[900px]">
                 <thead>
                   <tr className="text-left text-xs text-gray-500 border-b-2 border-gray-200 bg-gray-50">
-                    {/* V29.17: mismas columnas que REGISTROS + badge ENTRADA/SALIDA
-                        delante y cantidad con signo +/− al final. */}
+                    {/* V29.26: MISMAS columnas que DETALLE DEL STOCK y en el MISMO
+                        ORDEN. La única diferencia es la columna MOV. (badge
+                        ENTRADA/SALIDA) que va DELANTE, y la columna ± (cantidad
+                        con signo) al FINAL. */}
                     <th className="py-2 pr-3 font-semibold">MOV.</th>
+                    <th className="py-2 pr-3 font-semibold">UBICACIÓN</th>
+                    <th className="py-2 pr-3 font-semibold">LOTE / Nº PALET</th>
+                    <th className="py-2 pr-3 font-semibold text-right">PALETS</th>
+                    <th className="py-2 pr-3 font-semibold text-right">DÍAS</th>
+                    <th className="py-2 pr-3 font-semibold text-center" title="✓ = el palet está pintado en el mapa · ⚠ = está en el listado pero NO en el dibujo">¿EN DIBUJO?</th>
                     {visibleFieldsReg.map(f => (
                       <th key={f.key} className="py-2 pr-3 font-semibold whitespace-nowrap">{f.label}</th>
                     ))}
-                    {/* V29.25: mismas columnas custom dinámicas que DETALLE DEL STOCK. */}
                     {camposCustom.map(c => (
                       <th key={c.key} className="py-2 pr-3 font-semibold whitespace-nowrap">{c.label}</th>
                     ))}
@@ -2195,12 +2204,30 @@ export function StockAlmacenView() {
                     const esEnt = isEntradaPalet(m)
                     // V29.25: customData del registro para pintar campos custom
                     const cdMov = parseCustomData((m as Record<string, unknown>).customData as string || '')
+                    // V29.26: calcular días, ubicación, lote, en-dibujo igual que DETALLE
+                    const dMov = diasEnAlmacen(m.fecha, now)
+                    const ubMov = getUbicacion(m)
+                    const loteMov = getIdent(m)
+                    const enDibujoMov = (() => {
+                      const k = normHuecoKey(ubMov)
+                      for (const rk of racks) for (const c of rk.celdas) for (const l of c.lotes) if (l.id === m.id) return true
+                      return false
+                    })()
                     return (
                       <tr key={m.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-2 pr-3 whitespace-nowrap">
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${esEnt ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>
                             {esEnt ? 'ENTRADA' : 'SALIDA'}
                           </span>
+                        </td>
+                        <td className="py-2 pr-3 font-semibold text-gray-700 whitespace-nowrap">{ubMov || '—'}</td>
+                        <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{loteMov || '—'}</td>
+                        <td className="py-2 pr-3 text-right font-bold text-gray-800">{esEnt ? m.cant : '—'}</td>
+                        <td className={`py-2 pr-3 text-right font-bold whitespace-nowrap ${dMov > 60 ? 'text-red-600' : dMov > 30 ? 'text-amber-600' : 'text-gray-600'}`}>{dMov}</td>
+                        <td className="py-2 pr-3 text-center whitespace-nowrap" title={enDibujoMov ? 'Palet dibujado en el mapa' : 'Sin ubicación o fuera de configuración'}>
+                          {enDibujoMov
+                            ? <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700 text-xs font-extrabold">✓</span>
+                            : <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-xs font-extrabold">!</span>}
                         </td>
                         {visibleFieldsReg.map(f => (
                           <td key={f.key} className={`py-2 pr-3 text-gray-600 whitespace-nowrap ${f.key === 'importe' ? 'font-bold text-[#005bb5]' : ''} ${f.key === 'observaciones' ? 'text-gray-500 text-xs max-w-[12rem] truncate' : ''}`} title={f.key === 'observaciones' ? String(getCellValue(m, f) || '') : ''}>

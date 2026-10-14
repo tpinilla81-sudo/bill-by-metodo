@@ -2056,3 +2056,22 @@ Work Log:
 Stage Summary:
 - DETALLE DEL STOCK y ÚLTIMOS MOVIMIENTOS DE PALET tienen ahora exactamente LAS MISMAS columnas: las estándar de REGISTROS (Fecha, Mes, Sem, Cliente, Concepto 1/2, Cant, P.Unit, Importe, Obs, Estado) + TODAS las custom dinámicas del customData (LOTE/Nº PALET, UBICACIÓN, DESCRIPCION, PALET, ALBARAN — cualquier campo custom_* que aparezca en los registros del tenant).
 - Genérico y a prueba de futuro: si mañana se añade un campo custom nuevo en ENTRADA, aparece automáticamente como columna en DETALLE y ÚLTIMOS MOV al primer registro que lo traiga.
+
+---
+Task ID: V29.26
+Agent: Main Agent
+Task: MISMAS COLUMNAS, MISMO ORDEN, sin duplicadas, quitar ESTANTERÍA del DETALLE
+
+Work Log:
+- El usuario pide: (1) DETALLE DEL STOCK y ÚLTIMOS MOVIMIENTOS con MISMAS columnas y MISMO ORDEN; (2) quitar duplicadas (UBICACIÓN aparece dos veces); (3) estando UBICACIÓN, quitar ESTANTERÍA.
+- stock-almacen-view.tsx:
+  · Re-añadido esCustomDuplicada(key, label) — filtra de camposCustom los campos custom que sean UBICACIÓN o LOTE (ya están como columnas fijas). Si el customData tiene custom_ubicacion o custom_lote, no se pintan como columnas custom dinámicas (ya están representados en las columnas fijas UBICACIÓN y LOTE / Nº PALET).
+  · DETALLE DEL STOCK: quitada la columna ESTANTERÍA (header + cell). Orden final: UBICACIÓN / LOTE / Nº PALET / PALETS / DÍAS / ¿EN DIBUJO? / [visibleFieldsReg estándar] / [camposCustom dinámicos].
+  · ÚLTIMOS MOVIMIENTOS: ahora tiene las MISMAS columnas que DETALLE en el MISMO ORDEN. Añadidas: UBICACIÓN / LOTE / Nº PALET / PALETS (cant de entrada) / DÍAS / ¿EN DIBUJO? antes de visibleFieldsReg. La única diferencia con DETALLE: columna MOV. (badge ENTRADA/SALIDA) al inicio y columna ± (cant con signo +/−) al final.
+- Sidebar build label → V29.26-MISMAS-COLS · 2026-10-14.
+- Validación E2E (usuario temporal borrado): sembrados 1 ENTRADA + 1 SALIDA con custom_lote=605430, custom_palet=553, custom_descripcion=CAJAS FRESA, custom_albaran=ALB-001. VLM confirma: DETALLE DEL STOCK muestra 21 columnas en orden MOV./UBICACIÓN/LOTE/Nº PALET/PALETS/DÍAS/¿EN DIBUJO?/Fecha/Mes/Sem/Cliente/Concepto 1/Concepto 2/Cant/P.Unit/Importe/Obs/Estado/DESCRIPCION/PALET/ALBARAN (sin ESTANTERÍA, sin UBICACIÓN duplicada). ÚLTIMOS MOV con MISMAS columnas en MISMO orden + columna ± al final. Limpieza OK.
+
+Stage Summary:
+- DETALLE DEL STOCK y ÚLTIMOS MOVIMIENTOS DE PALET tienen ahora EXACTAMENTE las mismas columnas en el mismo orden: MOV./UBICACIÓN/LOTE/Nº PALET/PALETS/DÍAS/¿EN DIBUJO?/Fecha/Mes/Sem/Cliente/Concepto 1/Concepto 2/Cant/P.Unit/Importe/Obs/Estado/DESCRIPCION/PALET/ALBARAN...
+- Sin ESTANTERÍA (era redundante con UBICACIÓN), sin UBICACIÓN duplicada (la custom se filtra).
+- Única diferencia: ÚLTIMOS MOV tiene MOV. (badge ENTRADA/SALIDA) al inicio y ± (cantidad con signo) al final.
