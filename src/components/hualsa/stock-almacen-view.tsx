@@ -697,6 +697,17 @@ export function StockAlmacenView() {
   const desbordes = racks.reduce((n, rk) => n + rk.celdas.filter(c => c.cap > 0 && c.total > c.cap).length, 0)
   const paletsFuera = useMemo(() => fueraCfg.reduce((s, c) => s + c.total, 0), [fueraCfg])
 
+  // V29.22: lotes que SÍ están dibujados en el mapa (su ubicación coincide con
+  // un hueco configurado). Se usa en DETALLE DEL STOCK para marcar con ✓ los
+  // que están en el dibujo y ⚠ los que NO (sin ubicación o con ubicación fuera
+  // de la configuración actual) — el usuario puede ver de un vistazo los
+  // palets "fantasmas" del listado que no pinta el mapa.
+  const lotesEnDibujo = useMemo(() => {
+    const s = new Set<string>()
+    for (const rk of racks) for (const c of rk.celdas) for (const l of c.lotes) s.add(l.id)
+    return s
+  }, [racks])
+
   // Estanterías detectadas en los movimientos y aún sin configurar (sugerencias).
   // No se sugieren nombres ya configurados ni antiguos (alias) de estanterías.
   const sugerencias = useMemo(() => {
@@ -2009,6 +2020,8 @@ export function StockAlmacenView() {
                     <th className="py-2 pr-3 font-semibold">LOTE / Nº PALET</th>
                     <th className="py-2 pr-3 font-semibold text-right">PALETS</th>
                     <th className="py-2 pr-3 font-semibold text-right">DÍAS</th>
+                    {/* V29.22: EN DIBUJO — ✓ si el lote está en el mapa, ⚠ si no. */}
+                    <th className="py-2 pr-3 font-semibold text-center" title="✓ = el palet está pintado en el mapa · ⚠ = está en el listado pero NO en el dibujo (sin ubicación o con ubicación fuera de la configuración)">¿EN DIBUJO?</th>
                     {visibleFieldsReg.map(f => (
                       <th key={f.key} className="py-2 pr-3 font-semibold whitespace-nowrap">{f.label}</th>
                     ))}
@@ -2040,6 +2053,15 @@ export function StockAlmacenView() {
                         <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{l.ident || '—'}</td>
                         <td className="py-2 pr-3 text-right font-bold text-gray-800">{l.cantRestante}</td>
                         <td className={`py-2 pr-3 text-right font-bold whitespace-nowrap ${d > 60 ? 'text-red-600' : d > 30 ? 'text-amber-600' : 'text-gray-600'}`}>{d}</td>
+                        {/* V29.22: EN DIBUJO — ✓ verde si el lote está en el mapa,
+                            ⚠ ámbar si NO (sin ubicación o con ubicación fuera de
+                            la configuración). El operador puede arrastrarlo a un
+                            hueco del mapa para que aparezca. */}
+                        <td className="py-2 pr-3 text-center whitespace-nowrap" title={lotesEnDibujo.has(l.id) ? 'Palet dibujado en el mapa' : (l.ubicacion ? `Ubicación «${l.ubicacion}» no está en la configuración del almacén` : 'Sin ubicación — arrastra la fila a un hueco del mapa')}>
+                          {lotesEnDibujo.has(l.id)
+                            ? <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700 text-xs font-extrabold">✓</span>
+                            : <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-xs font-extrabold">!</span>}
+                        </td>
                         {visibleFieldsReg.map(f => (
                           <td key={f.key} className={`py-2 pr-3 text-gray-600 whitespace-nowrap ${f.key === 'importe' ? 'font-bold text-[#005bb5]' : ''} ${f.key === 'observaciones' ? 'text-gray-500 text-xs max-w-[12rem] truncate' : ''}`} title={f.key === 'observaciones' ? String(getCellValue(rOrigen, f) || '') : ''}>
                             {getCellValue(rOrigen, f)}

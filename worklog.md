@@ -1972,3 +1972,19 @@ Stage Summary:
 - Cuando se renombre un cliente desde la UI de CLIENTES (Editar), TODOS los registros existentes con ese clienteId se actualizan automáticamente al nuevo nombre. El operador no tiene que tocar nada más.
 - El `clienteId` no cambia, así que el matching ENTRADA↔SALIDA en el motor de stock sigue funcionando — solo se propaga el nombre visible.
 - Si el usuario quiere aplicar el cambio a registros históricos que ya están con el nombre viejo: o bien renombra dos veces (a un nombre temporal y de vuelta al correcto), o bien ejecuta scripts/unify-smurfit.ts --apply que ya hace esta propagación masiva.
+
+---
+Task ID: V29.22
+Agent: Main Agent
+Task: Mostrar en DETALLE DEL STOCK cuáles palets están en el mapa (✓) y cuáles NO (⚠) — para ver los "fantasmas" del listado
+
+Work Log:
+- El usuario reporta: hay más palets en el listado de stock que en los dibujos. Quiere ver de un vistazo cuáles están pintados en el mapa y cuáles NO.
+- stock-almacen-view.tsx: nuevo useMemo lotesEnDibujo = Set<loteId> de todos los lotes que buildRacks colocó en celdas configuradas (racks[].celdas[].lotes[].id). Si un lote tiene ubicación vacía o la ubicación no coincide con ningún hueco configurado, NO está en este set → va a fueraCfg y no se pinta en el mapa.
+- DETALLE DEL STOCK: nueva columna "¿EN DIBUJO?" entre DÍAS y la primera columna de REGISTROS. Para cada lote: ✓ verde en círculo si lotesEnDibujo.has(l.id), ⚠ ámbar (!) si no. Tooltip en la celda explica por qué: "Palet dibujado en el mapa" · "Ubicación «X» no está en la configuración del almacén" · "Sin ubicación — arrastra la fila a un hueco del mapa".
+- Sidebar build label → V29.22-EN-DIBUJO · 2026-10-14.
+- Validación E2E (usuario temporal borrado): sembrados 3 lotes distintos — L-V2922-CON-UBI (ubicación P1F1-1, válida) → ✓ verde; L-V2922-SIN-UBI (sin ubicación) → ⚠ ámbar; L-V2922-UBI-FUERA (ubicación E1-99, no configurada) → ⚠ ámbar. VLM confirma los tres símbolos correctos. Limpieza OK.
+
+Stage Summary:
+- DETALLE DEL STOCK tiene ahora una columna "¿EN DIBUJO?" que marca con ✓ verde los palets pintados en el mapa y con ⚠ ámbar los que NO lo están (sin ubicación o con ubicación fuera de la configuración actual).
+- El usuario puede ver de un vistazo los palets "fantasmas" del listado y corregirlos: arrastrarlos a un hueco del mapa (V29.10) o reasignarles ubicación. Así se cierra la divergencia entre listado y dibujo que reportaba.
