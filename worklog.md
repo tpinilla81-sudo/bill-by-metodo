@@ -1954,3 +1954,21 @@ Stage Summary:
 - Script de unificación listo (scripts/unify-smurfit.ts): dry-run por defecto, --apply para ejecutar, backup previo. En producción unifica los SMURFIT/WESTROCK al nombre más largo (canonical = "SMURFIT WESTROCK ESPAÑA SA") y borra los duplicados.
 - Fix de código: ENTRADA y GRILLA solo dejan elegir clientes que están en el catálogo. Si un cliente no tiene líneas en el catálogo, NO aparece en el desplegable — no se puede elegir por error.
 - El usuario debe ejecutar `bun scripts/unify-smurfit.ts` (dry-run) en producción para ver el alcance, luego `bun scripts/unify-smurfit.ts --apply` para unificar.
+
+---
+Task ID: V29.21
+Agent: Main Agent
+Task: Que cuando se renombre un cliente en la tabla Cliente, los registros se actualicen automáticamente (no volver a hacerlo a mano)
+
+Work Log:
+- El usuario explica qué pasó: se actualizó el nombre del cliente en la tabla Cliente (de "SMURFIT WESTROCK" a "SMURFIT WESTROCK ESPAÑA SA") pero los registros viejos seguían mostrando el nombre anterior porque el campo `cliente` (nombre visible) en Registro es un string independiente del `clienteId`. Lo ha cambiado a mano esta vez, pero pide que la próxima vez sea automático.
+- Fix en src/app/api/clientes/route.ts PUT: después de db.cliente.update(), si existing.nombre !== nombre (el nombre cambió), hacer db.registro.updateMany({ where: { tenantId, clienteId: id }, data: { cliente: nombre } }) → todos los registros del cliente pasan al nuevo nombre automáticamente. Log informativo en consola con el count.
+- El `clienteId` (lo que usa buildStock para emparejar ENTRADAS/SALIDAS) NO cambia — solo se propaga el campo `cliente` (nombre visible). El motor de stock sigue funcionando igual.
+- Test directo de la lógica (sin HTTP por auth): sembrados cliente "TEST-RENAME SL" + 3 registros con cliente="TEST-RENAME SL". Aplicar la lógica del fix (UPDATE Cliente + UPDATE Registro SET cliente WHERE clienteId) → 3 registros actualizados al nuevo nombre, 0 quedan con el viejo. ✓ OK.
+- Sidebar build label → V29.21-RENAME-PROPAGA · 2026-10-14.
+- next build + reinicio del daemon (HTTP 200 OK).
+
+Stage Summary:
+- Cuando se renombre un cliente desde la UI de CLIENTES (Editar), TODOS los registros existentes con ese clienteId se actualizan automáticamente al nuevo nombre. El operador no tiene que tocar nada más.
+- El `clienteId` no cambia, así que el matching ENTRADA↔SALIDA en el motor de stock sigue funcionando — solo se propaga el nombre visible.
+- Si el usuario quiere aplicar el cambio a registros históricos que ya están con el nombre viejo: o bien renombra dos veces (a un nombre temporal y de vuelta al correcto), o bien ejecuta scripts/unify-smurfit.ts --apply que ya hace esta propagación masiva.

@@ -50,6 +50,21 @@ export async function PUT(req: Request) {
     const data: any = { nombre, cif: cif || '', dir: dir || '', cp: cp || '', ciudad: ciudad || '', prov: prov || '', mail: mail || '', tel: tel || '' }
     if (customData !== undefined) data.customData = customData
     const cliente = await db.cliente.update({ where: { id }, data })
+
+    // V29.21: propagar el cambio de nombre a TODOS los registros del cliente.
+    // El campo `cliente` (nombre visible) en Registro es un string independiente
+    // del `clienteId` (que no cambia). Si el usuario renombra el cliente (p. ej.
+    // "SMURFIT WESTROCK" → "SMURFIT WESTROCK ESPAÑA SA"), sin esto los registros
+    // viejos seguirían mostrando el nombre anterior y se prestaría a confusión
+    // (parecen clientes distintos aunque el clienteId sea el mismo).
+    if (existing.nombre !== nombre) {
+      const upd = await db.registro.updateMany({
+        where: { tenantId: tid, clienteId: id },
+        data: { cliente: nombre },
+      })
+      console.log(`[V29.21] Cliente ${id} renombrado "${existing.nombre}" → "${nombre}". ${upd.count} registros actualizados.`)
+    }
+
     return NextResponse.json(cliente)
   } catch (err) {
     console.error('Clientes PUT error:', err)
