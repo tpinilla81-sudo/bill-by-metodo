@@ -312,21 +312,40 @@ export function StockAlmacenView() {
   // TODAS las columnas que en REGISTROS (fieldsRegistros visibles), no solo
   // las fijas. Así el usuario ve lote, ubicación, cliente, concepto, obs,
   // campos custom (SMURFIT etc.) sin tener que ir a REGISTROS.
+  // V29.25: añadir también columnas DINÁMICAS del customData de los registros
+  // (lo mismo que V29.13 en PRE-FACTURA) — así aparecen el Nº PALET y todos
+  // los campos custom del cliente (SMURFIT: LOTE, Nº PALET, DESCRIPCIÓN,
+  // ALBARÁN, MATRÍCULA, BULTOS...) en ambas tablas. Las columnas de DETALLE
+  // y ÚLTIMOS MOV son IGUALES (mismos campos Registros + mismos campos custom).
   const fieldDefsReg = config?.fieldsRegistros || DEFAULT_FIELDS_REGISTROS
-  // V29.24: excluir de visibleFieldsReg las columnas custom que YA están como
-  // columnas fijas del DETALLE (UBICACIÓN, LOTE/Nº PALET). Si no, aparecen
-  // DOS veces: una en la columna fija (p. ej. UBICACIÓN) y otra como custom.
-  const esColumnaDuplicada = (f: FieldDef): boolean => {
-    if (!f.isCustom) return false
-    const nk = f.key.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
-    const lbl = (f.label || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
-    // LOTE/Nº PALET ya está en la columna fija LOTE / Nº PALET
-    if (/lote/.test(nk) || /lote/.test(lbl) || /palet/.test(nk) || /palet/.test(lbl)) return true
-    // UBICACIÓN ya está en la columna fija UBICACIÓN
-    if (/ubicac/.test(nk) || /ubicac/.test(lbl)) return true
-    return false
-  }
-  const visibleFieldsReg = useMemo(() => fieldDefsReg.filter(f => f.visible && !esColumnaDuplicada(f)), [fieldDefsReg])
+  const visibleFieldsReg = useMemo(() => fieldDefsReg.filter(f => f.visible), [fieldDefsReg])
+  // Campos custom dinámicos: los del fieldsEntrada (con su label bonito) +
+  // cualquier otro que aparezca en el customData de los registros mostrados
+  // (p. ej. un campo que trajeron de una importación Excel). Igual que V29.13.
+  const camposCustom = useMemo(() => {
+    const out: { key: string; label: string }[] = []
+    const seen = new Set<string>()
+    for (const f of (config?.fieldsEntrada || [])) {
+      if (!f.isCustom || !f.visible || seen.has(f.key)) continue
+      seen.add(f.key)
+      out.push({ key: f.key, label: f.label })
+    }
+    for (const r of registros) {
+      const cd = parseCustomData((r as Record<string, unknown>).customData as string || '')
+      for (const k of Object.keys(cd)) {
+        if (seen.has(k)) continue
+        // Solo campos custom_ (los que el sistema guarda en ENTRADA) —
+        // evita pintar basura como '_v' o metadatos internos.
+        if (!k.startsWith('custom_')) continue
+        seen.add(k)
+        // Buscar label en fieldsEntrada; si no está, pretty-print del key
+        const lbl = (config?.fieldsEntrada || []).find(f => f.key === k)?.label
+          || k.replace(/^custom_/, '').replace(/_/g, ' ').toUpperCase()
+        out.push({ key: k, label: lbl })
+      }
+    }
+    return out
+  }, [config?.fieldsEntrada, registros])
   // Mapa id→Registro para resolver el Registro original de un LoteStock (la
   // ENTRADA que abrió el lote) y poder pintar TODAS sus columnas en DETALLE.
   const registrosById = useMemo(() => {
@@ -2081,6 +2100,13 @@ export function StockAlmacenView() {
                     {visibleFieldsReg.map(f => (
                       <th key={f.key} className="py-2 pr-3 font-semibold whitespace-nowrap">{f.label}</th>
                     ))}
+                    {/* V29.25: columnas custom DINÁMICAS del customData — Nº PALET,
+                        DESCRIPCIÓN, ALBARÁN, MATRÍCULA, BULTOS... lo mismo que
+                        V29.13 en PRE-FACTURA. Aparecen SIEMPRE que el customData
+                        de cualquier registro visible las traiga. */}
+                    {camposCustom.map(c => (
+                      <th key={c.key} className="py-2 pr-3 font-semibold whitespace-nowrap">{c.label}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -2093,6 +2119,8 @@ export function StockAlmacenView() {
                     // incluido). Si no se encuentra (lote histórico migrado), las
                     // celdas custom quedan vacías — el resto sigue funcionando.
                     const rOrigen = registrosById.get(l.id)
+                    // V29.25: customData del registro origen para pintar campos custom
+                    const cdOrigen = rOrigen ? parseCustomData((rOrigen as Record<string, unknown>).customData as string || '') : {}
                     return (
                       <tr
                         key={l.id}
@@ -2123,6 +2151,13 @@ export function StockAlmacenView() {
                             {getCellValue(rOrigen, f)}
                           </td>
                         ))}
+                        {/* V29.25: celdas custom dinámicas — el valor del campo
+                            customData[c.key] para el registro origen. */}
+                        {camposCustom.map(c => (
+                          <td key={c.key} className="py-2 pr-3 text-gray-600 whitespace-nowrap text-xs max-w-[12rem] truncate" title={String(cdOrigen[c.key] || '')}>
+                            {String(cdOrigen[c.key] || '') || '—'}
+                          </td>
+                        ))}
                       </tr>
                     )
                   })}
@@ -2148,12 +2183,18 @@ export function StockAlmacenView() {
                     {visibleFieldsReg.map(f => (
                       <th key={f.key} className="py-2 pr-3 font-semibold whitespace-nowrap">{f.label}</th>
                     ))}
+                    {/* V29.25: mismas columnas custom dinámicas que DETALLE DEL STOCK. */}
+                    {camposCustom.map(c => (
+                      <th key={c.key} className="py-2 pr-3 font-semibold whitespace-nowrap">{c.label}</th>
+                    ))}
                     <th className="py-2 pr-3 font-semibold text-right">±</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ultMovs.map(m => {
                     const esEnt = isEntradaPalet(m)
+                    // V29.25: customData del registro para pintar campos custom
+                    const cdMov = parseCustomData((m as Record<string, unknown>).customData as string || '')
                     return (
                       <tr key={m.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-2 pr-3 whitespace-nowrap">
@@ -2164,6 +2205,12 @@ export function StockAlmacenView() {
                         {visibleFieldsReg.map(f => (
                           <td key={f.key} className={`py-2 pr-3 text-gray-600 whitespace-nowrap ${f.key === 'importe' ? 'font-bold text-[#005bb5]' : ''} ${f.key === 'observaciones' ? 'text-gray-500 text-xs max-w-[12rem] truncate' : ''}`} title={f.key === 'observaciones' ? String(getCellValue(m, f) || '') : ''}>
                             {getCellValue(m, f)}
+                          </td>
+                        ))}
+                        {/* V29.25: celdas custom dinámicas — mismas columnas que DETALLE. */}
+                        {camposCustom.map(c => (
+                          <td key={c.key} className="py-2 pr-3 text-gray-600 whitespace-nowrap text-xs max-w-[12rem] truncate" title={String(cdMov[c.key] || '')}>
+                            {String(cdMov[c.key] || '') || '—'}
                           </td>
                         ))}
                         <td className={`py-2 pr-3 text-right font-bold whitespace-nowrap ${esEnt ? 'text-green-600' : 'text-rose-600'}`}>

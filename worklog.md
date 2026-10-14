@@ -2036,3 +2036,23 @@ Stage Summary:
 - En el mapa de STOCK ALMACÉN, cada casilla ocupada muestra ahora el Nº DE PALET (con prefijo P) ADEMÁS del lote, para que el operador pueda verificar a simple vista que el palet físico es el correcto. Si un registro no trae custom_palet, solo se ve el lote.
 - En el tooltip al hover se ven ambos códigos claramente separados: "Lote: 605430 / Nº palet: 553 / Cliente: ... / etc."
 - DETALLE DEL STOCK ya NO duplica UBICACIÓN ni LOTE/Nº PALET — las columnas custom que coinciden con las fijas se filtran automáticamente.
+
+---
+Task ID: V29.25
+Agent: Main Agent
+Task: Añadir Nº PALET y todos los campos custom del customData como columnas DINÁMICAS en DETALLE DEL STOCK y ÚLTIMOS MOVIMIENTOS — mismas columnas en ambas
+
+Work Log:
+- El usuario reporta: en V29.24 quité la columna del Nº PALET en STOCK y MOVIMIENTOS. Y pide que las columnas de estas dos tablas sean IGUALES.
+- Diagnóstico: V29.17 añadió columnas de fieldsRegistros (estándar), pero NO las custom (custom_lote, custom_palet, custom_descripcion, custom_albarán...). Esos campos viven en el customData del Registro, no en fieldsRegistros. La columna "PALET" (custom_palet) nunca estuvo en DETALLE ni MOVIMIENTOS. V29.13 (PRE-FACTURA) sí lo tenía — con columnas DINÁMICAS que salían del customData de los registros.
+- stock-almacen-view.tsx:
+  · Revertido el filtro esColumnaDuplicada de V29.24 (era incorrecto).
+  · Añadido camposCustom = useMemo que recoge TODAS las claves custom_* del customData de TODOS los registros del tenant + las del fieldsEntrada. Igual que V29.13 en PRE-FACTURA. Cada campo sale con su label (de fieldsEntrada si está, o pretty-print del key: "custom_palet" → "PALET").
+  · DETALLE DEL STOCK: ahora pinta visibleFieldsReg (estándar) + camposCustom (dinámicos). Si un registro tiene custom_palet=553, aparece una columna "PALET" con el valor 553.
+  · ÚLTIMOS MOVIMIENTOS DE PALET: MISMAS columnas (visibleFieldsReg + camposCustom) + badge MOV. delante + ± al final. Igual que DETALLE.
+- Sidebar build label → V29.25-CUSTOM-DINAMICO · 2026-10-14.
+- Validación E2E (usuario temporal borrado): sembrados 1 ENTRADA con custom_lote=605430, custom_palet=553, custom_descripcion=CAJAS FRESA, custom_albaran=ALB-001 + 1 SALIDA. VLM confirma que DETALLE DEL STOCK muestra TODAS las columnas: MOV./Fecha/Mes/Sem/Cliente/Concepto 1/Concepto 2/Cant/P.Unit/Importe/Obs/Estado/LOTE/Nº PALET/UBICACIÓN/DESCRIPCION/PALET/ALBARAN (sin duplicados). ÚLTIMOS MOVIMIENTOS muestra las MISMAS columnas. Limpieza OK.
+
+Stage Summary:
+- DETALLE DEL STOCK y ÚLTIMOS MOVIMIENTOS DE PALET tienen ahora exactamente LAS MISMAS columnas: las estándar de REGISTROS (Fecha, Mes, Sem, Cliente, Concepto 1/2, Cant, P.Unit, Importe, Obs, Estado) + TODAS las custom dinámicas del customData (LOTE/Nº PALET, UBICACIÓN, DESCRIPCION, PALET, ALBARAN — cualquier campo custom_* que aparezca en los registros del tenant).
+- Genérico y a prueba de futuro: si mañana se añade un campo custom nuevo en ENTRADA, aparece automáticamente como columna en DETALLE y ÚLTIMOS MOV al primer registro que lo traiga.
