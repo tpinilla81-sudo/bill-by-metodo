@@ -11,7 +11,8 @@ import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, Calend
 import { Hint } from '@/components/hualsa/hint'
 import { CriteriosEditor } from '@/components/hualsa/criterios-editor'
 import { triggerBackup } from '@/lib/trigger-backup'
-import { fmtDate, type Cliente, type Registro } from '@/lib/hualsa-utils'
+import { fmtDate, fmtCurrency, getISOWeek, type Cliente, type Registro } from '@/lib/hualsa-utils'
+import { useConfig, DEFAULT_FIELDS_REGISTROS, parseCustomData, type FieldDef } from '@/lib/config'
 import {
   normAlm, isEntradaPalet, isSalidaPalet, getUbicacion, getIdent, splitUbicacion, normHuecoKey,
   diasEnAlmacen, buildStock, buildRacks, nombresHuecos, detectarEstanterias,
@@ -300,12 +301,51 @@ function FilasAlturaEditor({
 }
 
 export function StockAlmacenView() {
+  const { config } = useConfig()
   const [registros, setRegistros] = useState<Registro[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [cliFiltro, setCliFiltro] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(() => Date.now())
   const [openClientes, setOpenClientes] = useState(false)
+  // V29.17: en DETALLE DEL STOCK y ÚLTIMOS MOVIMIENTOS DE PALET mostramos
+  // TODAS las columnas que en REGISTROS (fieldsRegistros visibles), no solo
+  // las fijas. Así el usuario ve lote, ubicación, cliente, concepto, obs,
+  // campos custom (SMURFIT etc.) sin tener que ir a REGISTROS.
+  const fieldDefsReg = config?.fieldsRegistros || DEFAULT_FIELDS_REGISTROS
+  const visibleFieldsReg = useMemo(() => fieldDefsReg.filter(f => f.visible), [fieldDefsReg])
+  // Mapa id→Registro para resolver el Registro original de un LoteStock (la
+  // ENTRADA que abrió el lote) y poder pintar TODAS sus columnas en DETALLE.
+  const registrosById = useMemo(() => {
+    const m = new Map<string, Registro>()
+    for (const r of registros) m.set(r.id, r)
+    return m
+  }, [registros])
+  // Helper: valor de una celda para un registro y un campo (igual que registros-view).
+  function getCellValue(r: Registro | undefined, field: FieldDef): React.ReactNode {
+    if (!r) return ''
+    const pu = Number(r.precioUnitario) || 0
+    const imp = pu * r.cant
+    const d = new Date(r.fecha)
+    const cd = parseCustomData((r as Record<string, unknown>).customData as string || '')
+    if (field.isCustom) return String(cd[field.key] || '')
+    switch (field.key) {
+      case 'fecha': return fmtDate(r.fecha)
+      case 'mes': return d.getMonth() + 1
+      case 'semana': return getISOWeek(r.fecha)
+      case 'cliente': return r.cliente
+      case 'c1': return r.c1
+      case 'c2': return r.c2
+      case 'cantidad': return r.cant
+      case 'precioUnitario': return fmtCurrency(pu)
+      case 'importe': return fmtCurrency(imp)
+      case 'observaciones': return r.obs
+      case 'facturado': return r.facturado
+        ? <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">Facturado</span>
+        : <span className="text-[10px] text-gray-400">—</span>
+      default: return ''
+    }
+  }
   const dropdownClientesRef = useRef<HTMLDivElement>(null)
 
   // Buscador por lote/palet/ubicación
@@ -1921,16 +1961,21 @@ export function StockAlmacenView() {
             </h3>
             <p className="text-[11px] text-gray-400 mb-3 print-hide">Consejo: arrastra una fila al mapa para mover ese lote a otro hueco.</p>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[900px]">
                 <thead>
-                  <tr className="text-left text-xs text-gray-500 border-b-2 border-gray-200">
+                  <tr className="text-left text-xs text-gray-500 border-b-2 border-gray-200 bg-gray-50">
+                    {/* V29.17: columnas fijas del stock + TODAS las columnas de
+                        REGISTROS (fieldsRegistros visibles). Mismo contenido
+                        que la tabla REGISTROS, así el usuario ve TODA la info
+                        del palet sin cambiar de vista. */}
                     <th className="py-2 pr-3 font-semibold">UBICACIÓN</th>
                     <th className="py-2 pr-3 font-semibold">ESTANTERÍA</th>
                     <th className="py-2 pr-3 font-semibold">LOTE / Nº PALET</th>
-                    <th className="py-2 pr-3 font-semibold">CLIENTE</th>
                     <th className="py-2 pr-3 font-semibold text-right">PALETS</th>
-                    <th className="py-2 pr-3 font-semibold">FECHA ENTRADA</th>
-                    <th className="py-2 font-semibold text-right">DÍAS</th>
+                    <th className="py-2 pr-3 font-semibold text-right">DÍAS</th>
+                    {visibleFieldsReg.map(f => (
+                      <th key={f.key} className="py-2 pr-3 font-semibold whitespace-nowrap">{f.label}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -1938,6 +1983,11 @@ export function StockAlmacenView() {
                     const d = diasEnAlmacen(l.fecha, now)
                     const { rack, pos } = splitUbicacion(l.ubicacion)
                     const arrastrandoEsteLote = !!dragLote && dragLote.id === l.id
+                    // V29.17: resolver el Registro original de la ENTRADA que
+                    // abrió este lote para pintar TODAS sus columnas (customData
+                    // incluido). Si no se encuentra (lote histórico migrado), las
+                    // celdas custom quedan vacías — el resto sigue funcionando.
+                    const rOrigen = registrosById.get(l.id)
                     return (
                       <tr
                         key={l.id}
@@ -1949,13 +1999,16 @@ export function StockAlmacenView() {
                         title={`Arrastra «${l.ident || l.ubicacion || 'este lote'}» a un hueco del mapa para moverlo`}
                         className={`border-b border-gray-100 hover:bg-gray-50 cursor-grab active:cursor-grabbing ${arrastrandoEsteLote ? 'opacity-40' : ''}`}
                       >
-                        <td className="py-2 pr-3 font-semibold text-gray-700">{l.ubicacion || '—'}</td>
-                        <td className="py-2 pr-3 text-gray-600">{rack}{pos ? ` · ${pos}` : ''}</td>
-                        <td className="py-2 pr-3 text-gray-600">{l.ident || '—'}</td>
-                        <td className="py-2 pr-3 text-gray-600">{nombreCli(l.clienteId)}</td>
+                        <td className="py-2 pr-3 font-semibold text-gray-700 whitespace-nowrap">{l.ubicacion || '—'}</td>
+                        <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{rack}{pos ? ` · ${pos}` : ''}</td>
+                        <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{l.ident || '—'}</td>
                         <td className="py-2 pr-3 text-right font-bold text-gray-800">{l.cantRestante}</td>
-                        <td className="py-2 pr-3 text-gray-600">{fmtDate(l.fecha)}</td>
-                        <td className={`py-2 text-right font-bold ${d > 60 ? 'text-red-600' : d > 30 ? 'text-amber-600' : 'text-gray-600'}`}>{d}</td>
+                        <td className={`py-2 pr-3 text-right font-bold whitespace-nowrap ${d > 60 ? 'text-red-600' : d > 30 ? 'text-amber-600' : 'text-gray-600'}`}>{d}</td>
+                        {visibleFieldsReg.map(f => (
+                          <td key={f.key} className={`py-2 pr-3 text-gray-600 whitespace-nowrap ${f.key === 'importe' ? 'font-bold text-[#005bb5]' : ''} ${f.key === 'observaciones' ? 'text-gray-500 text-xs max-w-[12rem] truncate' : ''}`} title={f.key === 'observaciones' ? String(getCellValue(rOrigen, f) || '') : ''}>
+                            {getCellValue(rOrigen, f)}
+                          </td>
+                        ))}
                       </tr>
                     )
                   })}
@@ -1971,24 +2024,42 @@ export function StockAlmacenView() {
         <Card>
           <CardContent className="p-4">
             <h3 className="font-bold text-gray-800 mb-3 text-sm">ÚLTIMOS MOVIMIENTOS DE PALET</h3>
-            <div className="space-y-1.5">
-              {ultMovs.map(m => {
-                const esEnt = isEntradaPalet(m)
-                const { pos } = splitUbicacion(getUbicacion(m))
-                return (
-                  <div key={m.id} className="flex items-center gap-2 text-sm border-b border-gray-50 pb-1.5">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${esEnt ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>
-                      {esEnt ? 'ENTRADA' : 'SALIDA'}
-                    </span>
-                    <span className="text-gray-500 text-xs w-20 shrink-0">{fmtDate(m.fecha)}</span>
-                    <span className="font-semibold text-gray-700 truncate">{getIdent(m) || pos || m.c2}</span>
-                    <span className="text-gray-400 text-xs truncate hidden md:inline">{nombreCli(m.clienteId)}</span>
-                    <span className={`ml-auto font-bold shrink-0 ${esEnt ? 'text-green-600' : 'text-rose-600'}`}>
-                      {esEnt ? '+' : '−'}{m.cant}
-                    </span>
-                  </div>
-                )
-              })}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[900px]">
+                <thead>
+                  <tr className="text-left text-xs text-gray-500 border-b-2 border-gray-200 bg-gray-50">
+                    {/* V29.17: mismas columnas que REGISTROS + badge ENTRADA/SALIDA
+                        delante y cantidad con signo +/− al final. */}
+                    <th className="py-2 pr-3 font-semibold">MOV.</th>
+                    {visibleFieldsReg.map(f => (
+                      <th key={f.key} className="py-2 pr-3 font-semibold whitespace-nowrap">{f.label}</th>
+                    ))}
+                    <th className="py-2 pr-3 font-semibold text-right">±</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ultMovs.map(m => {
+                    const esEnt = isEntradaPalet(m)
+                    return (
+                      <tr key={m.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 pr-3 whitespace-nowrap">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${esEnt ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>
+                            {esEnt ? 'ENTRADA' : 'SALIDA'}
+                          </span>
+                        </td>
+                        {visibleFieldsReg.map(f => (
+                          <td key={f.key} className={`py-2 pr-3 text-gray-600 whitespace-nowrap ${f.key === 'importe' ? 'font-bold text-[#005bb5]' : ''} ${f.key === 'observaciones' ? 'text-gray-500 text-xs max-w-[12rem] truncate' : ''}`} title={f.key === 'observaciones' ? String(getCellValue(m, f) || '') : ''}>
+                            {getCellValue(m, f)}
+                          </td>
+                        ))}
+                        <td className={`py-2 pr-3 text-right font-bold whitespace-nowrap ${esEnt ? 'text-green-600' : 'text-rose-600'}`}>
+                          {esEnt ? '+' : '−'}{m.cant}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           </CardContent>
         </Card>

@@ -1872,3 +1872,25 @@ Stage Summary:
 - El mapa de STOCK ALMACÉN dibuja EXACTAMENTE el plano en papel: PARED 1 y PARED 2 con filas 1-2 alineadas y filas 3-5 desplazadas progresivamente media celda a la derecha — cada hueco superior descansa sobre DOS inferiores (pirámide escalonada tipo ladrillo). Sin casillas fantasma.
 - Huecos llamados F1-1…F5-6 en las dos paredes (como pedía el usuario). La técnica usada (transform: translateX en vez de margin/padding sobre contenedor flex-1) es la que hace el desplazamiento visible.
 - Asistente de entrada (picker compacto y modal de 2 pasos) dibuja el mismo patrón escalonado. Build V29.16 visible en el sidebar.
+
+---
+Task ID: V29.17
+Agent: Main Agent
+Task: DETALLE DEL STOCK y ÚLTIMOS MOVIMIENTOS DE PALET — poner TODAS las columnas del palet, igual que en REGISTROS
+
+Work Log:
+- El usuario pide que DETALLE DEL STOCK y ÚLTIMOS MOVIMIENTOS DE PALET muestren TODA la información del palet, no solo las columnas fijas. Las dos tablas tenían 7 columnas fijas (UBICACIÓN/ESTANTERÍA/LOTE/CLIENTE/PALETS/FECHA/DÍAS en DETALLE; pill horizontal con fecha/ident/cliente/cant en ÚLTIMOS). Quiere ver lo mismo que en REGISTROS (fecha, mes, semana, cliente, c1, c2, cantidad, p.unit, importe, obs, facturado + campos custom como DESCRIPCION).
+- stock-almacen-view.tsx: añadidos imports de '@/lib/config' (useConfig, DEFAULT_FIELDS_REGISTROS, parseCustomData, FieldDef) y de '@/lib/hualsa-utils' (fmtCurrency, getISOWeek).
+- Helper getCellValue(r, field) clonado de registros-view.tsx — para cada Registro y cada FieldDef devuelve el valor formateado (fecha, mes, semana, cliente, c1, c2, cantidad, p.unit, importe, obs, facturado, custom_*).
+- visibleFieldsReg = fieldDefsReg.filter(f => f.visible) — visible siempre, sin importar el filtro de cliente (igual que en REGISTROS). Así una columna custom de SMURFIT que no aplique a FLORETTE queda con celdas vacías pero la columna está.
+- registrosById = Map<id,Registro> para resolver el Registro ORIGINAL de cada LoteStock (la ENTRADA que abrió el lote). El LoteStock no lleva customData, solo sus campos básicos; con el id se resuelve el Registro completo y se pintan todas sus columnas.
+- DETALLE DEL STOCK: tabla con columnas fijas (UBICACIÓN, ESTANTERÍA, LOTE/Nº PALET, PALETS, DÍAS) + TODAS las visibleFieldsReg. min-w-[900px] y overflow-x-auto para que se vea todo el ancho. La fila sigue siendo arrastrable (V29.10 intacto). obs con truncate+tooltip para textos largos. facturado con su badge.
+- ÚLTIMOS MOVIMIENTOS DE PALET: reescrito de pill horizontal a TABLA con una columna MOV. (badge verde ENTRADA / rojo SALIDA) + TODAS las visibleFieldsReg + columna ± al final (cant con signo +/−). Mismo formato que REGISTROS.
+- Sidebar build label → V29.17-STOCK-COLUMNAS-REG · 2026-10-14 para que el usuario vea que carga la versión nueva.
+- Validación E2E en navegador (usuario temporal test-v2916@hualsa.es, borrado al terminar): sembrados 3 ENTRADAS PALET (FLORETTE, lotes L-V2917-1/2/3, ubicaciones P1F1-1, P1F2-3, P2F1-1) + 1 SALIDA PALET (lote L-V2917-1, 1 palet) → stock esperado 5 palets (3+2+1-1=5). VLM confirma: DETALLE DEL STOCK muestra 16+ columnas (UBICACIÓN/ESTANTERÍA/LOTE/PALETS/DÍAS/Fecha/Mes/Sem/Cliente/Concepto 1/Concepto 2/Cant/P.Unit/Importe/Obs/Estado). ÚLTIMOS MOVIMIENTOS DE PALET muestra tabla con badge MOV. + mismas columnas + columna ± con signo +3/+2/+1/−1. Registros de test (4) y usuario temporal borrados.
+- node_modules desaparecido de nuevo → bun install + prisma generate + next build + reinicio del daemon (HTTP 200 OK).
+
+Stage Summary:
+- DETALLE DEL STOCK y ÚLTIMOS MOVIMIENTOS DE PALET muestran ahora TODA la información del palet: las columnas fijas del almacén (UBICACIÓN/ESTANTERÍA/LOTE/PALETS/DÍAS) + TODAS las columnas que en REGISTROS (fecha, mes, semana, cliente, c1, c2, cantidad, p.unit, importe, obs, facturado y campos custom como DESCRIPCION).
+- Si el usuario añade/quita columnas en CONFIGURACIÓN → CAMPOS REGISTROS, esas columnas aparecen o desaparecen automáticamente en STOCK ALMACÉN también. Genérico y a prueba de futuro.
+- Las filas de DETALLE DEL STOCK siguen siendo arrastrables al mapa (V29.10 intacto).
