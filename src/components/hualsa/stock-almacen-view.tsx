@@ -324,6 +324,12 @@ export function StockAlmacenView() {
   // (p. ej. un campo que trajeron de una importación Excel). Igual que V29.13.
   // V29.26: filtrar duplicadas — si el campo custom es UBICACIÓN o LOTE/Nº PALET,
   // ya están como columnas fijas en el DETALLE/MOV (no duplicar).
+  // V29.27: deduplicar por LABEL NORMALIZADO — si hay dos claves custom con el
+  // mismo label (p. ej. "custom_codigoarticulo" y "custom_codigo_articulo"),
+  // solo se muestra UNA columna (la de fieldsEntrada si existe, si no, la
+  // primera encontrada). Y se lee el valor desde AMBAS claves para que las
+  // filas viejas y las nuevas llenen la MISMA celda.
+  const normLabel = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s_]+/g, '').trim()
   const esCustomDuplicada = (key: string, label: string): boolean => {
     const nk = key.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
     const lbl = (label || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
@@ -332,29 +338,46 @@ export function StockAlmacenView() {
     return false
   }
   const camposCustom = useMemo(() => {
-    const out: { key: string; label: string }[] = []
-    const seen = new Set<string>()
+    const out: { key: string; label: string; aliases: string[] }[] = []
+    const seenLabels = new Set<string>()   // labels normalizados ya añadidos
+    const seenKeys = new Set<string>()      // claves exactas ya procesadas
+    // 1) Primero los fieldsEntrada (definición canónica: label bonito)
     for (const f of (config?.fieldsEntrada || [])) {
-      if (!f.isCustom || !f.visible || seen.has(f.key)) continue
-      if (esCustomDuplicada(f.key, f.label)) continue
-      seen.add(f.key)
-      out.push({ key: f.key, label: f.label })
+      if (!f.isCustom || !f.visible || seenKeys.has(f.key)) continue
+      if (esCustomDuplicada(f.key, f.label)) { seenKeys.add(f.key); continue }
+      const nl = normLabel(f.label || f.key)
+      if (seenLabels.has(nl)) { seenKeys.add(f.key); continue }
+      seenLabels.add(nl); seenKeys.add(f.key)
+      out.push({ key: f.key, label: f.label, aliases: [f.key] })
     }
+    // 2) Luego los del customData de los registros que no estén ya
     for (const r of registros) {
       const cd = parseCustomData((r as Record<string, unknown>).customData as string || '')
       for (const k of Object.keys(cd)) {
-        if (seen.has(k)) continue
+        if (seenKeys.has(k)) continue
         if (!k.startsWith('custom_')) continue
-        // V29.26: filtrar UBICACIÓN duplicada
-        const lbl = k.replace(/^custom_/, '').replace(/_/g, ' ').toUpperCase()
-        if (esCustomDuplicada(k, lbl)) continue
-        seen.add(k)
-        const found = (config?.fieldsEntrada || []).find(f => f.key === k)?.label || lbl
-        out.push({ key: k, label: found })
+        const lbl = (config?.fieldsEntrada || []).find(f => f.key === k)?.label
+          || k.replace(/^custom_/, '').replace(/_/g, ' ').toUpperCase()
+        if (esCustomDuplicada(k, lbl)) { seenKeys.add(k); continue }
+        const nl = normLabel(lbl)
+        // Si ya hay una columna con el MISMO label normalizado, añadir esta clave
+        // como ALIAS (las filas leerán de cualquiera de las dos claves).
+        const existing = out.find(c => normLabel(c.label) === nl)
+        if (existing) { existing.aliases.push(k); seenKeys.add(k); continue }
+        seenLabels.add(nl); seenKeys.add(k)
+        out.push({ key: k, label: lbl, aliases: [k] })
       }
     }
     return out
   }, [config?.fieldsEntrada, registros])
+  // Helper: leer el valor de una celda custom probando todos los alias.
+  const getCustomValue = (cd: Record<string, unknown>, c: { aliases: string[] }): string => {
+    for (const k of c.aliases) {
+      const v = String(cd[k] || '').trim()
+      if (v) return v
+    }
+    return ''
+  }
   // Mapa id→Registro para resolver el Registro original de un LoteStock (la
   // ENTRADA que abrió el lote) y poder pintar TODAS sus columnas en DETALLE.
   const registrosById = useMemo(() => {
@@ -2157,8 +2180,8 @@ export function StockAlmacenView() {
                         {/* V29.25: celdas custom dinámicas — el valor del campo
                             customData[c.key] para el registro origen. */}
                         {camposCustom.map(c => (
-                          <td key={c.key} className="py-2 pr-3 text-gray-600 whitespace-nowrap text-xs max-w-[12rem] truncate" title={String(cdOrigen[c.key] || '')}>
-                            {String(cdOrigen[c.key] || '') || '—'}
+                          <td key={c.key} className="py-2 pr-3 text-gray-600 whitespace-nowrap text-xs max-w-[12rem] truncate" title={getCustomValue(cdOrigen as Record<string, unknown>, c)}>
+                            {getCustomValue(cdOrigen as Record<string, unknown>, c) || '—'}
                           </td>
                         ))}
                       </tr>
@@ -2224,10 +2247,14 @@ export function StockAlmacenView() {
                         <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{loteMov || '—'}</td>
                         <td className="py-2 pr-3 text-right font-bold text-gray-800">{esEnt ? m.cant : '—'}</td>
                         <td className={`py-2 pr-3 text-right font-bold whitespace-nowrap ${dMov > 60 ? 'text-red-600' : dMov > 30 ? 'text-amber-600' : 'text-gray-600'}`}>{dMov}</td>
-                        <td className="py-2 pr-3 text-center whitespace-nowrap" title={enDibujoMov ? 'Palet dibujado en el mapa' : 'Sin ubicación o fuera de configuración'}>
-                          {enDibujoMov
-                            ? <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700 text-xs font-extrabold">✓</span>
-                            : <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-xs font-extrabold">!</span>}
+                        <td className="py-2 pr-3 text-center whitespace-nowrap" title={esEnt ? (enDibujoMov ? 'Palet dibujado en el mapa' : 'Sin ubicación o fuera de configuración') : 'Salida: el palet ya no está en el almacén'}>
+                          {esEnt ? (
+                            enDibujoMov
+                              ? <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700 text-xs font-extrabold">✓</span>
+                              : <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-xs font-extrabold">!</span>
+                          ) : (
+                            <span className="text-gray-300 text-xs">—</span>
+                          )}
                         </td>
                         {visibleFieldsReg.map(f => (
                           <td key={f.key} className={`py-2 pr-3 text-gray-600 whitespace-nowrap ${f.key === 'importe' ? 'font-bold text-[#005bb5]' : ''} ${f.key === 'observaciones' ? 'text-gray-500 text-xs max-w-[12rem] truncate' : ''}`} title={f.key === 'observaciones' ? String(getCellValue(m, f) || '') : ''}>
@@ -2236,8 +2263,8 @@ export function StockAlmacenView() {
                         ))}
                         {/* V29.25: celdas custom dinámicas — mismas columnas que DETALLE. */}
                         {camposCustom.map(c => (
-                          <td key={c.key} className="py-2 pr-3 text-gray-600 whitespace-nowrap text-xs max-w-[12rem] truncate" title={String(cdMov[c.key] || '')}>
-                            {String(cdMov[c.key] || '') || '—'}
+                          <td key={c.key} className="py-2 pr-3 text-gray-600 whitespace-nowrap text-xs max-w-[12rem] truncate" title={getCustomValue(cdMov as Record<string, unknown>, c)}>
+                            {getCustomValue(cdMov as Record<string, unknown>, c) || '—'}
                           </td>
                         ))}
                         <td className={`py-2 pr-3 text-right font-bold whitespace-nowrap ${esEnt ? 'text-green-600' : 'text-rose-600'}`}>

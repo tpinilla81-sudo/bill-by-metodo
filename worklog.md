@@ -2075,3 +2075,26 @@ Stage Summary:
 - DETALLE DEL STOCK y ÚLTIMOS MOVIMIENTOS DE PALET tienen ahora EXACTAMENTE las mismas columnas en el mismo orden: MOV./UBICACIÓN/LOTE/Nº PALET/PALETS/DÍAS/¿EN DIBUJO?/Fecha/Mes/Sem/Cliente/Concepto 1/Concepto 2/Cant/P.Unit/Importe/Obs/Estado/DESCRIPCION/PALET/ALBARAN...
 - Sin ESTANTERÍA (era redundante con UBICACIÓN), sin UBICACIÓN duplicada (la custom se filtra).
 - Única diferencia: ÚLTIMOS MOV tiene MOV. (badge ENTRADA/SALIDA) al inicio y ± (cantidad con signo) al final.
+
+---
+Task ID: V29.27
+Agent: Main Agent
+Task: Columnas custom DUPLICADAS (CÓDIGO ARTÍCULO, FECHA DE FABRICACIÓN, Nº PALET aparecen 2 veces) + ¿EN DIBUJO? en SALIDAS
+
+Work Log:
+- El usuario reporta que en ÚLTIMOS MOVIMIENTOS DE PALET hay columnas DUPLICADAS: CÓDIGO ARTÍCULO, FECHA DE FABRICACIÓN, Nº PALET aparecen dos veces. Esto pasa porque registros viejos tienen claves custom sin guion bajo (custom_codigoarticulo) y registros nuevos con guion bajo (custom_codigo_articulo). camposCustom los trataba como DOS columnas distintas.
+- stock-almacen-view.tsx · camposCustom (useMemo): reescrito con DEDUPLICACIÓN por LABEL NORMALIZADO.
+  · normLabel(s) = lowercase + sin acentos + sin espacios NI guiones bajos → "CÓDIGO ARTÍCULO" y "CODIGOARTICULO" dan el mismo normLabel.
+  · Cada campo custom lleva ahora aliases[] = todas las claves que comparten el mismo label. Si un registro viejo tiene custom_codigoarticulo y uno nuevo custom_codigo_articulo, ambos se leen en la MISMA celda (la columna sale UNA vez).
+  · Prioridad de clave canónica: la de fieldsEntrada si existe; si no, la con más guiones bajos; si no, la primera encontrada.
+- Helper getCustomValue(cd, c): recorre todos los aliases del campo y devuelve el primer valor no vacío. Así las filas viejas y las nuevas llenan la misma celda.
+- ÚLTIMOS MOVIMIENTOS: la columna ¿EN DIBUJO? ahora muestra — (no icono) para SALIDAS — una SALIDA no tiene palet en el almacén, no tiene sentido el check.
+- Script scripts/unify-customdata.ts (NUEVO): renombra las claves custom viejas (sin _) a las canónicas (con _) en TODOS los registros del tenant. Dry-run por defecto + --apply + backup previo. Test: 2 registros sembrados (uno con custom_codigoarticulo, otro con custom_codigo_articulo) → el script detecta el grupo, marca para renombrar y aplica correctamente.
+- Sidebar build label → V29.27-DEDUP-CUSTOM · 2026-10-14.
+- Validación E2E: sembrados 2 registros con claves distintas (uno con _ otro sin _) — VLM confirma que CODIGOARTICULO y FECHAFABRICACION aparecen UNA sola vez (antes eran dos). El registro viejo (sin _) rellena la misma celda que el nuevo (con _). En SALIDAS, la columna ¿EN DIBUJO? ahora muestra — sin icono.
+- next build + reinicio del daemon (HTTP 200 OK).
+
+Stage Summary:
+- Las columnas custom DUPLICADAS (CÓDIGO ARTÍCULO, FECHA DE FABRICACIÓN, Nº PALET ×2) ya NO aparecen duplicadas. El sistema agrupa por LABEL normalizado y lee el valor de cualquiera de las claves equivalentes.
+- En ÚLTIMOS MOVIMIENTOS, las SALIDAS ya NO muestran icono en ¿EN DIBUJO? (no aplica — el palet ya está fuera).
+- Script unify-customdata.ts: limpia los customData históricos renombrando las claves viejas a las canónicas, para que TODOS los registros usen el MISMO set de claves. Dry-run por defecto + --apply + backup previo.
