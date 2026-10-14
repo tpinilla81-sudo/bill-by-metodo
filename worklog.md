@@ -1988,3 +1988,30 @@ Work Log:
 Stage Summary:
 - DETALLE DEL STOCK tiene ahora una columna "¿EN DIBUJO?" que marca con ✓ verde los palets pintados en el mapa y con ⚠ ámbar los que NO lo están (sin ubicación o con ubicación fuera de la configuración actual).
 - El usuario puede ver de un vistazo los palets "fantasmas" del listado y corregirlos: arrastrarlos a un hueco del mapa (V29.10) o reasignarles ubicación. Así se cierra la divergencia entre listado y dibujo que reportaba.
+
+---
+Task ID: V29.23
+Agent: Main Agent
+Task: Migrar ubicaciones de registros al nuevo formato V29.15 (P1F1-1) — las viejas (P1F1H1, P1-01, P1-1-1) ya no valen visualmente
+
+Work Log:
+- El usuario reporta incoherencias en ubicaciones: V29.15 cambió el formato a P1F1-1 (RACK F fila-hueco), pero los registros viejos siguen con P1F1H1 / P1-01 / P1-1-1. El motor los entiende (normHuecoKey), pero en el listado y etiquetas se ven distintos. Hay que migrar todos al formato nuevo.
+- Scripts/migrate-ubicaciones.ts (NUEVO): dry-run por defecto, --apply para ejecutar.
+  · Lee customData de todos los registros del tenant, busca el campo ubicación (cualquier clave cuyo nombre contiene "ubicac").
+  · Para cada uno, lo clasifica en: sin ubicación, ya formato nuevo (no tocar), migrable (en zona válida P1/P2), fuera de configuración (zona E1/E2/S1 que V29.14 quitó), no parseable.
+  · Migración (conversión de formatos):
+      P1F1H1  → P1F1-1   (columna 1, suelo)
+      P1F1H2  → P1F2-1   (columna 1, altura 2 → fila 2)
+      P1F3H2  → P1F2-3   (columna 3, altura 2 → fila 2, hueco 3)
+      P1-01   → P1F1-1   (columna 1, sin altura → suelo)
+      P1-1-1  → P1F1-1   (formato V29.3: rack-columna-altura)
+      P1F1-1  → P1F1-1   (ya nuevo, sin cambio)
+  · Las ubicaciones en zonas que ya NO existen (E1/E2/S1) se LISTAN pero NO se migran — el usuario debe recolocarlas a mano (arrastrarlas desde DETALLE DEL STOCK ⚠ al mapa).
+  · Backup previo en scripts/backup-pre-migrate-ubic.json.
+- Test E2E (BD local): sembrados 10 registros con ubicaciones mixtas (3 formato V29.4, 1 muy viejo P1-01, 1 V29.3 P1-1-1, 2 ya nuevos, 2 fuera de config E1/S1, 1 sin ubic). Dry-run lista correctamente (5 migrables + 2 fuera config + 2 sin tocar). --apply ejecuta: 5 actualizados, 2 no tocados. Verificación post-migración: P1F1H1→P1F1-1 ✓, P1F1H2→P1F2-1 ✓ (altura 2 → fila 2), P1F3H2→P1F2-3 ✓ (columna 3 altura 2), P1-01→P1F1-1 ✓, P1-1-1→P1F1-1 ✓. Los fuera de config quedan intactos. Limpieza OK.
+
+Stage Summary:
+- Script de migración listo (scripts/migrate-ubicaciones.ts): dry-run por defecto, --apply para ejecutar. Convierte TODOS los formatos viejos (P1F1H1, P1F1, P1-01, P1-1-1) al nuevo plano (P1F1-1) en registros que estén en zona P1/P2 válida. Los que están en zona vieja (E1/E2/S1) se listan para recolocar a mano.
+- Backup previo automático. El usuario debe ejecutar en producción:
+    bun scripts/migrate-ubicaciones.ts            (ver qué haría)
+    bun scripts/migrate-ubicaciones.ts --apply    (aplicar)
