@@ -1894,3 +1894,24 @@ Stage Summary:
 - DETALLE DEL STOCK y ÚLTIMOS MOVIMIENTOS DE PALET muestran ahora TODA la información del palet: las columnas fijas del almacén (UBICACIÓN/ESTANTERÍA/LOTE/PALETS/DÍAS) + TODAS las columnas que en REGISTROS (fecha, mes, semana, cliente, c1, c2, cantidad, p.unit, importe, obs, facturado y campos custom como DESCRIPCION).
 - Si el usuario añade/quita columnas en CONFIGURACIÓN → CAMPOS REGISTROS, esas columnas aparecen o desaparecen automáticamente en STOCK ALMACÉN también. Genérico y a prueba de futuro.
 - Las filas de DETALLE DEL STOCK siguen siendo arrastrables al mapa (V29.10 intacto).
+
+---
+Task ID: V29.18
+Agent: Main Agent
+Task: EN EL DIBUJO (mapa del almacén) — poner el nº de palet VISIBLE en cada casilla y enriquecer el tooltip con TODA la información
+
+Work Log:
+- El usuario pide que en el mapa del almacén se vea el nº de palet (lote) para saber si está o no, O que al ponerse encima salga la información. Las casillas eran muy estrechas (w-14 = 56px) y el ident salía truncado; el tooltip solo traía lote+días+arrastra.
+- stock-almacen-view.tsx · casillaAlzado(): dos mejoras:
+  1. Casillas más anchas: w-14 → w-[5.5rem] (88px) + min-h-[3.2rem] → min-h-[4rem] (64px). El ident pasa de `text-[10px] font-bold truncate` a `text-[9px] font-bold break-all leading-tight` — envuelve en lugar de cortarse, y se ve entero (l-v2917-1, etc.).
+  2. Tooltip rico: resuelve el Registro original desde registrosById (V29.17), parsea customData y construye un title= multilinea con: palet + días + lote de N palets (quedan M), Cliente, Concepto 1, Concepto 2, Descripción, Albarán, Matrícula, Bultos, Obs, Fecha entrada, Ubicación completa y "Arrastra para mover".
+- Constante translateX del escalonado (V29.16) recalculada: con celdas de 5.5rem + gap-1 0.25rem = 5.75rem de paso, media celda = 2.875rem (antes 1.875rem con w-14). El patrón tipo ladrillo se mantiene exacto, solo más ancho.
+- Totales por columna: w-14 → w-[5.5rem] para seguir alineados con las casillas.
+- Sidebar build label → V29.18-PALETS-VISIBLES · 2026-10-14.
+- Validación E2E (usuario temporal borrado al terminar): sembrados 3 ENTRADAS PALET (FLORETTE, lotes L-V2917-1/2/3, ubicaciones P1F1-1, P1F2-3, P2F1-1, descripciones CAJAS FRESA / PALET TOMATE / PALET PEREJIL) + 1 SALIDA PALET (L-V2917-1, 1 palet) → 5 palets en stock. VLM confirma: casillas más anchas, lotes l-v2917-1/2/3 visibles sin truncar, pirámide 9/9/8/7/6 y escalonado tipo ladrillo se mantienen. Tooltip real verificado en DOM: «F2-1 · P1 · 2ª fila · palet l-v2917-1 · 11 días · lote de 2 palets (quedan 2) \n Cliente: FLORETTE HORTICOLA NAVARRA SLU \n Concepto 1: ALMACEN \n Concepto 2: ENTRADA PALET \n Descripción: CAJAS FRESA \n Fecha entrada: 04/10/2026 \n Ubicación: p1f1-1 \n Arrastra para mover». Registros de test y usuario temporal borrados.
+- node_modules OK esta vez — no hubo que reinstalar. next build + reinicio del daemon (HTTP 200 OK).
+
+Stage Summary:
+- En el mapa de STOCK ALMACÉN, cada casilla ocupada muestra ahora el nº de palet (lote) VISIBLE y entero (sin recortes), gracias a casillas más anchas y texto que envuelve.
+- Al poner el cursor sobre una casilla aparece TODA la información del palet: cliente, concepto 1/2, descripción, albarán, matrícula, bultos, obs, fecha entrada, ubicación completa y lote restante.
+- Patrón tipo ladrillo (V29.16) y pirámide 9/9/8/7/6 (V29.14) se mantienen intactos.

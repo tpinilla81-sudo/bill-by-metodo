@@ -1601,17 +1601,42 @@ export function StockAlmacenView() {
                   const esDestFull = dragOverUb === c.ubicacion && destSt === 'full'
                   const arrastrandoEste = ocupada && dragLote && palet?.id === dragLote.id
                   const nombreCasilla = nPlano != null ? `F${j}-${nPlano}` : c.ubicacion
+                  // V29.18: tooltip rico con TODA la info del palet (lote, cliente,
+                  // concepto, descripción, obs, fecha entrada, ubicación completa).
+                  // Resuelve el Registro original desde registrosById para sacar
+                  // customData (descripción, albarán, etc.) igual que V29.17.
+                  const rOrigen = palet ? registrosById.get(palet.id) : undefined
+                  const cdOrigen = rOrigen ? parseCustomData((rOrigen as Record<string, unknown>).customData as string || '') : {}
+                  const labelOrigen = (key: string, label: string) => {
+                    const v = String(cdOrigen[key] || '').trim()
+                    return v ? `\n${label}: ${v}` : ''
+                  }
+                  const tooltipPalet = ocupada && palet
+                    ? ` · palet ${palet.ident || '—'} · ${dias} días` +
+                      (palet.cantRestante > 1 ? ` · lote de ${palet.cantRestante} palets (queda${palet.cantRestante > 1 ? 'n' : ''} ${palet.cantRestante})` : '') +
+                      (rOrigen?.cliente ? `\nCliente: ${rOrigen.cliente}` : '') +
+                      (rOrigen?.c1 ? `\nConcepto 1: ${rOrigen.c1}` : '') +
+                      (rOrigen?.c2 ? `\nConcepto 2: ${rOrigen.c2}` : '') +
+                      labelOrigen('custom_descripcion', 'Descripción') +
+                      labelOrigen('custom_albaran', 'Albarán') +
+                      labelOrigen('custom_matricula', 'Matrícula') +
+                      labelOrigen('custom_bultos', 'Bultos') +
+                      (rOrigen?.obs ? `\nObs: ${rOrigen.obs}` : '') +
+                      (palet.fecha ? `\nFecha entrada: ${fmtDate(palet.fecha)}` : '') +
+                      (palet.ubicacion ? `\nUbicación: ${palet.ubicacion}` : '') +
+                      `\nArrastra para mover`
+                    : ' · LIBRE · suelta aquí para colocar'
                   return (
                     <div
                       key={key != null ? key : `${c.ubicacion}-${j}-${nPlano ?? ''}`}
-                      title={`${nombreCasilla}${nPlano != null ? ` · ${c.rack}` : ''} · ${j === 1 ? 'suelo' : `${j}${esParedRack ? 'ª fila' : 'º nivel'}`}${ocupada ? ` · palet ${palet?.ident || '—'} · ${dias} días${palet && palet.cantRestante > 1 ? ` · arrastra el lote (${palet.cantRestante} palets)` : ' · arrastra para mover'}` : ' · LIBRE · suelta aquí para colocar'}${llena ? ' · LLENO' : ''}`}
+                      title={`${nombreCasilla}${nPlano != null ? ` · ${c.rack}` : ''} · ${j === 1 ? 'suelo' : `${j}${esParedRack ? 'ª fila' : 'º nivel'}`}${tooltipPalet}${llena ? ' · LLENO' : ''}`}
                       draggable={ocupada && !moviendoId}
                       onDragStart={ocupada && palet ? e => iniciarDrag(e, palet) : undefined}
                       onDragEnd={terminarDrag}
                       onDragOver={e => sobreCelda(e, c)}
                       onDragLeave={() => salirCelda(c)}
                       onDrop={e => soltarEnCelda(e, c)}
-                      className={`rounded-md border-2 p-1 shadow-sm min-h-[3.2rem] flex flex-col transition-all ${esParedRack ? 'w-14 shrink-0' : ''} ${
+                      className={`rounded-md border-2 p-1 shadow-sm min-h-[4rem] flex flex-col transition-all ${esParedRack ? 'w-[5.5rem] shrink-0' : ''} ${
                         match
                           ? 'ring-4 ring-sky-500 ring-offset-1 relative z-10'
                           : queryNorm
@@ -1631,7 +1656,10 @@ export function StockAlmacenView() {
                       )}
                       {ocupada ? (
                         <>
-                          <div className={`text-[10px] font-bold truncate mt-0.5 ${textoPorDias(dias)}`}>{palet?.ident || '—'}</div>
+                          {/* V29.18: nº de palet VISIBLE sin recortes — texto
+                              más pequeño y que envuelve (break-all) para que
+                              se lea entero en cualquier caso. */}
+                          <div className={`text-[9px] font-bold leading-tight mt-0.5 break-all ${textoPorDias(dias)}`}>{palet?.ident || '—'}</div>
                           <div className="mt-auto flex items-baseline justify-between gap-0.5">
                             <span className={`text-sm font-extrabold leading-none ${textoPorDias(dias)}`}>{dias}<span className="text-[8px] ml-px">d</span></span>
                             {desborda ? (
@@ -1710,12 +1738,12 @@ export function StockAlmacenView() {
                           // la FILA 3 cada casilla se desplaza MEDIA posición a la
                           // derecha y descansa sobre DOS casillas de la fila de
                           // abajo (como el plano en papel). FILA 1 y 2 alineadas.
-                          // Cada celda = w-14 (3.5rem) + gap-1 (0.25rem) = 3.75rem
-                          // de paso; media celda = 1.875rem.
+                          // V29.18: celdas más anchas (w-[5.5rem] = 5.5rem + gap-1
+                          // 0.25rem = 5.75rem de paso; media celda = 2.875rem).
                           // Usamos transform: translateX (margin/padding NO funcionan
                           // sobre un contenedor flex-1 porque se redimensiona solo).
                           const offsetCeldas = esParedRack ? Math.max(0, j - 2) * 0.5 : 0
-                          const translateXRem = offsetCeldas * 3.75
+                          const translateXRem = offsetCeldas * 5.75
                           return (
                             <div key={j} className="flex items-stretch gap-1 mb-1 last:mb-0">
                               <div className="w-[4.4rem] shrink-0 flex flex-col items-end justify-center pr-1 text-right leading-tight">
@@ -1750,7 +1778,7 @@ export function StockAlmacenView() {
                           {esParedRack ? (
                             <div className="flex flex-1 gap-1">
                               {columnasVis.map(({ c }, i) => (
-                                <div key={i} className="w-14 shrink-0 text-center text-[9px] font-extrabold tabular-nums text-gray-600">
+                                <div key={i} className="w-[5.5rem] shrink-0 text-center text-[9px] font-extrabold tabular-nums text-gray-600">
                                   {c.total}{c.cap > 0 ? <span className="text-gray-400 font-bold">/{c.cap}</span> : <span className="text-gray-300 font-bold">/∞</span>}
                                 </div>
                               ))}
