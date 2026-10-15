@@ -331,10 +331,14 @@ export function StockAlmacenView() {
   // filas viejas y las nuevas llenen la MISMA celda.
   const normLabel = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s_]+/g, '').trim()
   const esCustomDuplicada = (key: string, label: string): boolean => {
-    const nk = key.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
-    const lbl = (label || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
-    if (/ubicac/.test(nk) || /ubicac/.test(lbl)) return true
-    if (/lote/.test(nk) || /lote/.test(lbl)) return true
+    const nk = normLabel(key)
+    const nl = normLabel(label)
+    // V29.41: ampliar para incluir UBI, ubic, ubicacion, ubicación, etc.
+    if (/ubic/.test(nk) || /ubic/.test(nl)) return true
+    if (/lote/.test(nk) || /lote/.test(nl)) return true
+    // V29.41: también filtrar "Nº PALET" duplicado (custom_palet si el label
+    // es "Nº PALET" y ya hay una columna fija con ese nombre)
+    if (/npalet/.test(nk) || /npalet/.test(nl) || /numpalet/.test(nk) || /numpalet/.test(nl)) return true
     return false
   }
   const camposCustom = useMemo(() => {
@@ -2124,7 +2128,6 @@ export function StockAlmacenView() {
                         filtran de camposCustom). */}
                     <th className="py-2 pr-3 font-semibold">UBICACIÓN</th>
                     <th className="py-2 pr-3 font-semibold">LOTE / Nº PALET</th>
-                    <th className="py-2 pr-3 font-semibold text-right">PALETS</th>
                     <th className="py-2 pr-3 font-semibold text-right">DÍAS</th>
                     {/* V29.22: EN DIBUJO — ✓ si el lote está en el mapa, ⚠ si no. */}
                     <th className="py-2 pr-3 font-semibold text-center" title="✓ = el palet está pintado en el mapa · ⚠ = está en el listado pero NO en el dibujo (sin ubicación o con ubicación fuera de la configuración)">¿EN DIBUJO?</th>
@@ -2161,7 +2164,6 @@ export function StockAlmacenView() {
                       >
                         <td className="py-2 pr-3 font-semibold text-gray-700 whitespace-nowrap">{l.ubicacion || '—'}</td>
                         <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{l.ident || '—'}</td>
-                        <td className="py-2 pr-3 text-right font-bold text-gray-800">{l.cantRestante}</td>
                         <td className={`py-2 pr-3 text-right font-bold whitespace-nowrap ${d > 60 ? 'text-red-600' : d > 30 ? 'text-amber-600' : 'text-gray-600'}`}>{d}</td>
                         {/* V29.22: EN DIBUJO — ✓ verde si el lote está en el mapa,
                             ⚠ ámbar si NO (sin ubicación o con ubicación fuera de
@@ -2210,7 +2212,6 @@ export function StockAlmacenView() {
                     <th className="py-2 pr-3 font-semibold">MOV.</th>
                     <th className="py-2 pr-3 font-semibold">UBICACIÓN</th>
                     <th className="py-2 pr-3 font-semibold">LOTE / Nº PALET</th>
-                    <th className="py-2 pr-3 font-semibold text-right">PALETS</th>
                     <th className="py-2 pr-3 font-semibold text-right">DÍAS</th>
                     <th className="py-2 pr-3 font-semibold text-center" title="✓ = el palet está pintado en el mapa · ⚠ = está en el listado pero NO en el dibujo">¿EN DIBUJO?</th>
                     {visibleFieldsReg.map(f => (
@@ -2245,7 +2246,6 @@ export function StockAlmacenView() {
                         </td>
                         <td className="py-2 pr-3 font-semibold text-gray-700 whitespace-nowrap">{ubMov || '—'}</td>
                         <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{loteMov || '—'}</td>
-                        <td className="py-2 pr-3 text-right font-bold text-gray-800">{esEnt ? m.cant : '—'}</td>
                         <td className={`py-2 pr-3 text-right font-bold whitespace-nowrap ${dMov > 60 ? 'text-red-600' : dMov > 30 ? 'text-amber-600' : 'text-gray-600'}`}>{dMov}</td>
                         <td className="py-2 pr-3 text-center whitespace-nowrap" title={esEnt ? (enDibujoMov ? 'Palet dibujado en el mapa' : 'Sin ubicación o fuera de configuración') : 'Salida: el palet ya no está en el almacén'}>
                           {esEnt ? (
