@@ -14,7 +14,7 @@ import { triggerBackup } from '@/lib/trigger-backup'
 import { fmtDate, fmtCurrency, getISOWeek, type Cliente, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_REGISTROS, parseCustomData, type FieldDef } from '@/lib/config'
 import {
-  normAlm, isEntradaPalet, isSalidaPalet, getUbicacion, getIdent, splitUbicacion, normHuecoKey,
+  normAlm, isEntradaPalet, isSalidaPalet, getUbicacion, getIdent, extractIdents, splitUbicacion, normHuecoKey,
   diasEnAlmacen, buildStock, buildRacks, nombresHuecos, detectarEstanterias,
   loadAlmacenCfg, saveAlmacenCfg, fetchAlmacenCfg, pushAlmacenCfg, pesosDeZona, resumenCriterios, type EstanteriaCfg, type LoteStock, type CeldaStock, type PesosCriterios,
 } from '@/lib/almacen'
@@ -746,6 +746,36 @@ export function StockAlmacenView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [registros, clienteFiltro, now]
   )
+
+  // V29.42: SALIDAS huérfanas — las SALIDAS PALET que no descuentan nada
+  // del stock (no emparejan con ninguna ENTRADA). Se muestran como aviso
+  // en STOCK ALMACÉN para que el operador sepa que hay SALIDAS que el
+  // motor no ha podido procesar y deba corregir los datos.
+  // Una SALIDA es huérfana si NINGÚN ident suyo (custom_lote, custom_palet)
+  // coincide con algún ident de ENTRADA del MISMO cliente.
+  const salidasHuerfanas = useMemo(() => {
+    const entradas = registros
+      .filter(r => isEntradaPalet(r) && (clienteFiltro.length === 0 || clienteFiltro.includes(r.clienteId || '')))
+    // Mapa clienteId → Set de idents normalizados
+    const porCli = new Map<string, Set<string>>()
+    for (const e of entradas) {
+      const si = extractIdents(e)
+      const idents = Object.values(si.strong).filter(Boolean).map(v => normAlm(v))
+      const k = e.clienteId || ''
+      if (!porCli.has(k)) porCli.set(k, new Set())
+      for (const id of idents) porCli.get(k)!.add(id)
+    }
+    return registros
+      .filter(r => isSalidaPalet(r) && (clienteFiltro.length === 0 || clienteFiltro.includes(r.clienteId || '')))
+      .filter(m => {
+        const si = extractIdents(m)
+        const salIdents = Object.values(si.strong).filter(Boolean).map(v => normAlm(v))
+        if (salIdents.length === 0) return true // sin ident → huérfana
+        const cliIdents = porCli.get(m.clienteId || '') || new Set<string>()
+        // Si ningún ident de la SALIDA está en las ENTRADAS del mismo cliente → huérfana
+        return !salIdents.some(id => cliIdents.has(id))
+      })
+  }, [registros, clienteFiltro])
 
   // El mapa sale de la CONFIGURACIÓN (estanterías + huecos). El stock en
   // ubicaciones no configuradas aparece en la lista "fuera de configuración".
@@ -1600,6 +1630,15 @@ export function StockAlmacenView() {
                     title="Hay columnas con más palets de los que admite su altura configurada. Arrastra el exceso a un hueco libre para corregirlo."
                   >
                     ⚠ {desbordes} {desbordes === 1 ? 'hueco por encima de su altura' : 'huecos por encima de su altura'}
+                  </span>
+                )}
+                {/* V29.42: SALIDAS huérfanas — SALIDAS que no descuentan stock */}
+                {salidasHuerfanas.length > 0 && (
+                  <span
+                    className="flex items-center gap-1 text-rose-700 bg-rose-50 border border-rose-300 rounded-full px-2 py-0.5"
+                    title={`${salidasHuerfanas.length} SALIDA(S) que NO descuentan del stock. Revisa que la SALIDA tenga el mismo lote/nº palet que la ENTRADA correspondiente y que el cliente sea el mismo.`}
+                  >
+                    ⚠ {salidasHuerfanas.length} {salidasHuerfanas.length === 1 ? 'SALIDA sin descontar' : 'SALIDAS sin descontar'} — revisa lote/nº palet y cliente
                   </span>
                 )}
                 <Button
