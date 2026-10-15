@@ -1714,7 +1714,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
               <textarea value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="w-full h-16 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none resize-none" />
             ) : field.type === 'date' ? (
               <Input type="date" value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
-            ) : field.type === 'number' ? (
+            ) : field.type === 'number' && field.key !== codigoArticuloFieldKey ? (
               <Input type="number" step="0.01" value={customValues[field.key] || ''} onChange={e => setCustomValue(field.key, e.target.value)} placeholder={field.placeholder || field.label} className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 focus:outline-none" />
             ) : ofreceHuecos ? (
               // V26: el campo UBICACIÓN OFRECE las ubicaciones del almacén
