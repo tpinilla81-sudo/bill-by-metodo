@@ -321,16 +321,24 @@ export function buildStock(registros: Registro[], clientesFiltro: string[]): Lot
     // SALIDA: consumir stock
     let resto = m.cant || 0
     const si = extractIdents(m)
-    const candidatos = lotes.filter(l => l.cantRestante > 0 && l.clienteId === (m.clienteId || ''))
-    // V29.29: Prioridad 1: cualquier ident de la SALIDA coincide con
-    // cualquier ident de la ENTRADA. Así, si ENTRADA y SALIDA comparten
-    // custom_palet=553 aunque custom_lote sea distinto, descuenta.
     const salStrongVals = Object.values(si.strong).filter(Boolean).map(v => normAlm(v))
+    // V29.45: Prioridad 1 — matching por ident + mismo clienteId.
+    let candidatos = lotes.filter(l => l.cantRestante > 0 && l.clienteId === (m.clienteId || ''))
     let sel = candidatos.filter(l => {
       if (salStrongVals.length === 0) return false
       const entIdents = (l.idents && l.idents.length > 0 ? l.idents : [l.ident]).map(v => normAlm(v))
       return entIdents.some(iv => salStrongVals.includes(iv))
     })
+    // V29.45: Prioridad 1.5 — si no casa por cliente+ident, probar por ident
+    // en CUALQUIER cliente. Si la SALIDA se guardó sin clienteId o con uno
+    // distinto, así aún descuenta del lote correcto (el que tiene ese lote/nº palet).
+    if (sel.length === 0 && salStrongVals.length > 0) {
+      candidatos = lotes.filter(l => l.cantRestante > 0)
+      sel = candidatos.filter(l => {
+        const entIdents = (l.idents && l.idents.length > 0 ? l.idents : [l.ident]).map(v => normAlm(v))
+        return entIdents.some(iv => salStrongVals.includes(iv))
+      })
+    }
     // Prioridad 2: misma ubicación (V29.3: por COLUMNA — normHuecoKey quita
     // la altura, así que una SALIDA de P1-1-2 consume la entrada P1-1-1).
     if (sel.length === 0) {
