@@ -311,8 +311,29 @@ export function EntradaGrilla() {
       const vCod = String(cdOrigen[codigoArtFieldKeyGrilla] || '').trim()
       nuevoCV[codigoArtFieldKeyGrilla] = vCod || c2Origen
     }
-    // DESCRIPCIÓN
-    if (descripcionFieldKeyGrilla) { const v = String(cdOrigen[descripcionFieldKeyGrilla] || '').trim(); if (v) nuevoCV[descripcionFieldKeyGrilla] = v }
+    // DESCRIPCIÓN — con fallback al catálogo si no está en customData
+    if (descripcionFieldKeyGrilla) {
+      let v = String(cdOrigen[descripcionFieldKeyGrilla] || '').trim()
+      if (!v && rOrigen) {
+        const c1O = String(rOrigen.c1 || '').trim()
+        const c2O = String(rOrigen.c2 || '').trim()
+        const cliO = String(rOrigen.clienteId || '').trim()
+        let item = data.catalogo.find(x => x.c1 === c1O && x.c2 === c2O && (!cliO || !x.clienteId || x.clienteId === cliO))
+        if (!item) item = data.catalogo.find(x => x.c1 === c1O && x.c2 === c2O)
+        if (item) {
+          try {
+            const cdCat = JSON.parse(item.customData || '{}')
+            for (const [k, val] of Object.entries(cdCat)) {
+              if (!/descripcion/i.test(k)) continue
+              const t = String(val || '').trim()
+              if (t) { v = t; break }
+            }
+          } catch {}
+          if (!v) v = item.c2
+        }
+      }
+      if (v) nuevoCV[descripcionFieldKeyGrilla] = v
+    }
     // FECHA DE FABRICACIÓN (con conversión de formato si es type=date)
     if (fechaFabFieldKeyGrilla) {
       let v = String(cdOrigen[fechaFabFieldKeyGrilla] || '').trim()

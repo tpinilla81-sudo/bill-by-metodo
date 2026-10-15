@@ -1698,7 +1698,10 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
                     const vCod = String(cdOrigen[codigoArticuloFieldKey] || '').trim()
                     nuevoCV[codigoArticuloFieldKey] = vCod || c2Origen || (c2 || '')
                   }
-                  // V29.37: DESCRIPCIÓN — buscar por key O label (más robusto)
+                  // V29.39: DESCRIPCIÓN — buscar por key O label. Si no está en
+                  // customData del registro origen, buscar en el CATÁLOGO (c1+c2
+                  // → descripción canónica). Así funciona aunque la ENTRADA sea
+                  // antigua y no tuviera custom_descripcion relleno.
                   const fieldDesc = (() => {
                     const fields = config?.fieldsEntrada || []
                     let fd = fields.find(f => f.isCustom && /descripcion/.test(f.key.toLowerCase()))
@@ -1707,7 +1710,29 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
                     fd = fields.find(f => f.isCustom && /descripcion/.test(norm(f.label || '')))
                     return fd
                   })()
-                  if (fieldDesc) { const v = String(cdOrigen[fieldDesc.key] || '').trim(); if (v) nuevoCV[fieldDesc.key] = v }
+                  if (fieldDesc) {
+                    let vDesc = String(cdOrigen[fieldDesc.key] || '').trim()
+                    // Si no está en customData, buscar en catálogo
+                    if (!vDesc && rOrigen) {
+                      const c1O = String(rOrigen.c1 || '').trim()
+                      const c2O = String(rOrigen.c2 || '').trim()
+                      const cliO = String(rOrigen.clienteId || '').trim()
+                      let item = data.catalogo.find(x => x.c1 === c1O && x.c2 === c2O && (!cliO || !x.clienteId || x.clienteId === cliO))
+                      if (!item) item = data.catalogo.find(x => x.c1 === c1O && x.c2 === c2O)
+                      if (item) {
+                        try {
+                          const cdCat = JSON.parse(item.customData || '{}')
+                          for (const [k, val] of Object.entries(cdCat)) {
+                            if (!/descripcion/i.test(k)) continue
+                            const t = String(val || '').trim()
+                            if (t) { vDesc = t; break }
+                          }
+                        } catch {}
+                        if (!vDesc) vDesc = item.c2
+                      }
+                    }
+                    if (vDesc) nuevoCV[fieldDesc.key] = vDesc
+                  }
                   // V29.37: FECHA DE FABRICACIÓN — normalizar formato fecha si es type=date
                   const fieldFechaFab = (config?.fieldsEntrada || []).find(f => f.isCustom && /fecha/.test(f.key.toLowerCase()) && /fabric/.test(f.key.toLowerCase()))
                   if (fieldFechaFab) {
