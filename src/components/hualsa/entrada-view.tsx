@@ -1660,26 +1660,51 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       )
     }
     // V29.33: Nº PALET en SALIDA → desplegable dependiente del lote elegido
+    // V29.35: al elegir el Nº PALET, autorrellenar TODO (lote, código artículo,
+    // descripción, fecha fabricación, ubicación) desde la ENTRADA original.
+    // V29.36: si no hay lote elegido, mostrar TODOS los palets del cliente
+    // (no requiere elegir lote primero). El operador puede elegir directamente
+    // el Nº PALET y todo se autorrellena.
     if (esSalida && esCampoPalet) {
       const valorActual = String(customValues[field.key] || '').trim()
       const loteElegido = String(customValues[loteFieldKey] || '').trim()
-      const opciones = paletsDelLoteElegido
+      // V29.36: si hay lote elegido, mostrar solo los de ese lote; si no,
+      // mostrar TODOS los palets del cliente en stock.
+      const opciones = loteElegido ? paletsDelLoteElegido : paletsEnStockSalida
       return (
         <div className="bg-white rounded-lg shadow-sm border border-teal-200 overflow-visible">
           <div className="px-3 pt-2 pb-0.5 flex items-center justify-between gap-2">
             <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}{field.required ? ' *' : ''}</Label>
-            <span className="text-[9px] font-bold text-teal-600 uppercase tracking-wider whitespace-nowrap">⚡ elegir palet</span>
+            <span className="text-[9px] font-bold text-teal-600 uppercase tracking-wider whitespace-nowrap">⚡ autorrellena todo</span>
           </div>
           <div className="px-3 pb-2">
             <Select value={valorActual && opciones.some(l => { const r = data.todosRegistros.find(r => r.id === l.id); let cd: any = {}; try { cd = JSON.parse((r as any)?.customData || '{}') } catch {} return String(cd[field.key] || '') === valorActual }) ? valorActual : ''}
               onValueChange={v => {
                 const nuevoCV: Record<string, string> = { ...customValues, [field.key]: v }
                 const loteSel = opciones.find(l => { const r = data.todosRegistros.find(r => r.id === l.id); let cd: any = {}; try { cd = JSON.parse((r as any)?.customData || '{}') } catch {} return String(cd[field.key] || '') === v })
-                if (loteSel && loteSel.ubicacion) { const uk = ubicKey || 'custom_ubicacion'; nuevoCV[uk] = loteSel.ubicacion }
-                if (codigoArticuloFieldKey && c2) nuevoCV[codigoArticuloFieldKey] = c2
+                // V29.35: copiar TODOS los campos custom de la ENTRADA original
+                if (loteSel) {
+                  const rOrigen = data.todosRegistros.find(r => r.id === loteSel.id)
+                  const cdOrigen = parseCustomData((rOrigen as Record<string, unknown>)?.customData as string || '')
+                  // LOTE
+                  if (loteFieldKey) nuevoCV[loteFieldKey] = String(cdOrigen[loteFieldKey] || cdOrigen['custom_lote'] || '')
+                  // CÓDIGO ARTÍCULO (con c2 si no está en el registro origen)
+                  if (codigoArticuloFieldKey) {
+                    const vCod = String(cdOrigen[codigoArticuloFieldKey] || '').trim()
+                    nuevoCV[codigoArticuloFieldKey] = vCod || (c2 || '')
+                  }
+                  // DESCRIPCIÓN (custom_descripcion)
+                  const fieldDesc = (config?.fieldsEntrada || []).find(f => f.isCustom && /descripcion/.test(f.key.toLowerCase()))
+                  if (fieldDesc) { const v = String(cdOrigen[fieldDesc.key] || '').trim(); if (v) nuevoCV[fieldDesc.key] = v }
+                  // FECHA DE FABRICACIÓN
+                  const fieldFechaFab = (config?.fieldsEntrada || []).find(f => f.isCustom && /fecha/.test(f.key.toLowerCase()) && /fabric/.test(f.key.toLowerCase()))
+                  if (fieldFechaFab) { const v = String(cdOrigen[fieldFechaFab.key] || '').trim(); if (v) nuevoCV[fieldFechaFab.key] = v }
+                  // UBICACIÓN (la del palet en stock)
+                  if (loteSel.ubicacion) { const uk = ubicKey || 'custom_ubicacion'; nuevoCV[uk] = loteSel.ubicacion }
+                }
                 setCustomValues(nuevoCV)
-              }} disabled={!loteElegido}>
-              <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder={!loteElegido ? 'Primero elige el lote' : (opciones.length === 0 ? 'Sin palets' : 'Elige palet...')} /></SelectTrigger>
+              }}>
+              <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder={opciones.length === 0 ? 'Sin palets en stock' : 'Elige palet...'} /></SelectTrigger>
               <SelectContent>
                 {opciones.map(l => {
                   const r = data.todosRegistros.find(r => r.id === l.id)
