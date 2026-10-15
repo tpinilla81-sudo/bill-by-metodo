@@ -1671,11 +1671,13 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
       // V29.36: si hay lote elegido, mostrar solo los de ese lote; si no,
       // mostrar TODOS los palets del cliente en stock.
       const opciones = loteElegido ? paletsDelLoteElegido : paletsEnStockSalida
+      // V29.37: iluminar el campo si SALIDA está activo y no se ha elegido palet
+      const iluminar = !valorActual
       return (
-        <div className="bg-white rounded-lg shadow-sm border border-teal-200 overflow-visible">
+        <div className={`bg-white rounded-lg shadow-sm border overflow-visible ${iluminar ? 'border-teal-400 ring-2 ring-teal-300/50 animate-pulse' : 'border-teal-200'}`}>
           <div className="px-3 pt-2 pb-0.5 flex items-center justify-between gap-2">
-            <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}{field.required ? ' *' : ''}</Label>
-            <span className="text-[9px] font-bold text-teal-600 uppercase tracking-wider whitespace-nowrap">⚡ autorrellena todo</span>
+            <Label className={`text-[10px] font-bold uppercase tracking-wider ${iluminar ? 'text-teal-600' : 'text-gray-400'}`}>{field.label}{field.required ? ' *' : ''}</Label>
+            <span className="text-[9px] font-bold text-teal-600 uppercase tracking-wider whitespace-nowrap">{iluminar ? '👉 ELIGE PALET' : '⚡ autorrellena todo'}</span>
           </div>
           <div className="px-3 pb-2">
             <Select value={valorActual && opciones.some(l => { const r = data.todosRegistros.find(r => r.id === l.id); let cd: any = {}; try { cd = JSON.parse((r as any)?.customData || '{}') } catch {} return String(cd[field.key] || '') === valorActual }) ? valorActual : ''}
@@ -1688,17 +1690,34 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
                   const cdOrigen = parseCustomData((rOrigen as Record<string, unknown>)?.customData as string || '')
                   // LOTE
                   if (loteFieldKey) nuevoCV[loteFieldKey] = String(cdOrigen[loteFieldKey] || cdOrigen['custom_lote'] || '')
-                  // CÓDIGO ARTÍCULO (con c2 si no está en el registro origen)
+                  // V29.37: CONCEPTO 2 (c2) — rellenar con el c2 del registro origen
+                  const c2Origen = String(rOrigen?.c2 || '').trim()
+                  if (c2Origen) setC2(c2Origen)
+                  // CÓDIGO ARTÍCULO (con c2 del origen si no está en customData)
                   if (codigoArticuloFieldKey) {
                     const vCod = String(cdOrigen[codigoArticuloFieldKey] || '').trim()
-                    nuevoCV[codigoArticuloFieldKey] = vCod || (c2 || '')
+                    nuevoCV[codigoArticuloFieldKey] = vCod || c2Origen || (c2 || '')
                   }
                   // DESCRIPCIÓN (custom_descripcion)
                   const fieldDesc = (config?.fieldsEntrada || []).find(f => f.isCustom && /descripcion/.test(f.key.toLowerCase()))
                   if (fieldDesc) { const v = String(cdOrigen[fieldDesc.key] || '').trim(); if (v) nuevoCV[fieldDesc.key] = v }
-                  // FECHA DE FABRICACIÓN
+                  // V29.37: FECHA DE FABRICACIÓN — normalizar formato fecha si es type=date
                   const fieldFechaFab = (config?.fieldsEntrada || []).find(f => f.isCustom && /fecha/.test(f.key.toLowerCase()) && /fabric/.test(f.key.toLowerCase()))
-                  if (fieldFechaFab) { const v = String(cdOrigen[fieldFechaFab.key] || '').trim(); if (v) nuevoCV[fieldFechaFab.key] = v }
+                  if (fieldFechaFab) {
+                    let v = String(cdOrigen[fieldFechaFab.key] || '').trim()
+                    // Si el campo es type=date, convertir a YYYY-MM-DD
+                    if (fieldFechaFab.type === 'date' && v) {
+                      // Aceptar formatos como "1-9-26", "01-09-2026", "2026-09-01"
+                      const m = v.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/)
+                      if (m) {
+                        const dd = m[1].padStart(2, '0')
+                        const mm = m[2].padStart(2, '0')
+                        let yy = m[3]; if (yy.length === 2) yy = '20' + yy
+                        v = `${yy}-${mm}-${dd}`
+                      }
+                    }
+                    if (v) nuevoCV[fieldFechaFab.key] = v
+                  }
                   // UBICACIÓN (la del palet en stock)
                   if (loteSel.ubicacion) { const uk = ubicKey || 'custom_ubicacion'; nuevoCV[uk] = loteSel.ubicacion }
                 }
