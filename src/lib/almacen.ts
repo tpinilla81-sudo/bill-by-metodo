@@ -13,6 +13,10 @@ export interface LoteStock {
   clienteId: string
   ubicacion: string
   ident: string
+  // V29.29: TODOS los identificadores del palet (lote, nº palet, etc.) para
+  // que el matching funcione aunque ENTRADA y SALIDA usen valores distintos
+  // en alguno de los campos.
+  idents: string[]
   cantTotal: number
   cantRestante: number
   // Producto del movimiento (V28): los usa el asistente de ubicación para
@@ -93,6 +97,11 @@ export function esC2EntradaPalet(c2: string): boolean {
 // Versión flexible: busca "entrada palet" en c1 O c2 (registro completo).
 export function isEntradaPalet(r: Registro): boolean {
   return /entrada palet/.test(normAlm(`${r.c1} ${r.c2}`))
+}
+
+// V29.28: ¿es SALIDA PALET? Misma lógica que ENTRADA pero con "salida palet".
+export function esC2SalidaPalet(c2: string): boolean {
+  return /salida palet/.test(normAlm(c2))
 }
 
 export function isSalidaPalet(r: Registro): boolean {
@@ -293,12 +302,15 @@ export function buildStock(registros: Registro[], clientesFiltro: string[]): Lot
   const lotes: LoteStock[] = []
   for (const m of movs) {
     if (isEntradaPalet(m)) {
+      const si = extractIdents(m)
+      const idents = Object.values(si.strong).filter(Boolean)
       lotes.push({
         id: m.id,
         fecha: m.fecha,
         clienteId: m.clienteId || '',
         ubicacion: getUbicacion(m),
-        ident: getIdent(m),
+        ident: idents[0] || getIdent(m),
+        idents,
         cantTotal: m.cant || 0,
         cantRestante: m.cant || 0,
         c1: m.c1,
@@ -310,10 +322,14 @@ export function buildStock(registros: Registro[], clientesFiltro: string[]): Lot
     let resto = m.cant || 0
     const si = extractIdents(m)
     const candidatos = lotes.filter(l => l.cantRestante > 0 && l.clienteId === (m.clienteId || ''))
-    // Prioridad 1: mismo lote/nº palet
+    // V29.29: Prioridad 1: cualquier ident de la SALIDA coincide con
+    // cualquier ident de la ENTRADA. Así, si ENTRADA y SALIDA comparten
+    // custom_palet=553 aunque custom_lote sea distinto, descuenta.
+    const salStrongVals = Object.values(si.strong).filter(Boolean).map(v => normAlm(v))
     let sel = candidatos.filter(l => {
-      const strongVals = Object.values(si.strong)
-      return strongVals.length > 0 && strongVals.includes(l.ident) && !!l.ident
+      if (salStrongVals.length === 0) return false
+      const entIdents = (l.idents && l.idents.length > 0 ? l.idents : [l.ident]).map(v => normAlm(v))
+      return entIdents.some(iv => salStrongVals.includes(iv))
     })
     // Prioridad 2: misma ubicación (V29.3: por COLUMNA — normHuecoKey quita
     // la altura, así que una SALIDA de P1-1-2 consume la entrada P1-1-1).

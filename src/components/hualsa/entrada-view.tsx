@@ -15,7 +15,7 @@ import { QrEtiquetaDialog, type EtiquetaPalet } from '@/components/hualsa/qr-eti
 import { CriteriosEditor } from '@/components/hualsa/criterios-editor'
 import {
   loadAlmacenCfg, saveAlmacenCfg, fetchAlmacenCfg, pushAlmacenCfg, clasificarUbicacion, contadoresHuecos, listadoHuecos,
-  esC2EntradaPalet, esConceptoFacturacion, normAlm, getIdent, getUbicacion, identDeCustomValues,
+  esC2EntradaPalet, esC2SalidaPalet, isEntradaPalet, isSalidaPalet, esConceptoFacturacion, normAlm, getIdent, getUbicacion, identDeCustomValues,
   isQrAuto, setQrAuto, buildStock, huecoOptimo,
   pesosDeZona, resumenCriterios, puntuarPorRack, mejorHuecoGlobal, agruparLotesPorHueco,
   nivelEntradaTexto, huecoConNivel,
@@ -1002,6 +1002,110 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     || !!identDeCustomValues(customValues)
     || !!(ubicKey && String(customValues[ubicKey] || '').trim())
 
+  // V29.33: SALIDA PALET — detección + búsqueda de palet en stock + aviso.
+  const esSalida = esC2SalidaPalet(c2) || esC2SalidaPalet(c1)
+  const identsActuales = useMemo(() => {
+    const out: string[] = []
+    for (const [k, v] of Object.entries(customValues || {})) {
+      const nk = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+      if (!/palet|lote/.test(nk)) continue
+      const val = String(v || '').trim()
+      if (val) out.push(val)
+    }
+    return out
+  }, [customValues])
+
+  // stockActual ya está calculado arriba (línea ~985)
+  const paletsEnStockSalida = useMemo(() => {
+    if (!esSalida) return []
+    return stockActual
+      .filter(l => !clienteId || (l.clienteId || '') === clienteId)
+      .sort((a, b) => b.fecha.localeCompare(a.fecha))
+  }, [esSalida, stockActual, clienteId])
+
+  const lotesAgrupadosSalida = useMemo(() => {
+    const m = new Map<string, LoteStock[]>()
+    for (const l of paletsEnStockSalida) {
+      const r = data.todosRegistros.find(r => r.id === l.id)
+      let cd: any = {}
+      try { cd = JSON.parse((r as any)?.customData || '{}') } catch {}
+      const lote = String(cd.custom_lote || '').trim() || l.ident
+      if (!m.has(lote)) m.set(lote, [])
+      m.get(lote)!.push(l)
+    }
+    return Array.from(m.entries()).map(([lote, lotes]) => ({ lote, lotes }))
+  }, [paletsEnStockSalida, data.todosRegistros])
+
+  const loteFieldKey = useMemo(() => {
+    const f = (config?.fieldsEntrada || []).find(f => f.isCustom && /lote/.test(f.key.toLowerCase()) && !/palet/.test(f.key.toLowerCase()))
+    return f?.key || 'custom_lote'
+  }, [config?.fieldsEntrada])
+
+  const paletsDelLoteElegido = useMemo(() => {
+    const loteVal = String(customValues[loteFieldKey] || '').trim()
+    if (!loteVal) return []
+    return lotesAgrupadosSalida.find(g => g.lote === loteVal)?.lotes || []
+  }, [lotesAgrupadosSalida, customValues, loteFieldKey])
+
+  // V29.33: CÓDIGO ARTÍCULO — busca por key O label. Rellena con c2.
+  const codigoArticuloFieldKey = useMemo(() => {
+    const fields = config?.fieldsEntrada || []
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s_]+/g, '').trim()
+    let f = fields.find(f => f.isCustom && /codigo/.test(f.key.toLowerCase()) && /articulo/.test(f.key.toLowerCase()))
+    if (f) return f.key
+    f = fields.find(f => f.isCustom && /codigoarticulo/.test(norm(f.label || '')))
+    if (f) return f.key
+    f = fields.find(f => f.isCustom && /codigo/.test(norm(f.label || '')) && !/descripcion/.test(norm(f.label || '')))
+    if (f) return f.key
+    f = fields.find(f => f.isCustom && (/codigo/.test(f.key.toLowerCase()) || /codart/.test(f.key.toLowerCase())) && !/descripcion/.test(f.key.toLowerCase()))
+    return f?.key || null
+  }, [config?.fieldsEntrada])
+
+  // V29.33: useEffect que rellena CÓDIGO ARTÍCULO con c2 SIEMPRE que c2 cambie.
+  useEffect(() => {
+    if (!codigoArticuloFieldKey || !c2) return
+    const actual = String(customValues[codigoArticuloFieldKey] || '').trim()
+    if (actual !== c2) setCustomValue(codigoArticuloFieldKey, c2)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c2, codigoArticuloFieldKey])
+
+  // V29.33: aviso de SALIDA (palet encontrado o no)
+  const ubicacionEncontradaSalida = useMemo(() => {
+    if (!esSalida || identsActuales.length === 0) return null
+    const salNorms = identsActuales.map(v => normAlm(v))
+    const cand = stockActual
+      .filter(l => {
+        const entIdents = (l.idents && l.idents.length > 0 ? l.idents : (l.ident ? [l.ident] : [])).map(v => normAlm(v))
+        return entIdents.some(iv => salNorms.includes(iv)) && clienteId && (l.clienteId || '') === clienteId
+      })
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    if (cand.length > 0) return { ubicacion: cand[0].ubicacion, lote: cand[0] }
+    const cand2 = stockActual
+      .filter(l => {
+        const entIdents = (l.idents && l.idents.length > 0 ? l.idents : (l.ident ? [l.ident] : [])).map(v => normAlm(v))
+        return entIdents.some(iv => salNorms.includes(iv))
+      })
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    if (cand2.length > 0) return { ubicacion: cand2[0].ubicacion, lote: cand2[0] }
+    return null
+  }, [esSalida, identsActuales, stockActual, clienteId])
+
+  const [avisoSalida, setAvisoSalida] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null)
+  useEffect(() => {
+    if (!esSalida || identsActuales.length === 0) { setAvisoSalida(null); return }
+    if (ubicacionEncontradaSalida) {
+      if (ubicKey && !String(customValues[ubicKey] || '').trim()) {
+        setCustomValue(ubicKey, ubicacionEncontradaSalida.ubicacion)
+      }
+      const d = Math.max(1, Math.ceil((Date.now() - new Date(ubicacionEncontradaSalida.lote.fecha + 'T00:00:00').getTime()) / 86400000))
+      setAvisoSalida({ tipo: 'ok', texto: `Palet encontrado en ${ubicacionEncontradaSalida.ubicacion} · ${d} días en almacén` })
+    } else {
+      if (ubicKey && String(customValues[ubicKey] || '').trim()) setCustomValue(ubicKey, '')
+      setAvisoSalida({ tipo: 'err', texto: `No se encuentra el palet «${identsActuales.join(' / ')}» en el almacén — revisa el lote/nº palet o dalo de alta primero como ENTRADA` })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [esSalida, identsActuales, ubicacionEncontradaSalida, ubicKey])
+
   // Al cambiar el CONCEPTO 2 se reactiva la asignación automática
   useEffect(() => { ubicClearedRef.current = false }, [c2])
 
@@ -1127,7 +1231,7 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   // Asignación: ENTRADA PALET + campo UBICACIÓN vacía → mejor hueco según
   // los criterios de su zona (V29; antes: primer hueco libre a secas).
   useEffect(() => {
-    if (!ubicKey || !esPalet || editingId || ubicClearedRef.current) return
+    if (!ubicKey || !esPalet || esSalida || editingId || ubicClearedRef.current) return
     const val = String(customValues[ubicKey] || '').trim()
     if (val) return
     if (!huecoOptimoActual) return
@@ -1513,6 +1617,88 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
         </div>
       )
     }
+    // V29.33: SALIDA PALET — LOTE desplegable (si custom_lote existe en fieldsEntrada)
+    const fldKey = field.key.toLowerCase()
+    const esCampoLote = field.isCustom && /lote/.test(fldKey) && !/palet/.test(fldKey)
+    const esCampoPalet = field.isCustom && /palet/.test(fldKey) && !/lote/.test(fldKey)
+    if (esSalida && esCampoLote) {
+      const valorActual = String(customValues[field.key] || '').trim()
+      return (
+        <div className="bg-white rounded-lg shadow-sm border border-teal-200 overflow-visible">
+          <div className="px-3 pt-2 pb-0.5 flex items-center justify-between gap-2">
+            <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}{field.required ? ' *' : ''}</Label>
+            <span className="text-[9px] font-bold text-teal-600 uppercase tracking-wider whitespace-nowrap">⚡ elegir lote</span>
+          </div>
+          <div className="px-3 pb-2">
+            <Select value={valorActual && lotesAgrupadosSalida.some(g => g.lote === valorActual) ? valorActual : ''}
+              onValueChange={v => {
+                const grupo = lotesAgrupadosSalida.find(g => g.lote === v)
+                const nuevoCV: Record<string, string> = { ...customValues, [field.key]: v }
+                if (grupo && grupo.lotes.length === 1) {
+                  const lote = grupo.lotes[0]
+                  const rOrigen = data.todosRegistros.find(r => r.id === lote.id)
+                  const cdOrigen = parseCustomData((rOrigen as Record<string, unknown>)?.customData as string || '')
+                  const fieldPalet = (config?.fieldsEntrada || []).find(f => f.isCustom && /palet/.test(f.key.toLowerCase()) && !/lote/.test(f.key.toLowerCase()))
+                  if (fieldPalet) { const vPalet = String(cdOrigen[fieldPalet.key] || '').trim(); if (vPalet) nuevoCV[fieldPalet.key] = vPalet }
+                  if (lote.ubicacion) { const uk = ubicKey || 'custom_ubicacion'; nuevoCV[uk] = lote.ubicacion }
+                }
+                if (codigoArticuloFieldKey && c2) nuevoCV[codigoArticuloFieldKey] = c2
+                setCustomValues(nuevoCV)
+              }}>
+              <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder={lotesAgrupadosSalida.length === 0 ? 'Sin lotes en stock' : 'Elige lote...'} /></SelectTrigger>
+              <SelectContent>
+                {lotesAgrupadosSalida.map(g => (
+                  <SelectItem key={g.lote} value={g.lote}>
+                    <span className="font-semibold">{g.lote}</span>
+                    {g.lotes.length > 1 && <span className="text-gray-400 ml-2 text-xs">· {g.lotes.length} palets</span>}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )
+    }
+    // V29.33: Nº PALET en SALIDA → desplegable dependiente del lote elegido
+    if (esSalida && esCampoPalet) {
+      const valorActual = String(customValues[field.key] || '').trim()
+      const loteElegido = String(customValues[loteFieldKey] || '').trim()
+      const opciones = paletsDelLoteElegido
+      return (
+        <div className="bg-white rounded-lg shadow-sm border border-teal-200 overflow-visible">
+          <div className="px-3 pt-2 pb-0.5 flex items-center justify-between gap-2">
+            <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}{field.required ? ' *' : ''}</Label>
+            <span className="text-[9px] font-bold text-teal-600 uppercase tracking-wider whitespace-nowrap">⚡ elegir palet</span>
+          </div>
+          <div className="px-3 pb-2">
+            <Select value={valorActual && opciones.some(l => { const r = data.todosRegistros.find(r => r.id === l.id); let cd: any = {}; try { cd = JSON.parse((r as any)?.customData || '{}') } catch {} return String(cd[field.key] || '') === valorActual }) ? valorActual : ''}
+              onValueChange={v => {
+                const nuevoCV: Record<string, string> = { ...customValues, [field.key]: v }
+                const loteSel = opciones.find(l => { const r = data.todosRegistros.find(r => r.id === l.id); let cd: any = {}; try { cd = JSON.parse((r as any)?.customData || '{}') } catch {} return String(cd[field.key] || '') === v })
+                if (loteSel && loteSel.ubicacion) { const uk = ubicKey || 'custom_ubicacion'; nuevoCV[uk] = loteSel.ubicacion }
+                if (codigoArticuloFieldKey && c2) nuevoCV[codigoArticuloFieldKey] = c2
+                setCustomValues(nuevoCV)
+              }} disabled={!loteElegido}>
+              <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder={!loteElegido ? 'Primero elige el lote' : (opciones.length === 0 ? 'Sin palets' : 'Elige palet...')} /></SelectTrigger>
+              <SelectContent>
+                {opciones.map(l => {
+                  const r = data.todosRegistros.find(r => r.id === l.id)
+                  let cd: any = {}; try { cd = JSON.parse((r as any)?.customData || '{}') } catch {}
+                  const nPalet = String(cd[field.key] || '')
+                  const d = Math.max(1, Math.ceil((Date.now() - new Date(l.fecha + 'T00:00:00').getTime()) / 86400000))
+                  return (
+                    <SelectItem key={l.id} value={nPalet}>
+                      <span className="font-semibold">{nPalet}</span>
+                      <span className="text-gray-400 ml-2 text-xs">· {l.ubicacion || '—'} · {d}d</span>
+                    </SelectItem>
+                  )
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )
+    }
     // Custom fields
     if (field.isCustom) {
       const esUbic = field.key === ubicKey
@@ -1670,6 +1856,14 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
           </div>
         )}
 
+        {/* V29.33: aviso de SALIDA PALET */}
+        {avisoSalida && (
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${avisoSalida.tipo === 'ok' ? 'bg-teal-50 text-teal-800 border border-teal-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+            {avisoSalida.tipo === 'ok' ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+            {avisoSalida.texto}
+          </div>
+        )}
+
         {editingId && (
           <div className="flex items-center justify-between bg-amber-100 border border-amber-300 rounded-xl px-4 py-2.5">
             <span className="text-sm font-bold text-amber-800">Modo Edición</span>
@@ -1705,6 +1899,47 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
         {/* Dynamic field inputs */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+          {/* V29.33: LOTE desplegable VIRTUAL para SALIDA (si custom_lote no está en fieldsEntrada) */}
+          {esSalida && !(config?.fieldsEntrada || []).some(f => f.isCustom && /lote/.test(f.key.toLowerCase()) && !/palet/.test(f.key.toLowerCase())) && (() => {
+            const valorActual = String(customValues[loteFieldKey] || '').trim()
+            return (
+              <div>
+                <div className="bg-white rounded-lg shadow-sm border border-teal-200 overflow-visible">
+                  <div className="px-3 pt-2 pb-0.5 flex items-center justify-between gap-2">
+                    <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">LOTE *</Label>
+                    <span className="text-[9px] font-bold text-teal-600 uppercase tracking-wider whitespace-nowrap">⚡ elegir lote</span>
+                  </div>
+                  <div className="px-3 pb-2">
+                    <Select value={valorActual && lotesAgrupadosSalida.some(g => g.lote === valorActual) ? valorActual : ''}
+                      onValueChange={v => {
+                        const grupo = lotesAgrupadosSalida.find(g => g.lote === v)
+                        const nuevoCV: Record<string, string> = { ...customValues, [loteFieldKey]: v }
+                        if (grupo && grupo.lotes.length === 1) {
+                          const lote = grupo.lotes[0]
+                          const rOrigen = data.todosRegistros.find(r => r.id === lote.id)
+                          const cdOrigen = parseCustomData((rOrigen as Record<string, unknown>)?.customData as string || '')
+                          const fieldPalet = (config?.fieldsEntrada || []).find(f => f.isCustom && /palet/.test(f.key.toLowerCase()) && !/lote/.test(f.key.toLowerCase()))
+                          if (fieldPalet) { const vPalet = String(cdOrigen[fieldPalet.key] || '').trim(); if (vPalet) nuevoCV[fieldPalet.key] = vPalet }
+                          if (lote.ubicacion) { const uk = ubicKey || 'custom_ubicacion'; nuevoCV[uk] = lote.ubicacion }
+                        }
+                        if (codigoArticuloFieldKey && c2) nuevoCV[codigoArticuloFieldKey] = c2
+                        setCustomValues(nuevoCV)
+                      }}>
+                      <SelectTrigger className="h-9 text-sm border-0 bg-transparent p-0 focus:ring-0 shadow-none"><SelectValue placeholder={lotesAgrupadosSalida.length === 0 ? 'Sin lotes en stock' : 'Elige lote...'} /></SelectTrigger>
+                      <SelectContent>
+                        {lotesAgrupadosSalida.map(g => (
+                          <SelectItem key={g.lote} value={g.lote}>
+                            <span className="font-semibold">{g.lote}</span>
+                            {g.lotes.length > 1 && <span className="text-gray-400 ml-2 text-xs">· {g.lotes.length} palets</span>}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
           {visibleFields.map(field => (
             <div key={field.key}>{renderFieldInput(field)}</div>
           ))}
