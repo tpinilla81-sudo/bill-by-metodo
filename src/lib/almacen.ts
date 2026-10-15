@@ -322,21 +322,33 @@ export function buildStock(registros: Registro[], clientesFiltro: string[]): Lot
     let resto = m.cant || 0
     const si = extractIdents(m)
     const salStrongVals = Object.values(si.strong).filter(Boolean).map(v => normAlm(v))
-    // V29.45: Prioridad 1 — matching por ident + mismo clienteId.
+    // V29.47: Prioridad 1 — TODOS los idents de la SALIDA están en la ENTRADA
+    // (mismo clienteId). Así, si la SALIDA trae custom_lote=605430 + custom_n_palet=553,
+    // solo casa con la ENTRADA que tenga AMBOS. No descuenta de otro palet
+    // del mismo lote.
     let candidatos = lotes.filter(l => l.cantRestante > 0 && l.clienteId === (m.clienteId || ''))
-    let sel = candidatos.filter(l => {
-      if (salStrongVals.length === 0) return false
-      const entIdents = (l.idents && l.idents.length > 0 ? l.idents : [l.ident]).map(v => normAlm(v))
-      return entIdents.some(iv => salStrongVals.includes(iv))
-    })
-    // V29.45: Prioridad 1.5 — si no casa por cliente+ident, probar por ident
-    // en CUALQUIER cliente. Si la SALIDA se guardó sin clienteId o con uno
-    // distinto, así aún descuenta del lote correcto (el que tiene ese lote/nº palet).
+    let sel = salStrongVals.length > 0
+      ? candidatos.filter(l => {
+          const entIdents = (l.idents && l.idents.length > 0 ? l.idents : [l.ident]).map(v => normAlm(v))
+          // TODOS los idents de la SALIDA deben estar en la ENTRADA
+          return salStrongVals.every(s => entIdents.includes(s))
+        })
+      : []
+    // V29.47: Prioridad 1.5 — si no casa por TODOS los idents + mismo cliente,
+    // probar por ALGÚN ident + mismo cliente (más permisivo).
     if (sel.length === 0 && salStrongVals.length > 0) {
-      candidatos = lotes.filter(l => l.cantRestante > 0)
       sel = candidatos.filter(l => {
         const entIdents = (l.idents && l.idents.length > 0 ? l.idents : [l.ident]).map(v => normAlm(v))
         return entIdents.some(iv => salStrongVals.includes(iv))
+      })
+    }
+    // V29.45: Prioridad 1.6 — si no casa por cliente+ident, probar por TODOS
+    // los idents en CUALQUIER cliente.
+    if (sel.length === 0 && salStrongVals.length > 0) {
+      const todos = lotes.filter(l => l.cantRestante > 0)
+      sel = todos.filter(l => {
+        const entIdents = (l.idents && l.idents.length > 0 ? l.idents : [l.ident]).map(v => normAlm(v))
+        return salStrongVals.every(s => entIdents.includes(s))
       })
     }
     // Prioridad 2: misma ubicación (V29.3: por COLUMNA — normHuecoKey quita
