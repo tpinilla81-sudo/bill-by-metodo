@@ -10,9 +10,9 @@ import { todayISO, type Cliente, type CatalogoItem, type Registro } from '@/lib/
 import { useConfig, parseCustomData, serializeCustomData, fieldAppliesToClient, getFieldLabel, type FieldDef } from '@/lib/config'
 import { triggerBackup } from '@/lib/trigger-backup'
 import {
-  loadAlmacenCfg, fetchAlmacenCfg, huecoOptimo, contadoresHuecos, listadoHuecos, esC2EntradaPalet, esConceptoFacturacion, normAlm, identDeCustomValues,
+  loadAlmacenCfg, fetchAlmacenCfg, huecoOptimo, contadoresHuecos, listadoHuecos, esC2EntradaPalet, esC2SalidaPalet, esConceptoFacturacion, normAlm, identDeCustomValues, getUbicacion, buildStock,
   isQrAuto, setQrAuto,
-  type EstanteriaCfg,
+  type EstanteriaCfg, type LoteStock,
 } from '@/lib/almacen'
 import { QrEtiquetaDialog, type EtiquetaPalet } from '@/components/hualsa/qr-etiqueta'
 import * as XLSX from 'xlsx'
@@ -245,6 +245,89 @@ export function EntradaGrilla() {
     const filtrados = ids.size > 0 ? data.clientes.filter(c => ids.has(c.id)) : data.clientes
     return filtrados.slice().sort((a, b) => a.nombre.localeCompare(b.nombre))
   }, [data.catalogo, data.clientes])
+
+  // V29.38: stock actual para el desplegable de SALIDA PALET en grilla.
+  const stockActualGrilla = useMemo(() => buildStock(todosRegistros, []), [todosRegistros])
+
+  // V29.38: palets en stock para una fila (filtrados por clienteId de la fila).
+  const paletsStockFila = useCallback((clienteId: string): LoteStock[] => {
+    if (!clienteId) return stockActualGrilla
+    return stockActualGrilla.filter(l => (l.clienteId || '') === clienteId)
+      .sort((a, b) => b.fecha.localeCompare(a.fecha))
+  }, [stockActualGrilla])
+
+  // V29.38: claves de campos custom para SALIDA (lote, palet, codigo articulo, descripcion, fecha fabricacion).
+  const loteFieldKeyGrilla = useMemo(() => {
+    const f = (config?.fieldsEntrada || []).find(f => f.isCustom && /lote/.test(f.key.toLowerCase()) && !/palet/.test(f.key.toLowerCase()))
+    return f?.key || 'custom_lote'
+  }, [config?.fieldsEntrada])
+  const paletFieldKeyGrilla = useMemo(() => {
+    const f = (config?.fieldsEntrada || []).find(f => f.isCustom && /palet/.test(f.key.toLowerCase()) && !/lote/.test(f.key.toLowerCase()))
+    return f?.key || null
+  }, [config?.fieldsEntrada])
+  const codigoArtFieldKeyGrilla = useMemo(() => {
+    const fields = config?.fieldsEntrada || []
+    let f = fields.find(f => f.isCustom && /codigo/.test(f.key.toLowerCase()) && /articulo/.test(f.key.toLowerCase()))
+    if (f) return f.key
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s_]+/g, '').trim()
+    f = fields.find(f => f.isCustom && /codigoarticulo/.test(norm(f.label || '')))
+    if (f) return f.key
+    f = fields.find(f => f.isCustom && /codigo/.test(norm(f.label || '')) && !/descripcion/.test(norm(f.label || '')))
+    return f?.key || null
+  }, [config?.fieldsEntrada])
+  const descripcionFieldKeyGrilla = useMemo(() => {
+    const f = (config?.fieldsEntrada || []).find(f => f.isCustom && /descripcion/.test(f.key.toLowerCase()))
+    return f?.key || null
+  }, [config?.fieldsEntrada])
+  const fechaFabFieldKeyGrilla = useMemo(() => {
+    const f = (config?.fieldsEntrada || []).find(f => f.isCustom && /fecha/.test(f.key.toLowerCase()) && /fabric/.test(f.key.toLowerCase()))
+    return f?.key || null
+  }, [config?.fieldsEntrada])
+
+  // V29.38: al elegir un Nº PALET en una fila SALIDA, autocompletar TODO.
+  function autocompletarDesdePalet(rowId: string, paletVal: string) {
+    const row = rows.find(r => r.id === rowId)
+    if (!row) return
+    const palets = paletsStockFila(row.clienteId)
+    const loteSel = palets.find(l => {
+      const r = todosRegistros.find(r => r.id === l.id)
+      let cd: any = {}; try { cd = JSON.parse(r?.customData || '{}') } catch {}
+      return String(cd[paletFieldKeyGrilla || 'custom_palet'] || '') === paletVal
+    })
+    if (!loteSel) return
+    const rOrigen = todosRegistros.find(r => r.id === loteSel.id)
+    let cdOrigen: any = {}; try { cdOrigen = JSON.parse(rOrigen?.customData || '{}') } catch {}
+    const nuevoCV: Record<string, string> = { ...row.customValues, [paletFieldKeyGrilla || 'custom_palet']: paletVal }
+    // LOTE
+    if (loteFieldKeyGrilla) nuevoCV[loteFieldKeyGrilla] = String(cdOrigen[loteFieldKeyGrilla] || cdOrigen['custom_lote'] || '')
+    // CONCEPTO 2 (c2) del registro origen
+    const c2Origen = String(rOrigen?.c2 || '').trim()
+    // CÓDIGO ARTÍCULO
+    if (codigoArtFieldKeyGrilla) {
+      const vCod = String(cdOrigen[codigoArtFieldKeyGrilla] || '').trim()
+      nuevoCV[codigoArtFieldKeyGrilla] = vCod || c2Origen
+    }
+    // DESCRIPCIÓN
+    if (descripcionFieldKeyGrilla) { const v = String(cdOrigen[descripcionFieldKeyGrilla] || '').trim(); if (v) nuevoCV[descripcionFieldKeyGrilla] = v }
+    // FECHA DE FABRICACIÓN (con conversión de formato si es type=date)
+    if (fechaFabFieldKeyGrilla) {
+      let v = String(cdOrigen[fechaFabFieldKeyGrilla] || '').trim()
+      const fDef = (config?.fieldsEntrada || []).find(f => f.key === fechaFabFieldKeyGrilla)
+      if (fDef?.type === 'date' && v) {
+        const m = v.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/)
+        if (m) {
+          const dd = m[1].padStart(2, '0'), mm = m[2].padStart(2, '0')
+          let yy = m[3]; if (yy.length === 2) yy = '20' + yy
+          v = `${yy}-${mm}-${dd}`
+        }
+      }
+      if (v) nuevoCV[fechaFabFieldKeyGrilla] = v
+    }
+    // UBICACIÓN
+    if (loteSel.ubicacion && ubicKey) nuevoCV[ubicKey] = loteSel.ubicacion
+    updateRow(rowId, { customValues: nuevoCV, c2: c2Origen || row.c2 })
+  }
+
   const c1Options = useMemo(() => {
     const all = catGrilla.map(c => c.c1).filter(Boolean)
     return [...new Set(all)].sort()
