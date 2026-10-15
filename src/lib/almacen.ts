@@ -322,37 +322,68 @@ export function buildStock(registros: Registro[], clientesFiltro: string[]): Lot
     let resto = m.cant || 0
     const si = extractIdents(m)
     const salStrongVals = Object.values(si.strong).filter(Boolean).map(v => normAlm(v))
-    // V29.47: Prioridad 1 — TODOS los idents de la SALIDA están en la ENTRADA
-    // (mismo clienteId). Así, si la SALIDA trae custom_lote=605430 + custom_n_palet=553,
-    // solo casa con la ENTRADA que tenga AMBOS. No descuenta de otro palet
-    // del mismo lote.
+
+    // V29.48: matching INTELIGENTE — prioriza el nº de palet (único) sobre
+    // el lote (compartido por muchos palets). Así, aunque vengan 100 palets
+    // más con el mismo lote 605430, la SALIDA siempre descuenta del palet
+    // correcto (el que tiene ese nº de palet concreto).
+    //
+    // Separar idents en "nº palet" (únicos) y "lote" (compartidos).
+    const salPaletVals = Object.entries(si.strong)
+      .filter(([k]) => /palet/.test(normAlm(k)) && !/lote/.test(normAlm(k)))
+      .map(([, v]) => normAlm(v))
+    const salLoteVals = Object.entries(si.strong)
+      .filter(([k]) => /lote/.test(normAlm(k)))
+      .map(([, v]) => normAlm(v))
+
     let candidatos = lotes.filter(l => l.cantRestante > 0 && l.clienteId === (m.clienteId || ''))
-    let sel = salStrongVals.length > 0
+
+    // Prioridad 1: nº de palet EXACTO (mismo cliente). Si la SALIDA trae
+    // custom_n_palet=553, busca la ENTRADA que tenga 553 en sus idents.
+    let sel = salPaletVals.length > 0
       ? candidatos.filter(l => {
-          const entIdents = (l.idents && l.idents.length > 0 ? l.idents : [l.ident]).map(v => normAlm(v))
-          // TODOS los idents de la SALIDA deben estar en la ENTRADA
-          return salStrongVals.every(s => entIdents.includes(s))
+          const entIdents = (l.idents || [l.ident]).map(v => normAlm(v))
+          return salPaletVals.some(p => entIdents.includes(p))
         })
       : []
-    // V29.47: Prioridad 1.5 — si no casa por TODOS los idents + mismo cliente,
-    // probar por ALGÚN ident + mismo cliente (más permisivo).
-    if (sel.length === 0 && salStrongVals.length > 0) {
-      sel = candidatos.filter(l => {
-        const entIdents = (l.idents && l.idents.length > 0 ? l.idents : [l.ident]).map(v => normAlm(v))
-        return entIdents.some(iv => salStrongVals.includes(iv))
-      })
-    }
-    // V29.45: Prioridad 1.6 — si no casa por cliente+ident, probar por TODOS
-    // los idents en CUALQUIER cliente.
-    if (sel.length === 0 && salStrongVals.length > 0) {
+
+    // Prioridad 1.5: nº de palet EXACTO en cualquier cliente (fallback).
+    if (sel.length === 0 && salPaletVals.length > 0) {
       const todos = lotes.filter(l => l.cantRestante > 0)
       sel = todos.filter(l => {
-        const entIdents = (l.idents && l.idents.length > 0 ? l.idents : [l.ident]).map(v => normAlm(v))
+        const entIdents = (l.idents || [l.ident]).map(v => normAlm(v))
+        return salPaletVals.some(p => entIdents.includes(p))
+      })
+    }
+
+    // Prioridad 2: TODOS los idents (lote + nº palet) coinciden (mismo cliente).
+    if (sel.length === 0 && salStrongVals.length > 1) {
+      sel = candidatos.filter(l => {
+        const entIdents = (l.idents || [l.ident]).map(v => normAlm(v))
         return salStrongVals.every(s => entIdents.includes(s))
       })
     }
-    // Prioridad 2: misma ubicación (V29.3: por COLUMNA — normHuecoKey quita
-    // la altura, así que una SALIDA de P1-1-2 consume la entrada P1-1-1).
+
+    // Prioridad 2.5: TODOS los idents en cualquier cliente.
+    if (sel.length === 0 && salStrongVals.length > 1) {
+      const todos = lotes.filter(l => l.cantRestante > 0)
+      sel = todos.filter(l => {
+        const entIdents = (l.idents || [l.ident]).map(v => normAlm(v))
+        return salStrongVals.every(s => entIdents.includes(s))
+      })
+    }
+
+    // Prioridad 3: ALGÚN ident coincide (mismo cliente). Más permisivo —
+    // solo si no hay nº palet. Si solo hay lote, casará con varios palets
+    // del mismo lote y descuenta del más antiguo (FIFO dentro del grupo).
+    if (sel.length === 0 && salStrongVals.length > 0) {
+      sel = candidatos.filter(l => {
+        const entIdents = (l.idents || [l.ident]).map(v => normAlm(v))
+        return salStrongVals.some(s => entIdents.includes(s))
+      })
+    }
+
+    // Prioridad 4: misma ubicación (por COLUMNA).
     if (sel.length === 0) {
       const ubSalida = Object.values(si.weak)[0] || ''
       if (ubSalida) {
@@ -360,7 +391,8 @@ export function buildStock(registros: Registro[], clientesFiltro: string[]): Lot
         sel = candidatos.filter(l => kSal && normHuecoKey(l.ubicacion) === kSal)
       }
     }
-    // Prioridad 3: FIFO — el más antiguo
+
+    // Prioridad 5: FIFO — el más antiguo.
     if (sel.length === 0) sel = candidatos
     sel.sort((a, b) => a.fecha.localeCompare(b.fecha))
     for (const l of sel) {
