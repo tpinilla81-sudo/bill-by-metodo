@@ -2211,10 +2211,13 @@ export function StockAlmacenView() {
           <CardContent className="p-4">
             <h3 className="font-bold text-gray-800 mb-0.5 text-sm flex items-center gap-2">
               <Package className="h-4 w-4 text-teal-600" /> DETALLE DEL STOCK ({totalStock} palets)
-              {/* V29.43: botón descargar Excel */}
-              <Button variant="outline" size="sm" className="h-7 ml-auto text-xs print-hide" onClick={exportarDetalleExcel} title="Descargar Excel con todos los datos del stock">
-                <Download className="h-3 w-3 mr-1" /> Excel
-              </Button>
+              <button
+                onClick={exportarDetalleExcel}
+                className="ml-auto inline-flex items-center gap-1.5 text-xs font-bold text-green-700 bg-green-50 hover:bg-green-100 border border-green-300 rounded-md px-2.5 py-1 print-hide"
+                title="Descargar Excel con todos los datos del stock"
+              >
+                <Download className="h-3.5 w-3.5" /> DESCARGAR EXCEL
+              </button>
             </h3>
             <p className="text-[11px] text-gray-400 mb-3 print-hide">Consejo: arrastra una fila al mapa para mover ese lote a otro hueco.</p>
             <div className="overflow-x-auto">
@@ -2301,10 +2304,13 @@ export function StockAlmacenView() {
           <CardContent className="p-4">
             <h3 className="font-bold text-gray-800 mb-3 text-sm flex items-center gap-2">
               ÚLTIMOS MOVIMIENTOS DE PALET
-              {/* V29.43: botón descargar Excel */}
-              <Button variant="outline" size="sm" className="h-7 ml-auto text-xs print-hide" onClick={exportarMovimientosExcel} title="Descargar Excel con los últimos movimientos">
-                <Download className="h-3 w-3 mr-1" /> Excel
-              </Button>
+              <button
+                onClick={exportarMovimientosExcel}
+                className="ml-auto inline-flex items-center gap-1.5 text-xs font-bold text-green-700 bg-green-50 hover:bg-green-100 border border-green-300 rounded-md px-2.5 py-1 print-hide"
+                title="Descargar Excel con los últimos movimientos"
+              >
+                <Download className="h-3.5 w-3.5" /> DESCARGAR EXCEL
+              </button>
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[900px]">
