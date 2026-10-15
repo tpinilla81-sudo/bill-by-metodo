@@ -632,6 +632,64 @@ export function EntradaGrilla() {
       showStatus('err', 'No hay filas para guardar — rellena al menos una')
       return
     }
+
+    // V29.49: VALIDACIONES DE FIABILIDAD para ENTRADA/SALIDA PALET en grilla.
+    // 1) SALIDA PALET: nº de palet obligatorio y debe existir en stock.
+    for (let i = 0; i < completeRows.length; i++) {
+      const r = completeRows[i]
+      const esSal = esC2SalidaPalet(r.c1) || esC2SalidaPalet(r.c2)
+      if (esSal) {
+        const fieldPalet = (config?.fieldsEntrada || []).find(f => f.isCustom && /palet/.test(f.key.toLowerCase()) && !/lote/.test(f.key.toLowerCase()))
+        if (fieldPalet && !String(r.customValues[fieldPalet.key] || '').trim()) {
+          showStatus('err', `Fila ${rows.indexOf(r) + 1}: SALIDA PALET sin ${fieldPalet.label} — elige el palet del desplegable`)
+          return
+        }
+        // Verificar que el palet existe en stock
+        if (fieldPalet) {
+          const nPaletVal = String(r.customValues[fieldPalet.key] || '').trim()
+          const existe = stockActualGrilla.some(l => {
+            const rr = todosRegistros.find(rr => rr.id === l.id)
+            let cd: any = {}; try { cd = JSON.parse(rr?.customData || '{}') } catch {}
+            return String(cd[fieldPalet.key] || '') === nPaletVal
+          })
+          if (!existe) {
+            showStatus('err', `Fila ${rows.indexOf(r) + 1}: el palet "${nPaletVal}" no está en stock — no se puede sacar lo que no está`)
+            return
+          }
+        }
+      }
+      // 2) ENTRADA PALET: nº de palet no debe repetirse en stock.
+      const esEnt = esC2EntradaPalet(r.c1) || esC2EntradaPalet(r.c2)
+      if (esEnt) {
+        const fieldPalet = (config?.fieldsEntrada || []).find(f => f.isCustom && /palet/.test(f.key.toLowerCase()) && !/lote/.test(f.key.toLowerCase()))
+        if (fieldPalet) {
+          const nPaletVal = String(r.customValues[fieldPalet.key] || '').trim()
+          if (nPaletVal) {
+            const yaExiste = stockActualGrilla.some(l => {
+              const rr = todosRegistros.find(rr => rr.id === l.id)
+              let cd: any = {}; try { cd = JSON.parse(rr?.customData || '{}') } catch {}
+              return String(cd[fieldPalet.key] || '') === nPaletVal
+            })
+            if (yaExiste) {
+              showStatus('err', `Fila ${rows.indexOf(r) + 1}: el palet "${nPaletVal}" ya está en stock — no se puede duplicar`)
+              return
+            }
+            // También verificar duplicados dentro del mismo lote (batch)
+            const dupInBatch = completeRows.filter((r2, j) => {
+              if (j >= i) return false
+              const esEnt2 = esC2EntradaPalet(r2.c1) || esC2EntradaPalet(r2.c2)
+              if (!esEnt2) return false
+              return String(r2.customValues[fieldPalet.key] || '') === nPaletVal
+            })
+            if (dupInBatch.length > 0) {
+              showStatus('err', `Fila ${rows.indexOf(r) + 1}: el palet "${nPaletVal}" está duplicado en otra fila del mismo lote`)
+              return
+            }
+          }
+        }
+      }
+    }
+
     const validRows = completeRows
 
     setSaving(true)

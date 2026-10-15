@@ -1444,6 +1444,50 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
         return
       }
     }
+
+    // V29.49: VALIDACIONES DE FIABILIDAD para ENTRADA/SALIDA PALET.
+    // Estas validaciones garantizan que los datos sean correctos y el
+    // motor de stock funcione siempre.
+    if (esPalet) {
+      // 1) ENTRADA PALET: el cliente es obligatorio (sin cliente, el
+      //    matching no funciona).
+      if (!esSalida && !clienteId && !detectedCliente) {
+        showStatus('err', 'Debes elegir un CLIENTE para ENTRADA PALET — sin cliente el stock no puede descontar correctamente')
+        return
+      }
+      // 2) SALIDA PALET: el nº de palet es obligatorio y debe existir en stock.
+      if (esSalida) {
+        const fieldPalet = (config?.fieldsEntrada || []).find(f => f.isCustom && /palet/.test(f.key.toLowerCase()) && !/lote/.test(f.key.toLowerCase()))
+        if (fieldPalet && !String(customValues[fieldPalet.key] || '').trim()) {
+          showStatus('err', `Debes elegir un ${fieldPalet.label} para SALIDA PALET — sin él no se puede descontar del stock`)
+          return
+        }
+        // Verificar que el palet existe en stock (aviso si no)
+        if (avisoSalida && avisoSalida.tipo === 'err') {
+          showStatus('err', avisoSalida.texto + ' — no puedes guardar una SALIDA de un palet que no está en el almacén')
+          return
+        }
+      }
+      // 3) ENTRADA PALET: el nº de palet no debe repetirse (si ya hay uno
+      //    en stock con el mismo nº, avisar).
+      if (!esSalida && !editingId) {
+        const fieldPalet = (config?.fieldsEntrada || []).find(f => f.isCustom && /palet/.test(f.key.toLowerCase()) && !/lote/.test(f.key.toLowerCase()))
+        if (fieldPalet) {
+          const nPaletVal = String(customValues[fieldPalet.key] || '').trim()
+          if (nPaletVal) {
+            const yaExiste = stockActual.some(l => {
+              const r = data.todosRegistros.find(r => r.id === l.id)
+              let cd: any = {}; try { cd = JSON.parse(r?.customData || '{}') } catch {}
+              return String(cd[fieldPalet.key] || '') === nPaletVal
+            })
+            if (yaExiste) {
+              showStatus('err', `El ${fieldPalet.label} "${nPaletVal}" ya está en stock — no puedes duplicar un palet que no ha salido`)
+              return
+            }
+          }
+        }
+      }
+    }
     // Resolve client: if field is hidden, auto-detect from catalog
     let effectiveClienteId = clienteId
     let effectiveClienteName = ''
