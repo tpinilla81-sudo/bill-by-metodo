@@ -1698,8 +1698,15 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
                     const vCod = String(cdOrigen[codigoArticuloFieldKey] || '').trim()
                     nuevoCV[codigoArticuloFieldKey] = vCod || c2Origen || (c2 || '')
                   }
-                  // DESCRIPCIÓN (custom_descripcion)
-                  const fieldDesc = (config?.fieldsEntrada || []).find(f => f.isCustom && /descripcion/.test(f.key.toLowerCase()))
+                  // V29.37: DESCRIPCIÓN — buscar por key O label (más robusto)
+                  const fieldDesc = (() => {
+                    const fields = config?.fieldsEntrada || []
+                    let fd = fields.find(f => f.isCustom && /descripcion/.test(f.key.toLowerCase()))
+                    if (fd) return fd
+                    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s_]+/g, '').trim()
+                    fd = fields.find(f => f.isCustom && /descripcion/.test(norm(f.label || '')))
+                    return fd
+                  })()
                   if (fieldDesc) { const v = String(cdOrigen[fieldDesc.key] || '').trim(); if (v) nuevoCV[fieldDesc.key] = v }
                   // V29.37: FECHA DE FABRICACIÓN — normalizar formato fecha si es type=date
                   const fieldFechaFab = (config?.fieldsEntrada || []).find(f => f.isCustom && /fecha/.test(f.key.toLowerCase()) && /fabric/.test(f.key.toLowerCase()))

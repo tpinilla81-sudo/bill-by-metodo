@@ -276,7 +276,11 @@ export function EntradaGrilla() {
     return f?.key || null
   }, [config?.fieldsEntrada])
   const descripcionFieldKeyGrilla = useMemo(() => {
-    const f = (config?.fieldsEntrada || []).find(f => f.isCustom && /descripcion/.test(f.key.toLowerCase()))
+    const fields = config?.fieldsEntrada || []
+    let f = fields.find(f => f.isCustom && /descripcion/.test(f.key.toLowerCase()))
+    if (f) return f.key
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s_]+/g, '').trim()
+    f = fields.find(f => f.isCustom && /descripcion/.test(norm(f.label || '')))
     return f?.key || null
   }, [config?.fieldsEntrada])
   const fechaFabFieldKeyGrilla = useMemo(() => {
@@ -926,10 +930,68 @@ export function EntradaGrilla() {
                   {customFields.map(f => {
                     const esUbic = f.key === ubicKey
                     const autoUbic = esUbic && autoUbicRowsRef.current.has(row.id)
+                    // V29.38: SALIDA PALET — si es el campo Nº PALET, renderizar
+                    // como <select> con los palets en stock del cliente de la fila.
+                    const esSalidaFila = esC2SalidaPalet(row.c1) || esC2SalidaPalet(row.c2)
+                    const esCampoPaletFila = f.key === paletFieldKeyGrilla
+                    if (esSalidaFila && esCampoPaletFila) {
+                      const palets = paletsStockFila(row.clienteId)
+                      const valorActual = String(row.customValues[f.key] || '').trim()
+                      const iluminar = !valorActual
+                      return (
+                        <td key={f.key} className="px-1 py-1">
+                          <select
+                            data-row-id={row.id}
+                            data-field={f.key}
+                            value={valorActual}
+                            onChange={e => {
+                              if (e.target.value) autocompletarDesdePalet(row.id, e.target.value)
+                              else updateRow(row.id, { customValues: { ...row.customValues, [f.key]: '' } })
+                            }}
+                            className={`w-full h-8 px-1 text-sm bg-transparent border rounded ${iluminar ? 'border-teal-400 ring-1 ring-teal-300/50' : 'border-transparent hover:border-gray-200 focus:border-[#005bb5]'} ${autoUbic ? 'text-teal-700 font-semibold' : ''}`}
+                          >
+                            <option value="">{palets.length === 0 ? 'Sin palets' : 'Elige palet...'}</option>
+                            {palets.map(l => {
+                              const r = todosRegistros.find(r => r.id === l.id)
+                              let cd: any = {}; try { cd = JSON.parse(r?.customData || '{}') } catch {}
+                              const nPalet = String(cd[f.key] || '')
+                              const d = Math.max(1, Math.ceil((Date.now() - new Date(l.fecha + 'T00:00:00').getTime()) / 86400000))
+                              return <option key={l.id} value={nPalet}>{nPalet} · {l.ubicacion || '—'} · {d}d</option>
+                            })}
+                          </select>
+                        </td>
+                      )
+                    }
+                    // V29.38: si es SALIDA y es el campo LOTE, también como select
+                    const esCampoLoteFila = f.key === loteFieldKeyGrilla
+                    if (esSalidaFila && esCampoLoteFila) {
+                      const palets = paletsStockFila(row.clienteId)
+                      const lotesUnicos = [...new Set(palets.map(l => {
+                        const r = todosRegistros.find(r => r.id === l.id)
+                        let cd: any = {}; try { cd = JSON.parse(r?.customData || '{}') } catch {}
+                        return String(cd[loteFieldKeyGrilla] || l.ident)
+                      }))]
+                      return (
+                        <td key={f.key} className="px-1 py-1">
+                          <select
+                            data-row-id={row.id}
+                            data-field={f.key}
+                            value={String(row.customValues[f.key] || '')}
+                            onChange={e => updateRow(row.id, { customValues: { ...row.customValues, [f.key]: e.target.value } })}
+                            className="w-full h-8 px-1 text-sm bg-transparent border border-transparent hover:border-gray-200 focus:border-[#005bb5] focus:outline-none rounded"
+                          >
+                            <option value="">Elige lote...</option>
+                            {lotesUnicos.map(l => <option key={l} value={l}>{l}</option>)}
+                          </select>
+                        </td>
+                      )
+                    }
+                    // V29.38: CÓDIGO ARTÍCULO siempre text (no number)
+                    const inputType = f.key === codigoArtFieldKeyGrilla ? 'text' : (f.type === 'number' ? 'number' : 'text')
                     return (
                       <td key={f.key} className="px-1 py-1">
                         <input
-                          type="text"
+                          type={inputType}
                           value={row.customValues[f.key] || ''}
                           onChange={e => {
                             if (esUbic) autoUbicRowsRef.current.delete(row.id)  // editado a mano → ya no es "auto"
