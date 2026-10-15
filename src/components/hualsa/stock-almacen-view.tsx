@@ -7,12 +7,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2, Layers, ChevronDown, Plus, Trash2, Scale, Copy, Move, GripVertical } from 'lucide-react'
+import { Package, Warehouse, ArrowDownToLine, ArrowUpFromLine, RefreshCw, CalendarClock, Printer, Search, QrCode, X, Settings2, Layers, ChevronDown, Plus, Trash2, Scale, Copy, Move, GripVertical, Download } from 'lucide-react'
 import { Hint } from '@/components/hualsa/hint'
 import { CriteriosEditor } from '@/components/hualsa/criterios-editor'
 import { triggerBackup } from '@/lib/trigger-backup'
 import { fmtDate, fmtCurrency, getISOWeek, type Cliente, type Registro } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_FIELDS_REGISTROS, parseCustomData, type FieldDef } from '@/lib/config'
+import * as XLSX from 'xlsx'
 import {
   normAlm, isEntradaPalet, isSalidaPalet, getUbicacion, getIdent, extractIdents, splitUbicacion, normHuecoKey,
   diasEnAlmacen, buildStock, buildRacks, nombresHuecos, detectarEstanterias,
@@ -854,6 +855,61 @@ export function StockAlmacenView() {
   const nombreCli = (id: string) => clientes.find(c => c.id === id)?.nombre || '(sin cliente)'
 
   const tieneMovs = registros.some(r => isEntradaPalet(r) || isSalidaPalet(r))
+
+  // V29.43: exportar a Excel DETALLE DEL STOCK y ÚLTIMOS MOVIMIENTOS.
+  // Genera un .xlsx por tabla con TODAS las columnas visibles (fijas +
+  // REGISTROS + custom dinámicas). Así el usuario puede pasarme los datos
+  // de los palets problemáticos (529, 553...) para diagnosticar.
+  function exportarDetalleExcel() {
+    const rows = detalle.map(l => {
+      const rOrigen = registrosById.get(l.id)
+      const cd = rOrigen ? parseCustomData((rOrigen as Record<string, unknown>).customData as string || '') : {}
+      const obj: Record<string, string | number> = {
+        UBICACIÓN: l.ubicacion || '',
+        'LOTE / Nº PALET': l.ident || '',
+        DÍAS: diasEnAlmacen(l.fecha, now),
+        '¿EN DIBUJO?': lotesEnDibujo.has(l.id) ? '✓' : '⚠',
+      }
+      for (const f of visibleFieldsReg) {
+        const v = getCellValue(rOrigen, f)
+        obj[f.label] = typeof v === 'object' ? '' : String(v || '')
+      }
+      for (const c of camposCustom) {
+        obj[c.label] = getCustomValue(cd as Record<string, unknown>, c) || ''
+      }
+      return obj
+    })
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Detalle Stock')
+    XLSX.writeFile(wb, `detalle-stock-${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
+  function exportarMovimientosExcel() {
+    const rows = ultMovs.map(m => {
+      const esEnt = isEntradaPalet(m)
+      const cdMov = parseCustomData((m as Record<string, unknown>).customData as string || '')
+      const obj: Record<string, string | number> = {
+        'MOV.': esEnt ? 'ENTRADA' : 'SALIDA',
+        UBICACIÓN: getUbicacion(m) || '',
+        'LOTE / Nº PALET': getIdent(m) || '',
+        DÍAS: diasEnAlmacen(m.fecha, now),
+      }
+      for (const f of visibleFieldsReg) {
+        const v = getCellValue(m, f)
+        obj[f.label] = typeof v === 'object' ? '' : String(v || '')
+      }
+      for (const c of camposCustom) {
+        obj[c.label] = getCustomValue(cdMov as Record<string, unknown>, c) || ''
+      }
+      obj['±'] = (esEnt ? '+' : '−') + (m.cant || 0)
+      return obj
+    })
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Movimientos')
+    XLSX.writeFile(wb, `movimientos-palet-${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
 
   // Buscador: ¿coincide una celda o un lote con la query?
   function cellMatch(c: { ubicacion: string; pos: string; rack: string; lotes: LoteStock[] }): boolean {
@@ -2155,6 +2211,10 @@ export function StockAlmacenView() {
           <CardContent className="p-4">
             <h3 className="font-bold text-gray-800 mb-0.5 text-sm flex items-center gap-2">
               <Package className="h-4 w-4 text-teal-600" /> DETALLE DEL STOCK ({totalStock} palets)
+              {/* V29.43: botón descargar Excel */}
+              <Button variant="outline" size="sm" className="h-7 ml-auto text-xs print-hide" onClick={exportarDetalleExcel} title="Descargar Excel con todos los datos del stock">
+                <Download className="h-3 w-3 mr-1" /> Excel
+              </Button>
             </h3>
             <p className="text-[11px] text-gray-400 mb-3 print-hide">Consejo: arrastra una fila al mapa para mover ese lote a otro hueco.</p>
             <div className="overflow-x-auto">
@@ -2239,7 +2299,13 @@ export function StockAlmacenView() {
       {ultMovs.length > 0 && (
         <Card>
           <CardContent className="p-4">
-            <h3 className="font-bold text-gray-800 mb-3 text-sm">ÚLTIMOS MOVIMIENTOS DE PALET</h3>
+            <h3 className="font-bold text-gray-800 mb-3 text-sm flex items-center gap-2">
+              ÚLTIMOS MOVIMIENTOS DE PALET
+              {/* V29.43: botón descargar Excel */}
+              <Button variant="outline" size="sm" className="h-7 ml-auto text-xs print-hide" onClick={exportarMovimientosExcel} title="Descargar Excel con los últimos movimientos">
+                <Download className="h-3 w-3 mr-1" /> Excel
+              </Button>
+            </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[900px]">
                 <thead>
