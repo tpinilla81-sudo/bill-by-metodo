@@ -1458,7 +1458,9 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     const currentPrice = autoPrice || 0
     // Etiqueta QR del palet: se prepara ANTES de limpiar el formulario.
     // Codifica el lote/nº palet (o la ubicación si no hay lote).
-    const etiquetaPalet: EtiquetaPalet | null = esPalet ? {
+    // V29.40: solo ENTRADA PALET genera QR. Las SALIDAS no — el palet ya
+    // está etiquetado de cuando entró y no tiene sentido imprimir etiqueta.
+    const etiquetaPalet: EtiquetaPalet | null = (esPalet && !esSalida) ? {
       ident: identDeCustomValues(customValues),
       ubicacion: ubicKey ? String(customValues[ubicKey] || '').trim() : '',
       cliente: effectiveClienteName,
@@ -2098,11 +2100,13 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
                   <td className="p-2 whitespace-nowrap">
                     {/* V29.6: botón QR siempre visible en Acciones para que se
                         pueda reimprimir la etiqueta de cualquier entrada.
-                        Antes solo aparecía si c2 era "ENTRADA PALET", pero
-                        el operario puede querer etiquetar cualquier palet. */}
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-teal-600 hover:bg-teal-50" onClick={() => abrirQrDesdeRegistro(r)} title="Etiqueta QR del palet (imprimir / reimprimir)">
-                      <QrCode className="h-3.5 w-3.5" />
-                    </Button>
+                        V29.40: oculto para SALIDAS — no tiene sentido imprimir
+                        QR de un palet que sale del almacén. */}
+                    {!esC2SalidaPalet(r.c2) && !esC2SalidaPalet(r.c1) && (
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-teal-600 hover:bg-teal-50" onClick={() => abrirQrDesdeRegistro(r)} title="Etiqueta QR del palet (imprimir / reimprimir)">
+                        <QrCode className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600 hover:bg-indigo-50" onClick={() => handleEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
                     <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                   </td>
