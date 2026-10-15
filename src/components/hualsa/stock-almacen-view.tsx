@@ -911,6 +911,40 @@ export function StockAlmacenView() {
     XLSX.writeFile(wb, `movimientos-palet-${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
+  // V29.46: exportar TODOS los registros de palets en crudo (con customData
+  // completo) para diagnóstico. Muestra el JSON interno exacto de cada
+  // registro: id, fecha, clienteId, c1, c2, cant, customData literal, etc.
+  function exportarRegistrosCrudoExcel() {
+    const regs = registros
+      .filter(r => isEntradaPalet(r) || isSalidaPalet(r))
+      .filter(r => clienteFiltro.length === 0 || clienteFiltro.includes(r.clienteId || ''))
+      .sort((a, b) => b.fecha.localeCompare(a.fecha) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    const rows = regs.map(r => {
+      let cd: Record<string, unknown> = {}
+      try { cd = JSON.parse(r.customData || '{}') } catch {}
+      const obj: Record<string, string | number> = {
+        id: r.id,
+        fecha: r.fecha,
+        clienteId: r.clienteId || '(vacío)',
+        cliente: r.cliente || '',
+        c1: r.c1,
+        c2: r.c2,
+        cant: r.cant,
+        tipo: isEntradaPalet(r) ? 'ENTRADA' : 'SALIDA',
+        customData_JSON: r.customData || '',
+      }
+      // Cada clave del customData como columna separada
+      for (const [k, v] of Object.entries(cd)) {
+        obj[`customData.${k}`] = String(v || '')
+      }
+      return obj
+    })
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Registros Crudo')
+    XLSX.writeFile(wb, `registros-palet-crudo-${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
   // Buscador: ¿coincide una celda o un lote con la query?
   function cellMatch(c: { ubicacion: string; pos: string; rack: string; lotes: LoteStock[] }): boolean {
     if (!queryNorm) return false
@@ -1711,6 +1745,14 @@ export function StockAlmacenView() {
                 >
                   <Printer className="h-3.5 w-3.5 mr-1" /> Imprimir / PDF
                 </Button>
+                {/* V29.46: botón para descargar registros en crudo (diagnóstico) */}
+                <button
+                  onClick={exportarRegistrosCrudoExcel}
+                  className="ml-1 inline-flex items-center gap-1 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded-md px-2 py-1 print-hide"
+                  title="Descargar Excel con TODOS los registros de palets en crudo (customData completo) para diagnóstico"
+                >
+                  <Download className="h-3.5 w-3.5" /> REGISTROS CRUDO
+                </button>
               </div>
             </div>
             {/* V29.6: avisos del drag & drop (palet movido / errores) */}
