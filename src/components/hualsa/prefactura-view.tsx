@@ -87,18 +87,31 @@ function extractIdents(r: Registro): { strong: Record<string, string>; weak: Rec
 }
 
 function matchIdents(a: { strong: Record<string, string>; weak: Record<string, string> }, b: { strong: Record<string, string>; weak: Record<string, string> }): boolean {
-  const aStrong = Object.keys(a.strong).length > 0
-  const bStrong = Object.keys(b.strong).length > 0
-  if (aStrong || bStrong) {
-    // Si hay identificadores fuertes (lote/nºpalet), son los que mandan
-    for (const k of Object.keys(a.strong)) {
-      if (b.strong[k] && b.strong[k] === a.strong[k]) return true
-    }
-    return false
+  const norm = (s: string) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  // V29.50: misma lógica que buildStock V29.48 — priorizar nº de palet (único)
+  // sobre lote (compartido por muchos palets).
+  // Separar idents en "nº palet" (únicos) y "lote" (compartidos).
+  const aPalet = Object.entries(a.strong).filter(([k]) => /palet/.test(norm(k)) && !/lote/.test(norm(k))).map(([, v]) => norm(v))
+  const bPalet = Object.entries(b.strong).filter(([k]) => /palet/.test(norm(k)) && !/lote/.test(norm(k))).map(([, v]) => norm(v))
+  const aLote = Object.entries(a.strong).filter(([k]) => /lote/.test(norm(k))).map(([, v]) => norm(v))
+  const bLote = Object.entries(b.strong).filter(([k]) => /lote/.test(norm(k))).map(([, v]) => norm(v))
+  // Prioridad 1: nº de palet exacto (ambos lados)
+  if (aPalet.length > 0 && bPalet.length > 0) {
+    if (aPalet.some(p => bPalet.includes(p))) return true
   }
-  // Solo ubicación disponible en ambos lados
+  // Prioridad 2: TODOS los idents coinciden (lote + nº palet)
+  const aAll = [...aPalet, ...aLote]
+  const bAll = [...bPalet, ...bLote]
+  if (aAll.length > 1 && bAll.length > 1) {
+    if (aAll.every(v => bAll.includes(v))) return true
+  }
+  // Prioridad 3: ALGÚN ident coincide (lote compartido) — solo si no hay nº palet
+  if (aPalet.length === 0 && bPalet.length === 0 && (aLote.length > 0 || bLote.length > 0)) {
+    if (aLote.some(v => bLote.includes(v))) return true
+  }
+  // Prioridad 4: ubicación
   for (const k of Object.keys(a.weak)) {
-    if (b.weak[k] && b.weak[k] === a.weak[k]) return true
+    if (b.weak[k] && norm(b.weak[k]) === norm(a.weak[k])) return true
   }
   return false
 }
