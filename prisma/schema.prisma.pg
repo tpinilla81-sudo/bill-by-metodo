@@ -23,6 +23,7 @@ model Cliente {
   mail        String   @default("")
   tel         String   @default("")
   customData  String   @default("")     // JSON: custom field values
+  deletedAt   DateTime?                // V29.52: soft delete
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -41,6 +42,7 @@ model Catalogo {
   inc         Float    @default(0)
   final       Float    @default(0)
   customData  String   @default("")     // JSON: custom field values
+  deletedAt   DateTime?                // V29.52: soft delete
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -62,6 +64,7 @@ model Registro {
   pasadoRegistro  Boolean  @default(false)  // true = ya transferido a Registros
   facturado       Boolean  @default(false)  // true = ya facturado
   customData      String   @default("")     // JSON: custom field values
+  deletedAt       DateTime?                // V29.52: soft delete
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -140,6 +143,7 @@ model Factura {
   registroIds   String   @default("[]")
   impresa       Boolean  @default(false)
   createdBy     String   @default("")
+  deletedAt     DateTime?                // V29.52: soft delete
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
