@@ -263,7 +263,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
             {reloading ? 'Actualizando…' : 'Actualizar app'}
           </button>
           {displayName}
-          <div className="mt-1 text-[9px] text-green-700 font-mono">build: V29.53-ICONO-HUALSA · 2026-11-01</div>
+          <div className="mt-1 text-[9px] text-green-700 font-mono">build: V29.54-ICONO-V2 · 2026-11-01</div>
         </div>
       </aside>
     </>
