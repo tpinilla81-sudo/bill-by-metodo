@@ -40,8 +40,14 @@ export const metadata: Metadata = {
   title: "BILL by Metodo - Gestión Empresarial",
   description: "Sistema de gestión empresarial multi-empresa. Registros, Clientes, Catálogo y Facturación.",
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/hualsa-favicon.ico", sizes: "any" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
   },
+  manifest: "/manifest.json",
   openGraph: {
     title: "BILL by Metodo - Gestión Empresarial",
     description: "Sistema de gestión empresarial multi-empresa. Registros, Clientes, Catálogo y Facturación.",
