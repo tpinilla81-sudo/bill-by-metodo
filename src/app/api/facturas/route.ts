@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     const hasta = searchParams.get('hasta') || undefined
     const q = searchParams.get('q') || undefined
 
-    const where: any = { tenantId: tid }
+    const where: any = { tenantId: tid, deletedAt: null }
     if (clienteId) where.clienteId = clienteId
     if (desde || hasta) {
       where.fecha = {}

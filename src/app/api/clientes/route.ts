@@ -7,7 +7,7 @@ export async function GET(req: Request) {
     const tid = await requireTenantId(req)
     if (typeof tid !== 'string') return tid
 
-    const clientes = await db.cliente.findMany({ where: { tenantId: tid }, orderBy: { nombre: 'asc' } })
+    const clientes = await db.cliente.findMany({ where: { tenantId: tid, deletedAt: null }, orderBy: { nombre: 'asc' } })
     return NextResponse.json(clientes)
   } catch (err) {
     console.error('Clientes GET error:', err)
@@ -43,7 +43,7 @@ export async function PUT(req: Request) {
     if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
     // Verify ownership
-    const existing = await db.cliente.findFirst({ where: { id, tenantId: tid } })
+    const existing = await db.cliente.findFirst({ where: { id, tenantId: tid, deletedAt: null } })
     if (!existing) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -82,10 +82,11 @@ export async function DELETE(req: Request) {
     if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
     // Verify ownership
-    const existing = await db.cliente.findFirst({ where: { id, tenantId: tid } })
+    const existing = await db.cliente.findFirst({ where: { id, tenantId: tid, deletedAt: null } })
     if (!existing) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
 
-    await db.cliente.delete({ where: { id } })
+    // V29.52: soft delete — no borrar físicamente
+    await db.cliente.update({ where: { id }, data: { deletedAt: new Date() } })
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('Clientes DELETE error:', err)

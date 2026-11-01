@@ -33,11 +33,11 @@ export async function GET(req: Request) {
     const filter = searchParams.get('filter') || 'all'
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let where: any = { tenantId: tid }
+    let where: any = { tenantId: tid, deletedAt: null }
     if (filter === 'entrada') {
-      where = { tenantId: tid, pasadoRegistro: false }
+      where = { tenantId: tid, deletedAt: null, pasadoRegistro: false }
     } else if (filter === 'registros') {
-      where = { tenantId: tid, pasadoRegistro: true }
+      where = { tenantId: tid, deletedAt: null, pasadoRegistro: true }
     }
 
     // Default sort: createdAt desc (most recent entry first).
@@ -86,12 +86,12 @@ export async function POST(req: Request) {
       }
 
       // Lookup catalog prices for batch rows
-      const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, select: { c1: true, c2: true, clienteId: true, final: true } })
+      const catalogo = await db.catalogo.findMany({ where: { tenantId: tid, deletedAt: null }, select: { c1: true, c2: true, clienteId: true, final: true } })
 
       // Build a clientes name lookup so we can fill the `cliente` text field
       // when clienteId is auto-detected from the catalog (and no name was provided).
       const clientesMap = new Map<string, string>()
-      const clientesRows = await db.cliente.findMany({ where: { tenantId: tid }, select: { id: true, nombre: true } })
+      const clientesRows = await db.cliente.findMany({ where: { tenantId: tid, deletedAt: null }, select: { id: true, nombre: true } })
       for (const c of clientesRows) clientesMap.set(c.id, c.nombre)
 
       // Respect the caller's pasadoRegistro flag.
@@ -168,7 +168,7 @@ export async function POST(req: Request) {
     let effectiveClienteId = clienteId || ''
     let effectiveCliente = cliente || ''
     if (!effectiveClienteId && c1 && c2) {
-      const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, select: { c1: true, c2: true, clienteId: true, final: true } })
+      const catalogo = await db.catalogo.findMany({ where: { tenantId: tid, deletedAt: null }, select: { c1: true, c2: true, clienteId: true, final: true } })
       const detectedId = lookupCliente(catalogo, c1, c2)
       if (detectedId) {
         effectiveClienteId = detectedId
@@ -179,7 +179,7 @@ export async function POST(req: Request) {
     // Lookup catalog price if not provided
     let pu = Number(precioUnitario) || 0
     if (!pu) {
-      const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, select: { c1: true, c2: true, clienteId: true, final: true } })
+      const catalogo = await db.catalogo.findMany({ where: { tenantId: tid, deletedAt: null }, select: { c1: true, c2: true, clienteId: true, final: true } })
       pu = lookupPrecio(catalogo, c1, c2, effectiveClienteId)
     }
     const registro = await db.registro.create({
@@ -227,7 +227,7 @@ export async function PUT(req: Request) {
     if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
     // Verify ownership
-    const existing = await db.registro.findFirst({ where: { id, tenantId: tid } })
+    const existing = await db.registro.findFirst({ where: { id, tenantId: tid, deletedAt: null } })
     if (!existing) return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -260,7 +260,7 @@ export async function PATCH(req: Request) {
     if (ubicacion === undefined) return NextResponse.json({ error: 'Ubicación requerida' }, { status: 400 })
 
     // Verify ownership
-    const registro = await db.registro.findFirst({ where: { id, tenantId: tid } })
+    const registro = await db.registro.findFirst({ where: { id, tenantId: tid, deletedAt: null } })
     if (!registro) return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 })
 
     let cd: Record<string, unknown> = {}
@@ -307,10 +307,11 @@ export async function DELETE(req: Request) {
     if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
     // Verify ownership
-    const existing = await db.registro.findFirst({ where: { id, tenantId: tid } })
+    const existing = await db.registro.findFirst({ where: { id, tenantId: tid, deletedAt: null } })
     if (!existing) return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 })
 
-    await db.registro.delete({ where: { id } })
+    // V29.52: soft delete
+    await db.registro.update({ where: { id }, data: { deletedAt: new Date() } })
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('Registros DELETE error:', err)

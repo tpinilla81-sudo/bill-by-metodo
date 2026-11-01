@@ -10,7 +10,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const { id } = await params
 
     const factura = await db.factura.findFirst({
-      where: { id, tenantId: tid },
+      where: { id, tenantId: tid, deletedAt: null },
     })
     if (!factura) return NextResponse.json({ error: 'No encontrada' }, { status: 404 })
 
@@ -45,7 +45,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (typeof body.ivaImp === 'number' && isFinite(body.ivaImp)) allowed.ivaImp = body.ivaImp
     if (typeof body.total === 'number' && isFinite(body.total)) allowed.total = body.total
 
-    const existing = await db.factura.findFirst({ where: { id, tenantId: tid } })
+    const existing = await db.factura.findFirst({ where: { id, tenantId: tid, deletedAt: null } })
     if (!existing) return NextResponse.json({ error: 'No encontrada' }, { status: 404 })
 
     const factura = await db.factura.update({
@@ -67,11 +67,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     if (typeof tid !== 'string') return tid
     const { id } = await params
 
-    const existing = await db.factura.findFirst({ where: { id, tenantId: tid } })
+    const existing = await db.factura.findFirst({ where: { id, tenantId: tid, deletedAt: null } })
     if (!existing) return NextResponse.json({ error: 'No encontrada' }, { status: 404 })
 
     await db.$transaction(async (tx) => {
-      await tx.factura.delete({ where: { id } })
+      // V29.52: soft delete
+      await tx.factura.update({ where: { id }, data: { deletedAt: new Date() } })
       // un-mark registros
       let regIds: string[] = []
       try { regIds = JSON.parse(existing.registroIds || '[]') } catch {}

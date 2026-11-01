@@ -7,7 +7,7 @@ export async function GET(req: Request) {
     const tid = await requireTenantId(req)
     if (typeof tid !== 'string') return tid
 
-    const catalogo = await db.catalogo.findMany({ where: { tenantId: tid }, orderBy: [{ c1: 'asc' }, { c2: 'asc' }] })
+    const catalogo = await db.catalogo.findMany({ where: { tenantId: tid, deletedAt: null }, orderBy: [{ c1: 'asc' }, { c2: 'asc' }] })
     // Cabeceras anti-caché: el catálogo puede cambiar entre pestañas y la entrada
     // debe ver los items recién creados sin necesidad de recargar la página.
     const res = NextResponse.json(catalogo)
@@ -81,7 +81,7 @@ export async function PUT(req: Request) {
     if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
     // Verify ownership
-    const existing = await db.catalogo.findFirst({ where: { id, tenantId: tid } })
+    const existing = await db.catalogo.findFirst({ where: { id, tenantId: tid, deletedAt: null } })
     if (!existing) return NextResponse.json({ error: 'Artículo no encontrado' }, { status: 404 })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,10 +105,11 @@ export async function DELETE(req: Request) {
     if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
     // Verify ownership
-    const existing = await db.catalogo.findFirst({ where: { id, tenantId: tid } })
+    const existing = await db.catalogo.findFirst({ where: { id, tenantId: tid, deletedAt: null } })
     if (!existing) return NextResponse.json({ error: 'Artículo no encontrado' }, { status: 404 })
 
-    await db.catalogo.delete({ where: { id } })
+    // V29.52: soft delete
+    await db.catalogo.update({ where: { id }, data: { deletedAt: new Date() } })
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('Catalogo DELETE error:', err)
