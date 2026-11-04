@@ -559,27 +559,6 @@ export function RegistrosView() {
           <button onClick={() => setShowExcelTools(!showExcelTools)} className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${showExcelTools ? 'bg-blue-50 text-[#005bb5] border-blue-200' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-blue-50 hover:text-[#005bb5]'}`}>
             <FileSpreadsheet className="h-3 w-3" /> Transferir tabla
           </button>
-          {/* V29.65: botón autorellenar descripciones */}
-          <button
-            onClick={async () => {
-              if (!confirm('¿Autorellenar la descripción de todos los registros que la tienen vacía? Buscará la descripción en el catálogo, o usará el Concepto 2 si no la encuentra.'))
-                return
-              try {
-                const res = await fetch('/api/registros/autofill-descripcion', { method: 'POST' })
-                const data = await res.json()
-                if (data.ok) {
-                  setStatusMsg({ type: 'ok', text: `${data.actualizados} de ${data.total} registros actualizados con descripción ✓` })
-                  loadData()
-                } else {
-                  setStatusMsg({ type: 'err', text: data.error || 'Error al autorellenar' })
-                }
-              } catch { setStatusMsg({ type: 'err', text: 'Error al autorellenar descripciones' }) }
-            }}
-            className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100 transition-colors"
-            title="Rellena la descripción de los registros vacíos buscando en el catálogo o usando el Concepto 2"
-          >
-            ✏️ Autorellenar descripción
-          </button>
         </div>
 
         {/* Collapsible Filters */}
