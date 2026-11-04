@@ -977,7 +977,27 @@ export function EntradaGrilla() {
                       options={c2OptionsFor(row.c1)}
                       rowId={row.id}
                       field="c2"
-                      onChange={v => updateRow(row.id, { c2: v })}
+                      onChange={v => {
+                        updateRow(row.id, { c2: v })
+                        // V29.66: autorellenar descripción al elegir c2
+                        if (v) {
+                          const c1n = String(row.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase()
+                          const c2n = String(v).trim().replace(/\s+/g, ' ').toLowerCase()
+                          let item = data.catalogo.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === c1n && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === c2n && (!row.clienteId || !x.clienteId || x.clienteId === row.clienteId))
+                          if (!item) item = data.catalogo.find(x => String(x.c1 || '').trim().replace(/\s+/g, ' ').toLowerCase() === c1n && String(x.c2 || '').trim().replace(/\s+/g, ' ').toLowerCase() === c2n)
+                          let canon = ''
+                          if (item) {
+                            try { const cd = JSON.parse(item.customData || '{}'); for (const [k, val] of Object.entries(cd)) { if (/descripcion/i.test(k) && String(val || '').trim()) { canon = String(val).trim(); break } } } catch {}
+                            if (!canon) canon = item.c2 || ''
+                          }
+                          if (!canon) canon = v
+                          const dk = (config?.fieldsEntrada || []).find(f => f.isCustom && /descripcion/i.test(f.key))?.key || 'custom_descripcion'
+                          const actual = String(row.customValues[dk] || '').trim()
+                          if (actual !== canon) {
+                            updateRow(row.id, { customValues: { ...row.customValues, [dk]: canon } })
+                          }
+                        }
+                      }}
                       onKeyDown={e => handleKeyDown(e, idx, 'c2')}
                       onFillDown={() => fillDown(row.id, 'c2')}
                     />

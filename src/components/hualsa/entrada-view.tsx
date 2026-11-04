@@ -1421,6 +1421,38 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     }
   }
 
+  // V29.66: useEffect que rellena la descripción SIEMPRE que cambie c2,
+  // sin importar si el campo está en fieldsEntrada o no. Si descrKey está
+  // vacío (el campo no existe en la config), usar 'custom_descripcion'.
+  useEffect(() => {
+    if (!c2) return
+    const dk = descrKey || 'custom_descripcion'
+    // Buscar en catálogo
+    const c1n = normStr(c1)
+    const c2n = normStr(c2)
+    let item = data.catalogo.find(x => normStr(x.c1) === c1n && normStr(x.c2) === c2n && (!clienteId || !x.clienteId || x.clienteId === clienteId))
+    if (!item) item = data.catalogo.find(x => normStr(x.c1) === c1n && normStr(x.c2) === c2n)
+    let canon = ''
+    if (item) {
+      try {
+        const cd = JSON.parse(item.customData || '{}') as Record<string, unknown>
+        for (const [k, v] of Object.entries(cd)) {
+          if (!/descripcion/i.test(normAlm(k))) continue
+          const txt = String(v ?? '').trim()
+          if (txt) { canon = txt; break }
+        }
+      } catch {}
+      if (!canon) canon = item.c2 || ''
+    }
+    if (!canon) canon = c2 // fallback: usar el propio c2
+    const actual = String(customValues[dk] || '').trim()
+    if (actual !== canon && (!actual || descrAutoRef.current === actual)) {
+      descrAutoRef.current = canon
+      setCustomValue(dk, canon)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c2, c1, clienteId])
+
   async function handleSave() {
     // ALL visible fields in Entrada are mandatory (user requirement),
     // EXCEPT 'observaciones' and 'cliente' which stay optional.
