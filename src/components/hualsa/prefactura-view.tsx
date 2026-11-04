@@ -595,7 +595,7 @@ export function PreFacturaView() {
           obs: '',
           precioUnitario: costeTotal,
           smurfit: {
-            descripcion: ref,
+            descripcion: g.descripcion,
             nEntradas: g.nEntradas,
             costeEntradas,
             nSalidas: g.nSalidas,
@@ -701,16 +701,44 @@ export function PreFacturaView() {
       ? (cfg.logo.startsWith('data:') ? cfg.logo : `data:image/png;base64,${cfg.logo}`)
       : ''
 
-    const lineasHtml = lineas.map(r => {
-      const p = r.precioUnitario > 0 ? r.precioUnitario : pu(r.c1, r.c2, r.clienteId)
-      return `<tr>
-        <td style="padding:7px 10px;border:1px solid #bbb;">${fechaLbl(r.fecha)}</td>
-        <td style="padding:7px 10px;border:1px solid #bbb;">${r.c1}${r.c2 ? ' - ' + r.c2 : ''}${r.obs ? ' (' + r.obs + ')' : ''}</td>
-        <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${r.cant}</td>
-        <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${p.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-        <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${(p * r.cant).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-      </tr>`
-    }).join('')
+    // V29.68: si es modelo SMURFIT, generar tabla de liquidación en el HTML
+    const esModeloSmurfitPrint = lineas.some(l => l.smurfit)
+    let lineasHtml = ''
+    if (esModeloSmurfitPrint) {
+      lineasHtml = lineas.filter(l => l.smurfit).map(r => {
+        const s = r.smurfit!
+        return `<tr>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:left;">${s.descripcion}</td>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:center;">${s.nEntradas}</td>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${s.costeEntradas.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:center;">${s.nSalidas}</td>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${s.costeSalidas.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${s.totalCostes.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${s.transporte.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;font-weight:bold;">${s.costeTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+        </tr>`
+      }).join('')
+      // Añadir líneas no-SMURFIT (PORTE, etc.) como filas normales
+      const noSmurfit = lineas.filter(l => !l.smurfit)
+      for (const r of noSmurfit) {
+        const p = r.precioUnitario > 0 ? r.precioUnitario : pu(r.c1, r.c2, r.clienteId)
+        lineasHtml += `<tr>
+          <td colspan="7" style="padding:7px 10px;border:1px solid #bbb;">${r.c1}${r.c2 ? ' - ' + r.c2 : ''}</td>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;font-weight:bold;">${(p * r.cant).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+        </tr>`
+      }
+    } else {
+      lineasHtml = lineas.map(r => {
+        const p = r.precioUnitario > 0 ? r.precioUnitario : pu(r.c1, r.c2, r.clienteId)
+        return `<tr>
+          <td style="padding:7px 10px;border:1px solid #bbb;">${fechaLbl(r.fecha)}</td>
+          <td style="padding:7px 10px;border:1px solid #bbb;">${r.c1}${r.c2 ? ' - ' + r.c2 : ''}${r.obs ? ' (' + r.obs + ')' : ''}</td>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${r.cant}</td>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${p.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${(p * r.cant).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+        </tr>`
+      }).join('')
+    }
 
     const html = `<!DOCTYPE html>
 <html lang="es">
@@ -776,11 +804,22 @@ export function PreFacturaView() {
   <table class="lines">
     <thead>
       <tr>
+        ${esModeloSmurfitPrint ? `
+        <th>Descripción Producto</th>
+        <th style="width:60px;">Nº ENTRADAS</th>
+        <th style="width:80px;">Coste ENTRADAS</th>
+        <th style="width:60px;">Nº SALIDAS</th>
+        <th style="width:80px;">Coste SALIDAS</th>
+        <th style="width:80px;">TOTAL COSTES</th>
+        <th style="width:80px;">Coste Transporte</th>
+        <th style="width:80px;">Coste Total</th>
+        ` : `
         <th style="width:90px;">${LL.fecha}</th>
         <th>${LL.concepto}</th>
         <th style="width:70px;">${LL.cantidad}</th>
         <th style="width:120px;">${LL.precioUnitario}</th>
         <th style="width:120px;">${LL.importe}</th>
+        `}
       </tr>
     </thead>
     <tbody>${lineasHtml}</tbody>
