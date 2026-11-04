@@ -506,8 +506,82 @@ export function PreFacturaView() {
     lineasBase.sort((a, b) => a.fecha.localeCompare(b.fecha))
     const iva = Number(fIva) || 0
 
+    // V29.61: Modelo SMURFIT — agrupar por referencia (c1+c2) en una sola
+    // línea por producto con todos los costes calculados.
+    // Tabla: Descripción | Nº Entradas | Coste Entradas | Nº Salidas |
+    //        Coste Salidas | Total Costes (almacenaje) | Transporte | Total
+    const esSmurfit = /SMURFIT/i.test(cli.nombre)
     let lineas: LineaFactura[]
-    if (fModo === 'mes') {
+    if (esSmurfit) {
+      // Buscar precios del catálogo para SMURFIT
+      const precioEntradaSalida = (() => {
+        const it = catalogo.find(x => x.clienteId === targetCliId && /entrada palet/i.test(normAlm(`${x.c1} ${x.c2}`)))
+        return it ? Number(it.final) || 0 : 3
+      })()
+      const costeDiario = (() => {
+        const it = catalogo.find(x => x.clienteId === targetCliId && /coste diari/i.test(normAlm(`${x.c1} ${x.c2}`)))
+        return it ? Number(it.final) || 0 : 0.18
+      })()
+      const precioPorte = (() => {
+        const it = catalogo.find(x => x.clienteId === targetCliId && /porte/i.test(normAlm(`${x.c1} ${x.c2}`)))
+        return it ? Number(it.final) || 0 : 5
+      })()
+
+      // Agrupar por referencia (c1+c2) — solo palets, no otros conceptos
+      const porRef = new Map<string, { descripcion: string; nEntradas: number; nSalidas: number; diasAlmacenaje: number; transporte: number }>()
+      for (const r of selFacturable) {
+        const esEnt = isEntradaPalet(r)
+        const esSal = isSalidaPalet(r)
+        if (!esEnt && !esSal) {
+          // Otros conceptos (PORTE, COSTE DIARIO) — van como líneas normales
+          continue
+        }
+        const ref = `${r.c1} ${r.c2}`.trim()
+        if (!porRef.has(ref)) porRef.set(ref, { descripcion: ref, nEntradas: 0, nSalidas: 0, diasAlmacenaje: 0, transporte: 0 })
+        const g = porRef.get(ref)!
+        if (esEnt) g.nEntradas += Number(r.cant) || 1
+        if (esSal) {
+          g.nSalidas += Number(r.cant) || 1
+          g.transporte += precioPorte
+        }
+      }
+      // Calcular días de almacenaje para cada referencia (de alm.entradasUsadas)
+      for (const [ref, g] of porRef) {
+        // Sumar días de todas las entradas emparejadas con salidas de esa referencia
+        for (const al of alm.lineas) {
+          if (al.c2 && al.c2.includes(ref.slice(-20))) {
+            g.diasAlmacenaje += al.cant
+          }
+        }
+      }
+
+      // Generar líneas de factura — una por referencia
+      lineas = []
+      for (const [ref, g] of porRef) {
+        const costeEntradas = g.nEntradas * precioEntradaSalida
+        const costeSalidas = g.nSalidas * precioEntradaSalida
+        const totalCostes = g.diasAlmacenaje * costeDiario
+        const transporte = g.transporte
+        const costeTotal = costeEntradas + costeSalidas + totalCostes + transporte
+
+        lineas.push({
+          fecha: fFechaFact,
+          c1: ref,
+          c2: `Entradas: ${g.nEntradas} (${costeEntradas.toFixed(2)}€) · Salidas: ${g.nSalidas} (${costeSalidas.toFixed(2)}€) · Almac: ${g.diasAlmacenaje}d (${totalCostes.toFixed(2)}€) · Porte: ${transporte.toFixed(2)}€ · TOTAL: ${costeTotal.toFixed(2)}€`,
+          cant: 1,
+          clienteId: targetCliId,
+          obs: `Nº Entradas: ${g.nEntradas} · Coste Entradas: ${costeEntradas.toFixed(2)}€ · Nº Salidas: ${g.nSalidas} · Coste Salidas: ${costeSalidas.toFixed(2)}€ · Total Costes: ${totalCostes.toFixed(2)}€ · Transporte: ${transporte.toFixed(2)}€`,
+          precioUnitario: costeTotal,
+        })
+      }
+      // Añadir líneas no-palet (PORTE, COSTE DIARIO, etc.) como líneas normales
+      const noPalet = selFacturable.filter(r => !isEntradaPalet(r) && !isSalidaPalet(r))
+      for (const r of noPalet) {
+        const pu = getPrecio(r)
+        lineas.push({ fecha: r.fecha, c1: r.c1, c2: r.c2, cant: r.cant, clienteId: r.clienteId, obs: r.obs || '', precioUnitario: pu })
+      }
+      lineas.sort((a, b) => a.fecha.localeCompare(b.fecha))
+    } else if (fModo === 'mes') {
       const map: Record<string, LineaFactura> = {}
       lineasBase.forEach(r => {
         const mes = r.fecha.slice(0, 7)
