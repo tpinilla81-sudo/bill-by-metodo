@@ -61,6 +61,7 @@ export const DEFAULT_FIELDS_REGISTROS: FieldDef[] = [
   { key: 'mes', label: 'Mes', type: 'text', visible: true, isCustom: false },
   { key: 'semana', label: 'Sem', type: 'text', visible: true, isCustom: false },
   { key: 'cliente', label: 'Cliente', type: 'text', visible: true, isCustom: false, dbColumn: 'cliente' },
+  { key: 'descripcion', label: 'Descripcion', type: 'text', visible: true, isCustom: false },
   { key: 'c1', label: 'Concepto 1', type: 'text', visible: true, isCustom: false, dbColumn: 'c1' },
   { key: 'c2', label: 'Concepto 2', type: 'text', visible: true, isCustom: false, dbColumn: 'c2' },
   { key: 'cantidad', label: 'Cant', type: 'number', visible: true, isCustom: false, dbColumn: 'cant' },

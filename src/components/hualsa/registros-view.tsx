@@ -349,7 +349,15 @@ export function RegistrosView() {
       const customData = parseCustomData((r as Record<string, unknown>).customData as string || '')
       const row: Record<string, unknown> = {
         Fecha: fmtDate(r.fecha), Mes: new Date(r.fecha).getMonth() + 1, Sem: getISOWeek(r.fecha),
-        Cliente: r.cliente, 'Concepto 1': r.c1, 'Concepto 2': r.c2,
+        Cliente: r.cliente,
+        Descripcion: (() => {
+          const cdVal = String(customData['custom_descripcion'] || '').trim()
+          if (cdVal) return cdVal
+          const it = data.catalogo.find(x => x.c1 === r.c1 && x.c2 === r.c2)
+          if (it) { try { const cdCat = JSON.parse(it.customData || '{}'); for (const [k, v] of Object.entries(cdCat)) { if (/descripcion/i.test(k) && String(v || '').trim()) return String(v).trim() } } catch {} }
+          return r.c2 || ''
+        })(),
+        'Concepto 1': r.c1, 'Concepto 2': r.c2,
         Cantidad: r.cant, 'P.Unitario': pu, Importe: imp, Observaciones: r.obs,
       }
       // Add custom fields
@@ -500,6 +508,24 @@ export function RegistrosView() {
       case 'mes': return d.getMonth() + 1
       case 'semana': return getISOWeek(r.fecha)
       case 'cliente': return r.cliente
+      case 'descripcion': {
+        // V29.64: buscar descripción en customData del registro, si no en catálogo
+        const cdVal = String(customData['custom_descripcion'] || customData['custom_desc'] || '').trim()
+        if (cdVal) return cdVal
+        // Buscar en catálogo
+        const it = data.catalogo.find(x => x.c1 === r.c1 && x.c2 === r.c2 && x.clienteId === r.clienteId)
+          || data.catalogo.find(x => x.c1 === r.c1 && x.c2 === r.c2)
+        if (it) {
+          try {
+            const cdCat = JSON.parse(it.customData || '{}')
+            for (const [k, v] of Object.entries(cdCat)) {
+              if (/descripcion/i.test(k) && String(v || '').trim()) return String(v).trim()
+            }
+          } catch {}
+          return it.c2 || ''
+        }
+        return r.c2 || ''
+      }
       case 'c1': return r.c1
       case 'c2': return r.c2
       case 'cantidad': return r.cant
