@@ -236,7 +236,7 @@ function procesarAlmacenajePalets(
 }
 interface InvoiceData {
   cli: Cliente; lineas: LineaFactura[]
-  iva: number; numero: string; fechaFact: string; modo: string; base: number; ivaImp: number; total: number; pedido: string
+  iva: number; numero: string; fechaFact: string; modo: string; base: number; ivaImp: number; total: number; pedido: string; mesFactura: string
   registroIds: string[]
 }
 
@@ -612,7 +612,7 @@ export function PreFacturaView() {
     // excluidas quedan libres para facturarse en su propio mes.
     const registroIds = [...selFacturable.map(r => r.id)]
 
-    setInvoiceData({ cli, lineas, iva, numero: '', fechaFact: fFechaFact, modo: fModo, base, ivaImp, total, pedido: fPedido, registroIds })
+    setInvoiceData({ cli, lineas, iva, numero: '', fechaFact: fFechaFact, modo: fModo, base, ivaImp, total, pedido: fPedido, mesFactura: fMes, registroIds })
     setModalOpen(true)
   }
 
@@ -1115,7 +1115,7 @@ function InvoicePreview({ data, catalogo, config }: {
 
   // V29.62: detectar si es modelo SMURFIT (líneas con campo smurfit)
   const esModeloSmurfit = lineas.some(l => l.smurfit)
-  const mesFactura = fMes || (fechaFact ? fechaFact.slice(0, 7) : '')
+  const mesFactura = data.mesFactura || (fechaFact ? fechaFact.slice(0, 7) : '')
 
   return (
     <div className="font-[family-name:var(--font-geist-sans)] text-black text-[11pt] leading-[1.35]">

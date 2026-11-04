@@ -44,6 +44,7 @@ interface InvoiceData {
   ivaImp: number
   total: number
   pedido: string
+  mesFactura: string
 }
 
 export function FacturasView() {
@@ -138,6 +139,7 @@ export function FacturasView() {
       ivaImp: f.ivaImp,
       total: f.total,
       pedido: f.pedido || '',
+      mesFactura: f.fecha ? f.fecha.slice(0, 7) : '',
     })
   }
 
