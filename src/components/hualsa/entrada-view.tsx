@@ -1382,12 +1382,13 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
   // hacer match con catálogo se normaliza/autocompleta.
   // OBSERVACIONES es 100% manual — nunca se toca automáticamente.
   const descrKey = useMemo(
-    () => fieldDefs.find(f => f.isCustom && /descripcion/i.test(normAlm(`${f.key} ${f.label}`)))?.key || '',
+    () => fieldDefs.find(f => f.isCustom && /descripcion/i.test(normAlm(`${f.key} ${f.label}`)))?.key || 'custom_descripcion',
     [fieldDefs],
   )
   const descrAutoRef = useRef<string>('')
   function rellenarDescripcionDeCatalogo(c1Val: string, c2Val: string) {
-    if (!descrKey || !c1Val || !c2Val) return
+    if (!c1Val || !c2Val) return
+    const dk = descrKey || 'custom_descripcion'
     const c1n = normStr(c1Val)
     const c2n = normStr(c2Val)
     // Busca el ítem exacto en catálogo (c1+c2, con cliente si hay)
@@ -1410,14 +1411,14 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
     } catch { /* customData corrupto — ignorar */ }
     // 2) Si no había descripción en customData, caer al c2 del catálogo
     //    (texto del producto, lo más habitual).
-    if (!canon) canon = item.c2 || ''
+    if (!canon) canon = item.c2 || c2Val || ''
     if (!canon) return
-    const actual = String(customValues[descrKey] || '').trim()
+    const actual = String(customValues[dk] || '').trim()
     // Solo rellena si el campo está vacío o coincide con un texto auto-previo
     // (no pisa lo que el usuario haya escrito a mano).
     if (!actual || descrAutoRef.current === actual) {
       descrAutoRef.current = canon
-      setCustomValue(descrKey, canon)
+      setCustomValue(dk, canon)
     }
   }
 
