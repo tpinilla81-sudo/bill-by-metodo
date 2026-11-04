@@ -532,6 +532,7 @@ export function PreFacturaView() {
       // pero el catálogo solo tiene un item por producto (c1="SMURFIT ENTRADA PALET").
       // Por eso buscamos solo por c2 (código de producto) si no encuentra por c1+c2.
       function descripcionDeCatalogo(c1Val: string, c2Val: string, cliId: string): string {
+        const norm = (s: string) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         // 1) Match exacto c1+c2+cliente
         let it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
         // 2) Match por c1+c2 sin cliente
@@ -544,10 +545,12 @@ export function PreFacturaView() {
         if (!it) it = catalogo.find(x => x.c2 === c2Val)
         if (it) {
           // Buscar "descripcion" en el customData del item del catálogo
+          // (la clave puede tener acentos quitados: custom_descripci_n)
           try {
             const cd = JSON.parse(it.customData || '{}')
             for (const [k, v] of Object.entries(cd)) {
-              if (/descripcion/i.test(k) && String(v || '').trim()) return String(v).trim()
+              const nk = norm(k)
+              if (/descripcion/i.test(nk) && String(v || '').trim()) return String(v).trim()
             }
           } catch {}
           // Si no hay customData con descripcion, usar c2 como fallback
