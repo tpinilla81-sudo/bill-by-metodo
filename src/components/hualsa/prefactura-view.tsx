@@ -527,6 +527,25 @@ export function PreFacturaView() {
         return it ? Number(it.final) || 0 : 5
       })()
 
+      // V29.63: buscar la DESCRIPCIÓN del producto en el catálogo para cada referencia
+      function descripcionDeCatalogo(c1Val: string, c2Val: string, cliId: string): string {
+        const it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
+          || catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && !x.clienteId)
+          || catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val)
+        if (it) {
+          // Buscar "descripcion" en el customData del item del catálogo
+          try {
+            const cd = JSON.parse(it.customData || '{}')
+            for (const [k, v] of Object.entries(cd)) {
+              if (/descripcion/i.test(k) && String(v || '').trim()) return String(v).trim()
+            }
+          } catch {}
+          // Si no hay customData con descripcion, usar c2 como fallback
+          return it.c2 || c2Val
+        }
+        return `${c1Val} ${c2Val}`.trim()
+      }
+
       // Agrupar por referencia (c1+c2) — solo palets, no otros conceptos
       const porRef = new Map<string, { descripcion: string; nEntradas: number; nSalidas: number; diasAlmacenaje: number; transporte: number }>()
       for (const r of selFacturable) {
@@ -537,7 +556,10 @@ export function PreFacturaView() {
           continue
         }
         const ref = `${r.c1} ${r.c2}`.trim()
-        if (!porRef.has(ref)) porRef.set(ref, { descripcion: ref, nEntradas: 0, nSalidas: 0, diasAlmacenaje: 0, transporte: 0 })
+        if (!porRef.has(ref)) {
+          const desc = descripcionDeCatalogo(r.c1, r.c2, targetCliId)
+          porRef.set(ref, { descripcion: `${desc} ${r.c2}`.trim(), nEntradas: 0, nSalidas: 0, diasAlmacenaje: 0, transporte: 0 })
+        }
         const g = porRef.get(ref)!
         if (esEnt) g.nEntradas += Number(r.cant) || 1
         if (esSal) {
