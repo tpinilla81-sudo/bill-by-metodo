@@ -21,7 +21,7 @@ interface FacturasData {
   seq: number
 }
 
-type LineaFactura = { fecha: string; c1: string; c2: string; cant: number; clienteId: string; obs: string; precioUnitario: number }
+type LineaFactura = { fecha: string; c1: string; c2: string; cant: number; clienteId: string; obs: string; precioUnitario: number; smurfit?: { descripcion: string; nEntradas: number; costeEntradas: number; nSalidas: number; costeSalidas: number; totalCostes: number; transporte: number; costeTotal: number } }
 
 // ─── Almacenaje de palets (p.ej. cliente SMURFIT) ──────────────────────
 //
@@ -567,11 +567,21 @@ export function PreFacturaView() {
         lineas.push({
           fecha: fFechaFact,
           c1: ref,
-          c2: `Entradas: ${g.nEntradas} (${costeEntradas.toFixed(2)}€) · Salidas: ${g.nSalidas} (${costeSalidas.toFixed(2)}€) · Almac: ${g.diasAlmacenaje}d (${totalCostes.toFixed(2)}€) · Porte: ${transporte.toFixed(2)}€ · TOTAL: ${costeTotal.toFixed(2)}€`,
+          c2: '',
           cant: 1,
           clienteId: targetCliId,
-          obs: `Nº Entradas: ${g.nEntradas} · Coste Entradas: ${costeEntradas.toFixed(2)}€ · Nº Salidas: ${g.nSalidas} · Coste Salidas: ${costeSalidas.toFixed(2)}€ · Total Costes: ${totalCostes.toFixed(2)}€ · Transporte: ${transporte.toFixed(2)}€`,
+          obs: '',
           precioUnitario: costeTotal,
+          smurfit: {
+            descripcion: ref,
+            nEntradas: g.nEntradas,
+            costeEntradas,
+            nSalidas: g.nSalidas,
+            costeSalidas,
+            totalCostes,
+            transporte,
+            costeTotal,
+          },
         })
       }
       // Añadir líneas no-palet (PORTE, COSTE DIARIO, etc.) como líneas normales
@@ -1103,6 +1113,10 @@ function InvoicePreview({ data, catalogo, config }: {
     return it ? Number(it.final) || 0 : 0
   }
 
+  // V29.62: detectar si es modelo SMURFIT (líneas con campo smurfit)
+  const esModeloSmurfit = lineas.some(l => l.smurfit)
+  const mesFactura = fMes || (fechaFact ? fechaFact.slice(0, 7) : '')
+
   return (
     <div className="font-[family-name:var(--font-geist-sans)] text-black text-[11pt] leading-[1.35]">
       <div className="flex justify-between items-start gap-4 mb-4">
@@ -1119,9 +1133,17 @@ function InvoicePreview({ data, catalogo, config }: {
             {pedido && <><b>Nº Pedido:</b> {pedido}<br /></>}
           </div>
         </div>
-        {config?.logo ? (
-          <img src={config.logo.startsWith('data:') ? config.logo : `data:image/png;base64,${config.logo}`} alt="Logo" style={{ maxWidth: '230px', height: 'auto', objectFit: 'contain' }} />
-        ) : null}
+        <div className="flex flex-col items-end gap-2">
+          {config?.logo ? (
+            <img src={config.logo.startsWith('data:') ? config.logo : `data:image/png;base64,${config.logo}`} alt="Logo" style={{ maxWidth: '230px', height: 'auto', objectFit: 'contain' }} />
+          ) : null}
+          {/* V29.62: MES fuera de la tabla, en la cabecera */}
+          {esModeloSmurfit && mesFactura && (
+            <div className="border border-black p-2 text-[10.5pt] text-right">
+              <b>MES:</b> {fmtMonth(mesFactura + '-01')}
+            </div>
+          )}
+        </div>
       </div>
       <div className="border border-black p-3 mb-4 text-[11pt] bg-gray-50">
         <b>{L.cliente}:</b> {cli.nombre}<br />
@@ -1129,31 +1151,68 @@ function InvoicePreview({ data, catalogo, config }: {
         {cli.dir}{cli.dir && <br />}
         {cli.cp} {cli.ciudad} {cli.prov}
       </div>
-      <table className="w-full border-collapse text-[10.5pt] mb-3">
-        <thead>
-          <tr>
-            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[90px]">{L.fecha}</th>
-            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt]">{L.concepto}</th>
-            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[60px]">{L.cantidad}</th>
-            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[110px]">{L.precioUnitario}</th>
-            <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[110px]">{L.importe}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lineas.map((r, i) => {
-            const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
-            return (
-              <tr key={i}>
-                <td className="p-2 border border-gray-400">{fechaLbl(r.fecha)}</td>
-                <td className="p-2 border border-gray-400">{r.c1}{r.c2 ? ' - ' + r.c2 : ''}{r.obs ? ` (${r.obs})` : ''}</td>
-                <td className="p-2 border border-gray-400 text-right">{r.cant}</td>
-                <td className="p-2 border border-gray-400 text-right">{pu.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-                <td className="p-2 border border-gray-400 text-right">{(pu * r.cant).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+
+      {esModeloSmurfit ? (
+        /* V29.62: Tabla SMURFIT — columnas exactas del modelo oficial */
+        <table className="w-full border-collapse text-[10.5pt] mb-3">
+          <thead>
+            <tr>
+              <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[9pt]">Descripción Producto</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-center border border-black text-[9pt] w-[70px]">Nº ENTRADAS</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-right border border-black text-[9pt] w-[90px]">Coste ENTRADAS</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-center border border-black text-[9pt] w-[70px]">Nº SALIDAS</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-right border border-black text-[9pt] w-[90px]">Coste SALIDAS</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-right border border-black text-[9pt] w-[90px]">TOTAL COSTES</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-right border border-black text-[9pt] w-[90px]">Coste Transporte</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-right border border-black text-[9pt] w-[90px]">Coste Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lineas.filter(l => l.smurfit).map((r, i) => {
+              const s = r.smurfit!
+              return (
+                <tr key={i}>
+                  <td className="p-2 border border-gray-400">{s.descripcion}</td>
+                  <td className="p-2 border border-gray-400 text-center">{s.nEntradas}</td>
+                  <td className="p-2 border border-gray-400 text-right">{s.costeEntradas.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+                  <td className="p-2 border border-gray-400 text-center">{s.nSalidas}</td>
+                  <td className="p-2 border border-gray-400 text-right">{s.costeSalidas.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+                  <td className="p-2 border border-gray-400 text-right">{s.totalCostes.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+                  <td className="p-2 border border-gray-400 text-right">{s.transporte.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+                  <td className="p-2 border border-gray-400 text-right font-bold">{s.costeTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      ) : (
+        /* Tabla normal (FLORETTE/VEGAMAYOR) */
+        <table className="w-full border-collapse text-[10.5pt] mb-3">
+          <thead>
+            <tr>
+              <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[90px]">{L.fecha}</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt]">{L.concepto}</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[60px]">{L.cantidad}</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[110px]">{L.precioUnitario}</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[10pt] w-[110px]">{L.importe}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lineas.map((r, i) => {
+              const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+              return (
+                <tr key={i}>
+                  <td className="p-2 border border-gray-400">{fechaLbl(r.fecha)}</td>
+                  <td className="p-2 border border-gray-400">{r.c1}{r.c2 ? ' - ' + r.c2 : ''}{r.obs ? ` (${r.obs})` : ''}</td>
+                  <td className="p-2 border border-gray-400 text-right">{r.cant}</td>
+                  <td className="p-2 border border-gray-400 text-right">{pu.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+                  <td className="p-2 border border-gray-400 text-right">{(pu * r.cant).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
       <table className="ml-auto border-collapse text-[11pt]">
         <tbody>
           <tr>
