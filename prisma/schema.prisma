@@ -139,6 +139,7 @@ model Factura {
   registroIds   String   @default("[]")   // JSON: Registro[] ids linked
   impresa       Boolean  @default(false)  // true when invoice has been printed
   createdBy     String   @default("")
+  pedido        String   @default("")     // V29.59: Nº de pedido del cliente (anual para SMURFIT)
   deletedAt     DateTime?                // V29.52: soft delete — null = activo
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

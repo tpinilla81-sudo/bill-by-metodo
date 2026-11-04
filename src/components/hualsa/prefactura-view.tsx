@@ -236,7 +236,7 @@ function procesarAlmacenajePalets(
 }
 interface InvoiceData {
   cli: Cliente; lineas: LineaFactura[]
-  iva: number; numero: string; fechaFact: string; modo: string; base: number; ivaImp: number; total: number
+  iva: number; numero: string; fechaFact: string; modo: string; base: number; ivaImp: number; total: number; pedido: string
   registroIds: string[]
 }
 
@@ -262,6 +262,7 @@ export function PreFacturaView() {
   // El número de factura se asigna después, en la pestaña FACTURAS
   // Aquí en PRE-FACTURA se genera siempre SIN número (en blanco)
   const [fFechaFact, setFFechaFact] = useState(todayISO())
+  const [fPedido, setFPedido] = useState('')  // V29.59: Nº de pedido del cliente (anual para SMURFIT)
   const [fIva, setFIva] = useState('')
   const [fModo, setFModo] = useState<'dia' | 'mes'>('dia')
 
@@ -527,7 +528,7 @@ export function PreFacturaView() {
     // excluidas quedan libres para facturarse en su propio mes.
     const registroIds = [...selFacturable.map(r => r.id)]
 
-    setInvoiceData({ cli, lineas, iva, numero: '', fechaFact: fFechaFact, modo: fModo, base, ivaImp, total, registroIds })
+    setInvoiceData({ cli, lineas, iva, numero: '', fechaFact: fFechaFact, modo: fModo, base, ivaImp, total, pedido: fPedido, registroIds })
     setModalOpen(true)
   }
 
@@ -550,6 +551,7 @@ export function PreFacturaView() {
           ivaImp: invoiceData.ivaImp,
           total: invoiceData.total,
           modo: invoiceData.modo,
+          pedido: invoiceData.pedido,
           registroIds: invoiceData.registroIds,
         })
       })
@@ -867,7 +869,7 @@ export function PreFacturaView() {
 
         <Card>
           <CardContent className="p-4">
-            <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_auto_auto_auto] gap-3 items-end">
+            <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto_auto_auto] gap-3 items-end">
               <div>
                 <Label className="text-xs uppercase font-bold text-slate-500">Fecha factura</Label>
                 <Input type="date" value={fFechaFact} onChange={e => setFFechaFact(e.target.value)} />
@@ -885,6 +887,11 @@ export function PreFacturaView() {
                     <SelectItem value="mes">Mes</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              {/* V29.59: Nº de pedido del cliente */}
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Nº Pedido</Label>
+                <Input type="text" value={fPedido} onChange={e => setFPedido(e.target.value)} placeholder="Pedido cliente..." />
               </div>
               <Button variant="outline" onClick={handleAlternos} title="Desmarca días alternos">
                 <ArrowLeftRight className="h-4 w-4 mr-1" /> Alternos

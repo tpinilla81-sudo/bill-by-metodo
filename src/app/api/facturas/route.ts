@@ -62,6 +62,7 @@ export async function POST(req: Request) {
       ivaImp = 0,
       total = 0,
       modo = 'dia',
+      pedido = '',
       registroIds = [],
     } = body
 
@@ -85,6 +86,7 @@ export async function POST(req: Request) {
           ivaImp: Number(ivaImp) || 0,
           total: Number(total) || 0,
           modo: String(modo || 'dia'),
+          pedido: String(pedido || ''),
           registroIds: JSON.stringify(registroIds || []),
           createdBy: session?.id || '',
         },

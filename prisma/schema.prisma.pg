@@ -143,6 +143,7 @@ model Factura {
   registroIds   String   @default("[]")
   impresa       Boolean  @default(false)
   createdBy     String   @default("")
+  pedido        String   @default("")     // V29.59: Nº de pedido del cliente
   deletedAt     DateTime?                // V29.52: soft delete
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
