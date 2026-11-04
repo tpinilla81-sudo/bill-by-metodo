@@ -527,11 +527,17 @@ export function PreFacturaView() {
         return it ? Number(it.final) || 0 : 5
       })()
 
-      // V29.63: buscar la DESCRIPCIÓN del producto en el catálogo para cada referencia
+      // V29.68: buscar la DESCRIPCIÓN del producto en el catálogo.
+      // El c1 del registro puede ser "SMURFIT ENTRADA PALET" o "SMURFIT SALIDA PALET"
+      // pero el catálogo solo tiene un item por producto (c1="SMURFIT ENTRADA PALET").
+      // Por eso buscamos solo por c2 (código de producto) si no encuentra por c1+c2.
       function descripcionDeCatalogo(c1Val: string, c2Val: string, cliId: string): string {
-        const it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
-          || catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && !x.clienteId)
-          || catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val)
+        // 1) Match exacto c1+c2+cliente
+        let it = catalogo.find(x => x.c2 === c2Val && x.clienteId === cliId)
+        // 2) Match por c2 sin cliente
+        if (!it) it = catalogo.find(x => x.c2 === c2Val && !x.clienteId)
+        // 3) Match por c2 cualquiera
+        if (!it) it = catalogo.find(x => x.c2 === c2Val)
         if (it) {
           // Buscar "descripcion" en el customData del item del catálogo
           try {
@@ -543,7 +549,7 @@ export function PreFacturaView() {
           // Si no hay customData con descripcion, usar c2 como fallback
           return it.c2 || c2Val
         }
-        return `${c1Val} ${c2Val}`.trim()
+        return c2Val || c1Val
       }
 
       // Agrupar por referencia (c1+c2) — solo palets, no otros conceptos
