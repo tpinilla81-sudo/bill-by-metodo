@@ -533,10 +533,14 @@ export function PreFacturaView() {
       // Por eso buscamos solo por c2 (código de producto) si no encuentra por c1+c2.
       function descripcionDeCatalogo(c1Val: string, c2Val: string, cliId: string): string {
         // 1) Match exacto c1+c2+cliente
-        let it = catalogo.find(x => x.c2 === c2Val && x.clienteId === cliId)
-        // 2) Match por c2 sin cliente
-        if (!it) it = catalogo.find(x => x.c2 === c2Val && !x.clienteId)
-        // 3) Match por c2 cualquiera
+        let it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && x.clienteId === cliId)
+        // 2) Match por c1+c2 sin cliente
+        if (!it) it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val && !x.clienteId)
+        // 3) Match por c1+c2 cualquiera
+        if (!it) it = catalogo.find(x => x.c1 === c1Val && x.c2 === c2Val)
+        // 4) Match solo por c2+cliente
+        if (!it) it = catalogo.find(x => x.c2 === c2Val && x.clienteId === cliId)
+        // 5) Match solo por c2
         if (!it) it = catalogo.find(x => x.c2 === c2Val)
         if (it) {
           // Buscar "descripcion" en el customData del item del catálogo
