@@ -43,6 +43,7 @@ interface InvoiceData {
   base: number
   ivaImp: number
   total: number
+  pedido: string
 }
 
 export function FacturasView() {
@@ -136,6 +137,7 @@ export function FacturasView() {
       base: f.base,
       ivaImp: f.ivaImp,
       total: f.total,
+      pedido: f.pedido || '',
     })
   }
 
@@ -388,7 +390,7 @@ export function FacturasView() {
       }
     }
     const LL = cfg?.labelsFacturas || DEFAULT_LABELS_FACTURAS
-    const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total } = inv
+    const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total, pedido } = inv
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
     function pu(c1Val: string, c2Val: string, cliId: string): number {
@@ -491,7 +493,7 @@ export function FacturasView() {
       </div>
       <div class="factura-badge">
         <b>${LL.numero}:</b> ${numero || '(en blanco)'}<br>
-        <b>${LL.fecha}:</b> ${fmtDate(fechaFact)}
+        <b>${LL.fecha}:</b> ${fmtDate(fechaFact)}${pedido ? '<br><b>Nº Pedido:</b> ' + pedido : ''}
       </div>
     </div>
     ${logoSrc ? '<div class="logo-area"><img src="' + logoSrc + '" alt="Logo"></div>' : ''}
@@ -542,7 +544,7 @@ export function FacturasView() {
 
   function handleExportExcel(inv: InvoiceData, cat: CatalogoItem[], cfg: ResolvedConfig | null) {
     const LL = cfg?.labelsFacturas || DEFAULT_LABELS_FACTURAS
-    const { cli, lineas, iva, numero, fechaFact, base, ivaImp, total, modo } = inv
+    const { cli, lineas, iva, numero, fechaFact, base, ivaImp, total, modo, pedido } = inv
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
     function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
@@ -565,6 +567,7 @@ export function FacturasView() {
     wsData.push([])
     wsData.push([LL.numero + ':', numero || '(en blanco)'])
     wsData.push([LL.fecha + ':', fmtDate(fechaFact)])
+    if (pedido) wsData.push(['Nº Pedido:', pedido])
     wsData.push([])
     wsData.push([LL.cliente + ':', cli.nombre])
     wsData.push(['CIF:', cli.cif])
@@ -840,7 +843,7 @@ function InvoicePreview({ data, catalogo, config }: {
   config: ResolvedConfig | null
 }) {
   const L = config?.labelsFacturas || DEFAULT_LABELS_FACTURAS
-  const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total } = data
+  const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total, pedido } = data
   const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
   function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
@@ -877,7 +880,8 @@ function InvoicePreview({ data, catalogo, config }: {
           {config?.companyCif && <><b>CIF:</b> {config.companyCif}<br /></>}
           <div className="mt-2 border border-black p-2 text-[10.5pt] w-fit">
             <b>{L.numero}:</b> {numero || '(en blanco)'}<br />
-            <b>{L.fecha}:</b> {fmtDate(fechaFact)}
+            <b>{L.fecha}:</b> {fmtDate(fechaFact)}<br />
+            {pedido && <><b>Nº Pedido:</b> {pedido}<br /></>}
           </div>
         </div>
         {config?.logo ? (

@@ -580,7 +580,7 @@ export function PreFacturaView() {
 
   function handlePrintInvoice(inv: InvoiceData, cat: CatalogoItem[], cfg: ResolvedConfig | null) {
     const LL = cfg?.labelsFacturas || DEFAULT_LABELS_FACTURAS
-    const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total } = inv
+    const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total, pedido } = inv
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
     function pu(c1Val: string, c2Val: string, cliId: string): number {
@@ -655,7 +655,7 @@ export function PreFacturaView() {
       </div>
       <div class="factura-badge">
         <b>${LL.numero}:</b> ${numero}<br>
-        <b>${LL.fecha}:</b> ${fmtDate(fechaFact)}
+        <b>${LL.fecha}:</b> ${fmtDate(fechaFact)}${pedido ? '<br><b>Nº Pedido:</b> ' + pedido : ''}
       </div>
     </div>
     ${logoSrc ? '<div class="logo-area"><img src="' + logoSrc + '" alt="Logo"></div>' : ''}
@@ -1016,7 +1016,7 @@ function InvoicePreview({ data, catalogo, config }: {
   config: import('@/lib/config').ResolvedConfig | null
 }) {
   const L = config?.labelsFacturas || DEFAULT_LABELS_FACTURAS
-  const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total } = data
+  const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total, pedido } = data
   const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
 
   function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
@@ -1041,7 +1041,8 @@ function InvoicePreview({ data, catalogo, config }: {
           {config?.companyCif && <><b>CIF:</b> {config.companyCif}<br /></>}
           <div className="mt-2 border border-black p-2 text-[10.5pt] w-fit">
             <b>{L.numero}:</b> {numero}<br />
-            <b>{L.fecha}:</b> {fmtDate(fechaFact)}
+            <b>{L.fecha}:</b> {fmtDate(fechaFact)}<br />
+            {pedido && <><b>Nº Pedido:</b> {pedido}<br /></>}
           </div>
         </div>
         {config?.logo ? (
