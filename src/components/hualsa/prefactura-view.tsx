@@ -579,12 +579,40 @@ export function PreFacturaView() {
           g.transporte += precioPorte
         }
       }
-      // Calcular días de almacenaje para cada referencia (de alm.entradasUsadas)
+      // V29.73: calcular días de almacenaje DIRECTAMENTE — emparejar cada
+      // ENTRADA con su SALIDA por nº de palet (mismo criterio que
+      // procesarAlmacenajePalets) y sumar los días por c2.
+      const todasEntradas = registros
+        .filter(r => isEntradaPalet(r) && r.clienteId === targetCliId)
+        .sort((a, b) => a.fecha.localeCompare(b.fecha))
+      const salidasRef = selFacturable.filter(r => isSalidaPalet(r))
+      const usadosLocal = new Set<string>()
       for (const [ref, g] of porRef) {
-        // Sumar días de todas las entradas emparejadas con salidas de esa referencia
-        for (const al of alm.lineas) {
-          if (al.c2 && al.c2.includes(ref.slice(-20))) {
-            g.diasAlmacenaje += al.cant
+        g.diasAlmacenaje = 0
+      }
+      for (const s of salidasRef) {
+        const siS = extractIdents(s.customData as string || '{}')
+        const salPaletVals = Object.entries(siS.strong)
+          .filter(([k]) => /palet/.test(normAlm(k)) && !/lote/.test(normAlm(k)))
+          .map(([, v]) => normAlm(v))
+        let c2Sal = s.c2 || ''
+        let cdS: any = {}; try { cdS = JSON.parse(s.customData as string || '{}') } catch {}
+        if (cdS.custom_lote) c2Sal = cdS.custom_lote
+        // Buscar la ENTRADA emparejada con esta SALIDA (mismo nº palet)
+        const ent = todasEntradas.find(e => {
+          if (usadosLocal.has(e.id)) return false
+          const siE = extractIdents(e.customData as string || '{}')
+          const entPaletVals = Object.entries(siE.strong)
+            .filter(([k]) => /palet/.test(normAlm(k)) && !/lote/.test(normAlm(k)))
+            .map(([, v]) => normAlm(v))
+          return salPaletVals.length > 0 && entPaletVals.some(p => salPaletVals.includes(p))
+        })
+        if (ent) {
+          usadosLocal.add(ent.id)
+          const dias = diasAlmacenaje(ent.fecha, s.fecha)
+          // Sumar los días a la referencia del c2 de la SALIDA
+          if (porRef.has(c2Sal)) {
+            porRef.get(c2Sal)!.diasAlmacenaje += dias
           }
         }
       }
