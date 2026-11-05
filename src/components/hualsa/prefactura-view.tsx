@@ -21,7 +21,7 @@ interface FacturasData {
   seq: number
 }
 
-type LineaFactura = { fecha: string; c1: string; c2: string; cant: number; clienteId: string; obs: string; precioUnitario: number; smurfit?: { descripcion: string; nEntradas: number; costeEntradas: number; nSalidas: number; costeSalidas: number; totalCostes: number; transporte: number; costeTotal: number } }
+type LineaFactura = { fecha: string; c1: string; c2: string; cant: number; clienteId: string; obs: string; precioUnitario: number; smurfit?: { mes: string; descripcion: string; nEntradas: number; costeEntradas: number; nSalidas: number; costeSalidas: number; totalCostes: number; transporte: number; costeTotal: number } }
 
 // ─── Almacenaje de palets (p.ej. cliente SMURFIT) ──────────────────────
 //
@@ -561,7 +561,9 @@ export function PreFacturaView() {
 
       // V29.72: Agrupar SOLO por c2 (código de producto) — no por c1+c2.
       // Porque ENTRADA PALET y SALIDA PALET tienen distinto c1 pero mismo c2.
-      const porRef = new Map<string, { descripcion: string; nEntradas: number; nSalidas: number; diasAlmacenaje: number; transporte: number }>()
+      // V29.74: cada grupo también acumula los MESES de sus registros (YYYY-MM)
+      // para mostrarlos en la nueva columna MES de la tabla de liquidación.
+      const porRef = new Map<string, { descripcion: string; nEntradas: number; nSalidas: number; diasAlmacenaje: number; transporte: number; meses: string[] }>()
       for (const r of selFacturable) {
         const esEnt = isEntradaPalet(r)
         const esSal = isSalidaPalet(r)
@@ -570,49 +572,46 @@ export function PreFacturaView() {
         const ref = r.c2
         if (!porRef.has(ref)) {
           const desc = descripcionDeCatalogo(r.c1, r.c2, targetCliId)
-          porRef.set(ref, { descripcion: `${desc} ${r.c2}`.trim(), nEntradas: 0, nSalidas: 0, diasAlmacenaje: 0, transporte: 0 })
+          porRef.set(ref, { descripcion: `${desc} ${r.c2}`.trim(), nEntradas: 0, nSalidas: 0, diasAlmacenaje: 0, transporte: 0, meses: [] })
         }
         const g = porRef.get(ref)!
+        const mesReg = (r.fecha || '').slice(0, 7)
+        if (mesReg && !g.meses.includes(mesReg)) g.meses.push(mesReg)
         if (esEnt) g.nEntradas += Number(r.cant) || 1
         if (esSal) {
           g.nSalidas += Number(r.cant) || 1
           g.transporte += precioPorte
         }
       }
-      // V29.73: calcular días de almacenaje DIRECTAMENTE — emparejar cada
-      // ENTRADA con su SALIDA por nº de palet (mismo criterio que
-      // procesarAlmacenajePalets) y sumar los días por c2.
+      // V29.74: calcular días de almacenaje DIRECTAMENTE — emparejar cada
+      // SALIDA con su ENTRADA (mismos extractIdents + matchIdents que usa
+      // procesarAlmacenajePalets, fallback 1:1 incluido) y sumar los días
+      // por c2 del producto de la SALIDA. FIX: antes se llamaba
+      // extractIdents(s.customData) — pasando el STRING customData en vez
+      // del Registro — y los días siempre salían 0.
       const todasEntradas = registros
         .filter(r => isEntradaPalet(r) && r.clienteId === targetCliId)
         .sort((a, b) => a.fecha.localeCompare(b.fecha))
       const salidasRef = selFacturable.filter(r => isSalidaPalet(r))
       const usadosLocal = new Set<string>()
-      for (const [ref, g] of porRef) {
-        g.diasAlmacenaje = 0
-      }
-      for (const s of salidasRef) {
-        const siS = extractIdents(s.customData as string || '{}')
-        const salPaletVals = Object.entries(siS.strong)
-          .filter(([k]) => /palet/.test(normAlm(k)) && !/lote/.test(normAlm(k)))
-          .map(([, v]) => normAlm(v))
-        let c2Sal = s.c2 || ''
-        let cdS: any = {}; try { cdS = JSON.parse(s.customData as string || '{}') } catch {}
-        if (cdS.custom_lote) c2Sal = cdS.custom_lote
-        // Buscar la ENTRADA emparejada con esta SALIDA (mismo nº palet)
-        const ent = todasEntradas.find(e => {
-          if (usadosLocal.has(e.id)) return false
-          const siE = extractIdents(e.customData as string || '{}')
-          const entPaletVals = Object.entries(siE.strong)
-            .filter(([k]) => /palet/.test(normAlm(k)) && !/lote/.test(normAlm(k)))
-            .map(([, v]) => normAlm(v))
-          return salPaletVals.length > 0 && entPaletVals.some(p => salPaletVals.includes(p))
-        })
+      for (const [, g] of porRef) g.diasAlmacenaje = 0
+      for (const s of [...salidasRef].sort((a, b) => a.fecha.localeCompare(b.fecha))) {
+        const siS = extractIdents(s)
+        // Buscar la ENTRADA emparejada con esta SALIDA (lote/nº palet/ubicación,
+        // misma prioridad que buildStock). Fallback 1:1 como en el modelo normal.
+        let ent = todasEntradas.find(e => !usadosLocal.has(e.id) && matchIdents(extractIdents(e), siS))
+        if (!ent) {
+          const restantes = todasEntradas.filter(e => !usadosLocal.has(e.id))
+          if (restantes.length === 1) ent = restantes[0]
+        }
         if (ent) {
           usadosLocal.add(ent.id)
           const dias = diasAlmacenaje(ent.fecha, s.fecha)
-          // Sumar los días a la referencia del c2 de la SALIDA
-          if (porRef.has(c2Sal)) {
-            porRef.get(c2Sal)!.diasAlmacenaje += dias
+          // Sumar los días a la referencia (c2) del producto de la SALIDA —
+          // la clave del grupo ES el c2 del registro (V29.72).
+          const refSal = s.c2 || ''
+          if (porRef.has(refSal)) {
+            porRef.get(refSal)!.diasAlmacenaje += dias
           }
         }
       }
@@ -625,6 +624,14 @@ export function PreFacturaView() {
         const totalCostes = g.diasAlmacenaje * costeDiario
         const transporte = g.transporte
         const costeTotal = costeEntradas + costeSalidas + totalCostes + transporte
+        // V29.74: MES de la línea — meses de los registros del grupo
+        // ("octubre 2026"); si el periodo abarca varios, se unen con " / ".
+        const mesStr = (() => {
+          const ms = [...g.meses].sort()
+          if (ms.length > 0) return ms.map(m => fmtMonth(m + '-01')).join(' / ')
+          if (fMes && /^\d{4}-\d{2}$/.test(fMes)) return fmtMonth(fMes + '-01')
+          return ''
+        })()
 
         lineas.push({
           fecha: fFechaFact,
@@ -635,6 +642,7 @@ export function PreFacturaView() {
           obs: '',
           precioUnitario: costeTotal,
           smurfit: {
+            mes: mesStr,
             descripcion: g.descripcion,
             nEntradas: g.nEntradas,
             costeEntradas,
@@ -737,8 +745,15 @@ export function PreFacturaView() {
 
   function handlePrintInvoice(inv: InvoiceData, cat: CatalogoItem[], cfg: ResolvedConfig | null) {
     const LL = cfg?.labelsFacturas || DEFAULT_LABELS_FACTURAS
-    const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total, pedido } = inv
+    const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total, pedido, mesFactura } = inv
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
+    // V29.74: MES de cada fila SMURFIT — el de la línea; si es una factura
+    // vieja guardada sin mes, fallback al mesFactura ("YYYY-MM").
+    const mesFila = (s: { mes: string }) => {
+      if (s.mes) return s.mes
+      const mf = mesFactura || ''
+      return /^\d{4}-\d{2}$/.test(mf) ? fmtMonth(mf + '-01') : ''
+    }
 
     function pu(c1Val: string, c2Val: string, cliId: string): number {
       const a = normStr(c1Val), b = normStr(c2Val)
@@ -759,6 +774,7 @@ export function PreFacturaView() {
       lineasHtml = lineas.filter(l => l.smurfit).map(r => {
         const s = r.smurfit!
         return `<tr>
+          <td style="padding:7px 10px;border:1px solid #bbb;text-align:center;">${mesFila(s)}</td>
           <td style="padding:7px 10px;border:1px solid #bbb;text-align:left;">${s.descripcion}</td>
           <td style="padding:7px 10px;border:1px solid #bbb;text-align:center;">${s.nEntradas}</td>
           <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;">${s.costeEntradas.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
@@ -774,7 +790,7 @@ export function PreFacturaView() {
       for (const r of noSmurfit) {
         const p = r.precioUnitario > 0 ? r.precioUnitario : pu(r.c1, r.c2, r.clienteId)
         lineasHtml += `<tr>
-          <td colspan="7" style="padding:7px 10px;border:1px solid #bbb;">${r.c1}${r.c2 ? ' - ' + r.c2 : ''}</td>
+          <td colspan="8" style="padding:7px 10px;border:1px solid #bbb;">${r.c1}${r.c2 ? ' - ' + r.c2 : ''}</td>
           <td style="padding:7px 10px;border:1px solid #bbb;text-align:right;font-weight:bold;">${(p * r.cant).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
         </tr>`
       }
@@ -856,6 +872,7 @@ export function PreFacturaView() {
     <thead>
       <tr>
         ${esModeloSmurfitPrint ? `
+        <th style="width:85px;">MES</th>
         <th>Descripción Producto</th>
         <th style="width:60px;">Nº ENTRADAS</th>
         <th style="width:80px;">Coste ENTRADAS</th>
@@ -892,8 +909,15 @@ export function PreFacturaView() {
 
   function handleExportExcel() {
     if (!invoiceData) return
-    const { cli, lineas, iva, numero, fechaFact, base, ivaImp, total, modo } = invoiceData
+    const { cli, lineas, iva, numero, fechaFact, base, ivaImp, total, modo, pedido, mesFactura } = invoiceData
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
+    // V29.74: MES de cada fila SMURFIT — el de la línea; si es vieja sin mes,
+    // fallback al mesFactura ("YYYY-MM").
+    const mesFila = (s: { mes: string }) => {
+      if (s.mes) return s.mes
+      const mf = mesFactura || ''
+      return /^\d{4}-\d{2}$/.test(mf) ? fmtMonth(mf + '-01') : ''
+    }
     const wb = XLSX.utils.book_new()
     const wsData: (string | number)[][] = []
     wsData.push([config?.companyFullName || 'EMPRESA'])
@@ -904,16 +928,32 @@ export function PreFacturaView() {
     wsData.push([])
     wsData.push([L.numero + ':', numero])
     wsData.push([L.fecha + ':', fmtDate(fechaFact)])
+    if (pedido) wsData.push(['Nº Pedido:', pedido])
     wsData.push([])
     wsData.push([L.cliente + ':', cli.nombre])
     wsData.push(['CIF:', cli.cif])
     wsData.push(['Dirección:', `${cli.dir} ${cli.cp} ${cli.ciudad} ${cli.prov}`])
     wsData.push([])
-    wsData.push([L.fecha, L.concepto, L.cantidad, L.precioUnitario, L.importe])
-    lineas.forEach(r => {
-      const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
-      wsData.push([fechaLbl(r.fecha), r.c1 + (r.c2 ? ' - ' + r.c2 : ''), r.cant, pu, pu * r.cant])
-    })
+    // V29.74: si es modelo SMURFIT, Excel con las 9 columnas del modelo
+    // (MES primero + las 8 de la tabla de liquidación).
+    const esSmurfitExcel = lineas.some(l => l.smurfit)
+    if (esSmurfitExcel) {
+      wsData.push(['MES', 'DESCRIPCIÓN PRODUCTO', 'Nº ENTRADAS', 'Coste ENTRADAS', 'Nº SALIDAS', 'Coste SALIDAS', 'TOTAL COSTES', 'Coste Transporte', 'Coste Total'])
+      lineas.filter(l => l.smurfit).forEach(r => {
+        const s = r.smurfit!
+        wsData.push([mesFila(s), s.descripcion, s.nEntradas, s.costeEntradas, s.nSalidas, s.costeSalidas, s.totalCostes, s.transporte, s.costeTotal])
+      })
+      lineas.filter(l => !l.smurfit).forEach(r => {
+        const p = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+        wsData.push([fechaLbl(r.fecha), r.c1 + (r.c2 ? ' - ' + r.c2 : ''), r.cant, p, p * r.cant])
+      })
+    } else {
+      wsData.push([L.fecha, L.concepto, L.cantidad, L.precioUnitario, L.importe])
+      lineas.forEach(r => {
+        const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+        wsData.push([fechaLbl(r.fecha), r.c1 + (r.c2 ? ' - ' + r.c2 : ''), r.cant, pu, pu * r.cant])
+      })
+    }
     wsData.push([])
     wsData.push(['', '', '', L.baseImponible, base])
     wsData.push(['', '', '', `IVA ${iva}%`, ivaImp])
@@ -922,9 +962,11 @@ export function PreFacturaView() {
     ws['!cols'] = [{ wch: 14 }, { wch: 40 }, { wch: 10 }, { wch: 16 }, { wch: 16 }]
     const companyCell = ws['A1']
     if (companyCell) { companyCell.s = { font: { bold: true, sz: 16 } } }
-    const headerRowIndex = wsData.findIndex(row => row[0] === L.fecha && row[1] === L.concepto)
+    // V29.74: la fila de cabecera puede ser la normal (FECHA...) o la SMURFIT (MES...)
+    const headerRowIndex = wsData.findIndex(row => (row[0] === L.fecha && row[1] === L.concepto) || row[0] === 'MES')
     if (headerRowIndex >= 0) {
-      for (let c = 0; c < 5; c++) {
+      const nCols = wsData[headerRowIndex].length
+      for (let c = 0; c < nCols; c++) {
         const cell = ws[XLSX.utils.encode_cell({ r: headerRowIndex, c })]
         if (cell) { cell.s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1A1A1A' } }, alignment: { horizontal: c >= 2 ? 'right' : 'left' } } }
       }
@@ -1230,6 +1272,12 @@ function InvoicePreview({ data, catalogo, config }: {
   // V29.62: detectar si es modelo SMURFIT (líneas con campo smurfit)
   const esModeloSmurfit = lineas.some(l => l.smurfit)
   const mesFactura = data.mesFactura || (fechaFact ? fechaFact.slice(0, 7) : '')
+  // V29.74: MES de cada fila SMURFIT — el de la línea (o fallback al mesFactura)
+  const mesFila = (s: { mes: string }) => {
+    if (s.mes) return s.mes
+    const mf = mesFactura || ''
+    return /^\d{4}-\d{2}$/.test(mf) ? fmtMonth(mf + '-01') : ''
+  }
 
   return (
     <div className="font-[family-name:var(--font-geist-sans)] text-black text-[11pt] leading-[1.35]">
@@ -1271,6 +1319,7 @@ function InvoicePreview({ data, catalogo, config }: {
         <table className="w-full border-collapse text-[10.5pt] mb-3">
           <thead>
             <tr>
+              <th className="bg-[#1a1a1a] text-white p-2 text-center border border-black text-[9pt] w-[105px]">MES</th>
               <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[9pt]">Descripción Producto</th>
               <th className="bg-[#1a1a1a] text-white p-2 text-center border border-black text-[9pt] w-[70px]">Nº ENTRADAS</th>
               <th className="bg-[#1a1a1a] text-white p-2 text-right border border-black text-[9pt] w-[90px]">Coste ENTRADAS</th>
@@ -1286,6 +1335,7 @@ function InvoicePreview({ data, catalogo, config }: {
               const s = r.smurfit!
               return (
                 <tr key={i}>
+                  <td className="p-2 border border-gray-400 text-center">{mesFila(s)}</td>
                   <td className="p-2 border border-gray-400">{s.descripcion}</td>
                   <td className="p-2 border border-gray-400 text-center">{s.nEntradas}</td>
                   <td className="p-2 border border-gray-400 text-right">{s.costeEntradas.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>

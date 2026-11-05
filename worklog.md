@@ -2098,3 +2098,123 @@ Stage Summary:
 - Las columnas custom DUPLICADAS (CÓDIGO ARTÍCULO, FECHA DE FABRICACIÓN, Nº PALET ×2) ya NO aparecen duplicadas. El sistema agrupa por LABEL normalizado y lee el valor de cualquiera de las claves equivalentes.
 - En ÚLTIMOS MOVIMIENTOS, las SALIDAS ya NO muestran icono en ¿EN DIBUJO? (no aplica — el palet ya está fuera).
 - Script unify-customdata.ts: limpia los customData históricos renombrando las claves viejas a las canónicas, para que TODOS los registros usen el MISMO set de claves. Dry-run por defecto + --apply + backup previo.
+
+---
+Task ID: V29.59
+Agent: Main Agent
+Task: Nº Pedido en pre-factura y factura (SMURFIT pedido anual)
+
+Work Log:
+- prefactura-view.tsx: input "Nº Pedido" bajo la fecha de factura; se guarda en InvoiceData.pedido y se envía al POST /api/facturas.
+- src/app/api/facturas/route.ts: POST acepta `pedido` y lo persiste.
+- facturas-view.tsx: InvoiceData.pedido + badge Nº Pedido en la cabecera del preview.
+- prisma/schema.prisma: campo `pedido String @default("")` en Factura.
+
+Stage Summary:
+- El Nº Pedido (anual para SMURFIT) se introduce en la pre-factura, se guarda en la factura y aparece en pre-factura, factura y Excel.
+
+---
+Task ID: V29.62
+Agent: Main Agent
+Task: Modelo SMURFIT en pre-factura — tabla de liquidación por producto (8 columnas)
+
+Work Log:
+- prefactura-view.tsx: si /SMURFIT/i.test(cli.nombre), se agrupa por producto y se genera LineaFactura.smurfit {descripcion, nEntradas, costeEntradas, nSalidas, costeSalidas, totalCostes, transporte, costeTotal}.
+- Columnas: Descripción Producto | Nº ENTRADAS | Coste ENTRADAS | Nº SALIDAS | Coste SALIDAS | TOTAL COSTES | Coste Transporte | Coste Total.
+- MES fuera de la tabla (badge en cabecera) según modelo adjuntado por el usuario.
+- PDF (window.print) con la misma tabla de liquidación.
+
+Stage Summary:
+- SMURFIT pre-factura y factura imprimen el modelo oficial de liquidación con las 8 columnas exactas.
+
+---
+Task ID: V29.66
+Agent: Main Agent
+Task: DESCRIPCION en registros + autorelleno por concepto 2
+
+Work Log:
+- registros-view: columna DESCRIPCION tras Cliente, leída del customData (custom_descripci_n / custom_descripcion).
+- ENTRADA PALET: default descrKey='custom_descripcion' para que siempre se rellene (V29.66.1).
+- API /api/registros/autofill-descripcion (V29.65) + botón en registros (retirado a petición del usuario en V29.67).
+
+Stage Summary:
+- La descripción del producto se captura en ENTRADA y se ve en registros; botón de autorelleno retirado tras completar los datos.
+
+---
+Task ID: V29.69
+Agent: Main Agent
+Task: Filtros Año/Mes de pre-factura se borraban mutuamente
+
+Work Log:
+- Los selects de Año y Mes sobrescribían fMes del otro: guardan por separado "2026-" y "-10".
+- El filtro de registros solo aplica si fMes cumple /^\d{4}-\d{2}$/ — las mitades no filtran.
+
+Stage Summary:
+- Se puede elegir año, mes o ambos sin que se borren; el filtro solo aplica con mes completo.
+
+---
+Task ID: V29.70
+Agent: Main Agent
+Task: Unificar líneas por producto en pre-factura y factura (FLORETTE/VEGAMAYOR)
+
+Work Log:
+- Agrupación SIEMPRE por c1+c2+precio (no solo en modo mes): una línea por producto en el periodo con cantidades e importes sumados.
+
+Stage Summary:
+- La pre-factura y la factura del periodo salen con una línea por producto en vez de una por movimiento.
+
+---
+Task ID: V29.71
+Agent: Main Agent
+Task: Pre-Factura y Factura enteras sin scroll
+
+Work Log:
+- Quitado min-h-0/overflow-auto del contenedor de tabla y sticky del thead en ambos modales; el modal mantiene overflow-y-auto.
+- Commit vacío adicional para forzar redeploy (usuario sin acceso a Vercel por 2FA perdida).
+
+Stage Summary:
+- La pre-factura y la factura se ven completas sin scroll vertical interno.
+
+---
+Task ID: V29.72
+Agent: Main Agent
+Task: SMURFIT agrupa SOLO por c2 (producto)
+
+Work Log:
+- ENTRADA y SALIDA PALET tienen distinto c1 pero mismo c2: agrupar por c1+c2 partía cada producto en 2 filas.
+- Ahora la clave del grupo es r.c2 → una fila por producto con entradas+salidas juntas.
+
+Stage Summary:
+- La tabla SMURFIT muestra UNA fila por código de producto (p.ej. 10F640) con todas sus entradas y salidas.
+
+---
+Task ID: V29.73
+Agent: Main Agent
+Task: TOTAL COSTES (días × 0,18€) salía a 0 en pre-factura SMURFIT
+
+Work Log:
+- Nuevo cálculo directo: para cada SALIDA se busca su ENTRADA emparejada y se suma diasAlmacenaje(ent.fecha, s.fecha) al grupo del c2 de la salida.
+- (Corregido definitivamente en V29.74: esta versión llamaba extractIdents(s.customData) pasando un string en vez del Registro y además sobrescribía el c2 con custom_lote — dos bugs que dejaban los días a 0).
+
+Stage Summary:
+- Planteamiento del emparejado ENTRADA↔SALIDA por palet para días de almacenaje; los bugs de llamadas se arreglan en V29.74.
+
+---
+Task ID: V29.74
+Agent: Main Agent
+Task: Columna MES antes de DESCRIPCIÓN en pre-factura y factura SMURFIT + fix definitivo de TOTAL COSTES
+
+Work Log:
+- prefactura-view.tsx (bloque SMURFIT): cada grupo por c2 acumula los meses (YYYY-MM) de sus registros; la línea lleva smurfit.mes ("octubre 2026"; varios meses se unen con " / ").
+- FIX TOTAL COSTES: el bloque V29.73 llamaba extractIdents(s.customData) — pasaba el STRING customData a una función que espera Registro — por lo que los idents salían vacíos y los días siempre 0; además c2Sal se sobrescribía con custom_lote (clave inexistente en porRef). Ahora: extractIdents(s) + matchIdents(extractIdents(e), siS) + fallback 1:1 (idéntico a procesarAlmacenajePalets) y los días se suman a porRef[s.c2].
+- Tabla SMURFIT (pantalla + PDF) con 9 columnas: MES | Descripción Producto | Nº ENTRADAS | Coste ENTRADAS | Nº SALIDAS | Coste SALIDAS | TOTAL COSTES | Coste Transporte | Coste Total (colspan no-SMURFIT 7→8).
+- facturas-view.tsx: LineaFactura.smurfit tipado; InvoicePreview ahora renderiza la tabla SMURFIT con MES + badge MES en cabecera; PDF de factura con la misma tabla; Excel con las 9 columnas y cabecera en negrita. Facturas viejas sin smurfit.men: fallback al mesFactura (YYYY-MM).
+- Excel de pre-factura: rama SMURFIT con 9 columnas + línea Nº Pedido (faltaba).
+- FacturaRow.pedido añadido (error TS preexistente) y prop editing fantasma quitada de InvoicePreview.
+- scripts/simulate-smurfit-v2974.ts: simulación con estructura real (lote 605430 compartido, palets 504/527/529/553, claves custom con acentos quitados) → palets 529 (18 días) y 553 (26 días) suman 44 días × 0,18€ = 7,92€ en 10F640; fallback 1:1 para salida sin nº palet → 16 días × 0,18€ = 2,88€ en 10F1027; MES = "Octubre 2026" en todas las filas. TODO OK.
+- Sidebar build label → V29.74-COLUMNA-MES · 2026-11-05.
+
+Stage Summary:
+- La tabla SMURFIT de pre-factura y factura lleva la columna MES (antes de Descripción) con el mes de los registros de cada producto.
+- TOTAL COSTES ya NO sale a 0: días de almacenaje reales (entrada↔salida por nº palet/lote) × 0,18€/día, verificados por simulación con los datos reales de octubre.
+- La FACTURA guardada ahora también muestra el modelo SMURFIT completo (pantalla, PDF y Excel), que antes solo mostraba la tabla genérica.

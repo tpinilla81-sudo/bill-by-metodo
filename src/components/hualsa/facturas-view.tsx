@@ -13,7 +13,7 @@ import { useAuth } from '@/lib/auth-context'
 import { hasSubPermission } from '@/lib/permissions'
 import * as XLSX from 'xlsx'
 
-type LineaFactura = { fecha: string; c1: string; c2: string; cant: number; clienteId: string; obs: string; precioUnitario: number }
+type LineaFactura = { fecha: string; c1: string; c2: string; cant: number; clienteId: string; obs: string; precioUnitario: number; smurfit?: { mes: string; descripcion: string; nEntradas: number; costeEntradas: number; nSalidas: number; costeSalidas: number; totalCostes: number; transporte: number; costeTotal: number } }
 
 interface FacturaRow {
   id: string
@@ -31,6 +31,7 @@ interface FacturaRow {
   registroIds: string
   impresa: boolean
   createdAt: string
+  pedido: string
 }
 
 interface InvoiceData {
@@ -392,8 +393,15 @@ export function FacturasView() {
       }
     }
     const LL = cfg?.labelsFacturas || DEFAULT_LABELS_FACTURAS
-    const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total, pedido } = inv
+    const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total, pedido, mesFactura } = inv
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
+    // V29.74: MES de cada fila SMURFIT — el de la línea; si es una factura
+    // vieja guardada sin mes, fallback al mesFactura ("YYYY-MM").
+    const mesFila = (s: { mes: string }) => {
+      if (s.mes) return s.mes
+      const mf = mesFactura || ''
+      return /^\d{4}-\d{2}$/.test(mf) ? fmtMonth(mf + '-01') : ''
+    }
 
     function pu(c1Val: string, c2Val: string, cliId: string): number {
       // Normalizada: "Viaje Nave" en catálogo coincide con "viaje  nave" en el registro
@@ -409,7 +417,34 @@ export function FacturasView() {
       ? (cfg.logo.startsWith('data:') ? cfg.logo : `data:image/png;base64,${cfg.logo}`)
       : ''
 
-    const lineasHtml = lineas.map(r => {
+    // V29.74: si es modelo SMURFIT, PDF con la tabla de liquidación (MES + 8 columnas)
+    const esSmurfitPrint = lineas.some(l => l.smurfit)
+    let lineasHtml = ''
+    if (esSmurfitPrint) {
+      lineasHtml = lineas.filter(l => l.smurfit).map(r => {
+        const s = r.smurfit!
+        return `<tr>
+        <td style="padding:5px 6px;border:1px solid #bbb;text-align:center;">${mesFila(s)}</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;">${s.descripcion}</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;text-align:center;">${s.nEntradas}</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;text-align:right;">${s.costeEntradas.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;text-align:center;">${s.nSalidas}</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;text-align:right;">${s.costeSalidas.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;text-align:right;">${s.totalCostes.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;text-align:right;">${s.transporte.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;text-align:right;font-weight:bold;">${s.costeTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+      </tr>`
+      }).join('')
+      const noSmurfit = lineas.filter(l => !l.smurfit)
+      for (const r of noSmurfit) {
+        const p = r.precioUnitario > 0 ? r.precioUnitario : pu(r.c1, r.c2, r.clienteId)
+        lineasHtml += `<tr>
+        <td colspan="8" style="padding:5px 6px;border:1px solid #bbb;">${r.c1}${r.c2 ? ' - ' + r.c2 : ''}</td>
+        <td style="padding:5px 6px;border:1px solid #bbb;text-align:right;font-weight:bold;">${(p * r.cant).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+      </tr>`
+      }
+    } else {
+      lineasHtml = lineas.map(r => {
       const p = r.precioUnitario > 0 ? r.precioUnitario : pu(r.c1, r.c2, r.clienteId)
       return `<tr>
         <td style="padding:5px 6px;border:1px solid #bbb;white-space:nowrap;">${fechaLbl(r.fecha)}</td>
@@ -419,6 +454,7 @@ export function FacturasView() {
         <td style="padding:5px 6px;border:1px solid #bbb;text-align:right;white-space:nowrap;">${(p * r.cant).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
       </tr>`
     }).join('')
+    }
 
     // Título del documento (nombre de archivo al guardar como PDF):
     // directamente "número-cliente" (sin prefijo "Factura") para que al guardar
@@ -510,11 +546,23 @@ export function FacturasView() {
   <table class="lines">
     <thead>
       <tr>
+        ${esSmurfitPrint ? `
+        <th style="width:80px;text-align:center;">MES</th>
+        <th>Descripción Producto</th>
+        <th style="width:55px;text-align:center;">Nº ENTRADAS</th>
+        <th style="width:75px;text-align:right;">Coste ENTRADAS</th>
+        <th style="width:55px;text-align:center;">Nº SALIDAS</th>
+        <th style="width:75px;text-align:right;">Coste SALIDAS</th>
+        <th style="width:75px;text-align:right;">TOTAL COSTES</th>
+        <th style="width:75px;text-align:right;">Coste Transporte</th>
+        <th style="width:80px;text-align:right;">Coste Total</th>
+        ` : `
         <th style="width:70px;">${LL.fecha}</th>
         <th>${LL.concepto}</th>
         <th style="width:50px;">${LL.cantidad}</th>
         <th style="width:85px;">${LL.precioUnitario}</th>
         <th style="width:95px;">${LL.importe}</th>
+        `}
       </tr>
     </thead>
     <tbody>${lineasHtml}</tbody>
@@ -546,8 +594,15 @@ export function FacturasView() {
 
   function handleExportExcel(inv: InvoiceData, cat: CatalogoItem[], cfg: ResolvedConfig | null) {
     const LL = cfg?.labelsFacturas || DEFAULT_LABELS_FACTURAS
-    const { cli, lineas, iva, numero, fechaFact, base, ivaImp, total, modo, pedido } = inv
+    const { cli, lineas, iva, numero, fechaFact, base, ivaImp, total, modo, pedido, mesFactura } = inv
     const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
+    // V29.74: MES de cada fila SMURFIT — el de la línea; si es vieja sin mes,
+    // fallback al mesFactura ("YYYY-MM").
+    const mesFila = (s: { mes: string }) => {
+      if (s.mes) return s.mes
+      const mf = mesFactura || ''
+      return /^\d{4}-\d{2}$/.test(mf) ? fmtMonth(mf + '-01') : ''
+    }
 
     function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
       // Normalizada: "Viaje Nave" en catálogo coincide con "viaje  nave" en el registro
@@ -575,17 +630,43 @@ export function FacturasView() {
     wsData.push(['CIF:', cli.cif])
     wsData.push(['Dirección:', `${cli.dir} ${cli.cp} ${cli.ciudad} ${cli.prov}`])
     wsData.push([])
-    wsData.push([LL.fecha, LL.concepto, LL.cantidad, LL.precioUnitario, LL.importe])
-    lineas.forEach(r => {
-      const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
-      wsData.push([fechaLbl(r.fecha), r.c1 + (r.c2 ? ' - ' + r.c2 : ''), r.cant, pu, pu * r.cant])
-    })
+    // V29.74: si es modelo SMURFIT, Excel con las 9 columnas del modelo
+    // (MES primero + las 8 de la tabla de liquidación).
+    const esSmurfitExcel = lineas.some(l => l.smurfit)
+    if (esSmurfitExcel) {
+      wsData.push(['MES', 'DESCRIPCIÓN PRODUCTO', 'Nº ENTRADAS', 'Coste ENTRADAS', 'Nº SALIDAS', 'Coste SALIDAS', 'TOTAL COSTES', 'Coste Transporte', 'Coste Total'])
+      lineas.filter(l => l.smurfit).forEach(r => {
+        const s = r.smurfit!
+        wsData.push([mesFila(s), s.descripcion, s.nEntradas, s.costeEntradas, s.nSalidas, s.costeSalidas, s.totalCostes, s.transporte, s.costeTotal])
+      })
+      lineas.filter(l => !l.smurfit).forEach(r => {
+        const p = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+        wsData.push([fechaLbl(r.fecha), r.c1 + (r.c2 ? ' - ' + r.c2 : ''), r.cant, p, p * r.cant])
+      })
+    } else {
+      wsData.push([LL.fecha, LL.concepto, LL.cantidad, LL.precioUnitario, LL.importe])
+      lineas.forEach(r => {
+        const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+        wsData.push([fechaLbl(r.fecha), r.c1 + (r.c2 ? ' - ' + r.c2 : ''), r.cant, pu, pu * r.cant])
+      })
+    }
     wsData.push([])
     wsData.push(['', '', '', LL.baseImponible, base])
     wsData.push(['', '', '', `IVA ${iva}%`, ivaImp])
     wsData.push(['', '', '', LL.totalFactura, total])
     const ws = XLSX.utils.aoa_to_sheet(wsData)
-    ws['!cols'] = [{ wch: 14 }, { wch: 40 }, { wch: 10 }, { wch: 16 }, { wch: 16 }]
+    ws['!cols'] = esSmurfitExcel
+      ? [{ wch: 18 }, { wch: 40 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 14 }, { wch: 16 }, { wch: 14 }]
+      : [{ wch: 14 }, { wch: 40 }, { wch: 10 }, { wch: 16 }, { wch: 16 }]
+    // V29.74: cabecera en negrita/blanco (normal o SMURFIT)
+    const headerRowIdx = wsData.findIndex(row => (row[0] === LL.fecha && row[1] === LL.concepto) || row[0] === 'MES')
+    if (headerRowIdx >= 0) {
+      const nCols = wsData[headerRowIdx].length
+      for (let c = 0; c < nCols; c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: headerRowIdx, c })]
+        if (cell) { cell.s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1A1A1A' } } } }
+      }
+    }
     XLSX.utils.book_append_sheet(wb, ws, 'Factura')
     XLSX.writeFile(wb, `Factura_${(numero || 'sin-numero').replace(/\//g, '-')}.xlsx`)
   }
@@ -771,7 +852,6 @@ export function FacturasView() {
               data={invoiceData}
               catalogo={catalogo}
               config={config}
-              editing={false}
             />
           )}
 
@@ -845,8 +925,17 @@ function InvoicePreview({ data, catalogo, config }: {
   config: ResolvedConfig | null
 }) {
   const L = config?.labelsFacturas || DEFAULT_LABELS_FACTURAS
-  const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total, pedido } = data
+  const { cli, lineas, iva, numero, fechaFact, modo, base, ivaImp, total, pedido, mesFactura } = data
   const fechaLbl = (iso: string) => modo === 'mes' ? fmtMonth(iso) : fmtDate(iso)
+  // V29.74: detectar si es modelo SMURFIT (líneas con campo smurfit)
+  const esModeloSmurfit = lineas.some(l => l.smurfit)
+  // V29.74: MES de cada fila SMURFIT — el de la línea; si es vieja sin mes,
+  // fallback al mesFactura ("YYYY-MM").
+  const mesFila = (s: { mes: string }) => {
+    if (s.mes) return s.mes
+    const mf = mesFactura || ''
+    return /^\d{4}-\d{2}$/.test(mf) ? fmtMonth(mf + '-01') : ''
+  }
 
   function precioUnit(c1Val: string, c2Val: string, cliId: string): number {
     // Normalizada: "Viaje Nave" en catálogo coincide con "viaje  nave" en el registro
@@ -886,9 +975,17 @@ function InvoicePreview({ data, catalogo, config }: {
             {pedido && <><b>Nº Pedido:</b> {pedido}<br /></>}
           </div>
         </div>
-        {config?.logo ? (
-          <img src={config.logo.startsWith('data:') ? config.logo : `data:image/png;base64,${config.logo}`} alt="Logo" style={{ maxWidth: '320px', maxHeight: '140px', height: 'auto', objectFit: 'contain' }} />
-        ) : null}
+        <div className="flex flex-col items-end gap-2">
+          {config?.logo ? (
+            <img src={config.logo.startsWith('data:') ? config.logo : `data:image/png;base64,${config.logo}`} alt="Logo" style={{ maxWidth: '320px', maxHeight: '140px', height: 'auto', objectFit: 'contain' }} />
+          ) : null}
+          {/* V29.74: MES fuera de la tabla, en la cabecera (modelo SMURFIT) */}
+          {esModeloSmurfit && mesFactura && /^\d{4}-\d{2}$/.test(mesFactura) && (
+            <div className="border border-black p-2 text-[10.5pt] text-right">
+              <b>MES:</b> {fmtMonth(mesFactura + '-01')}
+            </div>
+          )}
+        </div>
       </div>
       <div className="border border-black p-3 mb-4 text-[11pt] bg-gray-50">
         <b>{L.cliente}:</b> {cli.nombre}<br />
@@ -898,6 +995,42 @@ function InvoicePreview({ data, catalogo, config }: {
       </div>
 
       {/* ===== TABLA DE LÍNEAS ===== */}
+      {esModeloSmurfit ? (
+        /* V29.74: Tabla SMURFIT — MES + 8 columnas del modelo oficial */
+        <table className="w-full border-collapse text-[10.5pt] mb-3">
+          <thead>
+            <tr>
+              <th className="bg-[#1a1a1a] text-white p-2 text-center border border-black text-[9pt] w-[105px]">MES</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-left border border-black text-[9pt]">Descripción Producto</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-center border border-black text-[9pt] w-[70px]">Nº ENTRADAS</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-right border border-black text-[9pt] w-[90px]">Coste ENTRADAS</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-center border border-black text-[9pt] w-[70px]">Nº SALIDAS</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-right border border-black text-[9pt] w-[90px]">Coste SALIDAS</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-right border border-black text-[9pt] w-[90px]">TOTAL COSTES</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-right border border-black text-[9pt] w-[90px]">Coste Transporte</th>
+              <th className="bg-[#1a1a1a] text-white p-2 text-right border border-black text-[9pt] w-[90px]">Coste Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lineas.filter(l => l.smurfit).map((r, i) => {
+              const s = r.smurfit!
+              return (
+                <tr key={i}>
+                  <td className="p-2 border border-gray-400 text-center">{mesFila(s)}</td>
+                  <td className="p-2 border border-gray-400">{s.descripcion}</td>
+                  <td className="p-2 border border-gray-400 text-center">{s.nEntradas}</td>
+                  <td className="p-2 border border-gray-400 text-right">{s.costeEntradas.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+                  <td className="p-2 border border-gray-400 text-center">{s.nSalidas}</td>
+                  <td className="p-2 border border-gray-400 text-right">{s.costeSalidas.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+                  <td className="p-2 border border-gray-400 text-right">{s.totalCostes.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+                  <td className="p-2 border border-gray-400 text-right">{s.transporte.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+                  <td className="p-2 border border-gray-400 text-right font-bold">{s.costeTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      ) : (
       <table className="w-full border-collapse text-[10.5pt] mb-3 table-fixed">
         <thead>
           <tr>
@@ -928,6 +1061,7 @@ function InvoicePreview({ data, catalogo, config }: {
           })}
         </tbody>
       </table>
+      )}
       <table className="ml-auto border-collapse text-[11pt]">
         <tbody>
           <tr>
