@@ -559,16 +559,15 @@ export function PreFacturaView() {
         return c2Val || c1Val
       }
 
-      // Agrupar por referencia (c1+c2) — solo palets, no otros conceptos
+      // V29.72: Agrupar SOLO por c2 (código de producto) — no por c1+c2.
+      // Porque ENTRADA PALET y SALIDA PALET tienen distinto c1 pero mismo c2.
       const porRef = new Map<string, { descripcion: string; nEntradas: number; nSalidas: number; diasAlmacenaje: number; transporte: number }>()
       for (const r of selFacturable) {
         const esEnt = isEntradaPalet(r)
         const esSal = isSalidaPalet(r)
-        if (!esEnt && !esSal) {
-          // Otros conceptos (PORTE, COSTE DIARIO) — van como líneas normales
-          continue
-        }
-        const ref = `${r.c1} ${r.c2}`.trim()
+        if (!esEnt && !esSal) continue
+        // Agrupar por c2 (código de producto, p.ej. "10F640")
+        const ref = r.c2
         if (!porRef.has(ref)) {
           const desc = descripcionDeCatalogo(r.c1, r.c2, targetCliId)
           porRef.set(ref, { descripcion: `${desc} ${r.c2}`.trim(), nEntradas: 0, nSalidas: 0, diasAlmacenaje: 0, transporte: 0 })
