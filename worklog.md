@@ -2218,3 +2218,17 @@ Stage Summary:
 - La tabla SMURFIT de pre-factura y factura lleva la columna MES (antes de Descripción) con el mes de los registros de cada producto.
 - TOTAL COSTES ya NO sale a 0: días de almacenaje reales (entrada↔salida por nº palet/lote) × 0,18€/día, verificados por simulación con los datos reales de octubre.
 - La FACTURA guardada ahora también muestra el modelo SMURFIT completo (pantalla, PDF y Excel), que antes solo mostraba la tabla genérica.
+
+## V29.75 · 2026-11-05 · QUITAR MES DE LA CABECERA (solo columna en tabla)
+Request:
+- "QUITARLO DE DONDE MARCO CON UNA X VERDE" — captura con el recuadro "MES: 2026--01" tachado en verde en la cabecera de la pre-factura/factura.
+
+Cambios:
+- prefactura-view.tsx: eliminado el recuadro "MES: …" de la cabecera del InvoicePreview (el MES queda ÚNICAMENTE como columna de la tabla SMURFIT, añadida en V29.74).
+- facturas-view.tsx: mismo recorte en la cabecera de la vista de facturas guardadas. El PDF (HTML de impresión) ya no lo llevaba, no hizo falta tocarlo.
+- Además desaparece el bug visual "MES: 2026--01" (doble guion cuando el filtro tenía año y mes a medias).
+- fmtMonth/mesFactura siguen usándose para la columna MES → sin variables sin usar.
+- Sidebar build label → V29.75-QUITAR-MES-CABECERA · 2026-11-05.
+
+Stage Summary:
+- La cabecera de pre-factura y factura ya NO muestra el recuadro "MES: …". El MES se ve solo en la columna de la tabla de liquidación (pantalla, PDF y Excel).

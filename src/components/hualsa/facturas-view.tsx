@@ -979,12 +979,7 @@ function InvoicePreview({ data, catalogo, config }: {
           {config?.logo ? (
             <img src={config.logo.startsWith('data:') ? config.logo : `data:image/png;base64,${config.logo}`} alt="Logo" style={{ maxWidth: '320px', maxHeight: '140px', height: 'auto', objectFit: 'contain' }} />
           ) : null}
-          {/* V29.74: MES fuera de la tabla, en la cabecera (modelo SMURFIT) */}
-          {esModeloSmurfit && mesFactura && /^\d{4}-\d{2}$/.test(mesFactura) && (
-            <div className="border border-black p-2 text-[10.5pt] text-right">
-              <b>MES:</b> {fmtMonth(mesFactura + '-01')}
-            </div>
-          )}
+          {/* V29.75: el MES ya NO se muestra aquí — va como columna dentro de la tabla */}
         </div>
       </div>
       <div className="border border-black p-3 mb-4 text-[11pt] bg-gray-50">
