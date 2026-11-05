@@ -626,18 +626,29 @@ export function PreFacturaView() {
         lineas.push({ fecha: r.fecha, c1: r.c1, c2: r.c2, cant: r.cant, clienteId: r.clienteId, obs: r.obs || '', precioUnitario: pu })
       }
       lineas.sort((a, b) => a.fecha.localeCompare(b.fecha))
-    } else if (fModo === 'mes') {
-      const map: Record<string, LineaFactura> = {}
-      lineasBase.forEach(r => {
-        const mes = r.fecha.slice(0, 7)
-        const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
-        const k = mes + '|' + r.c1 + '|' + r.c2 + '|' + pu.toFixed(2)
-        if (!map[k]) map[k] = { fecha: mes + '-01', c1: r.c1, c2: r.c2, cant: 0, clienteId: r.clienteId, obs: '', precioUnitario: pu }
-        map[k].cant += r.cant
-      })
-      lineas = Object.values(map).sort((a, b) => a.fecha.localeCompare(b.fecha))
     } else {
-      lineas = lineasBase
+    // V29.70: SIEMPRE agrupar por descripción (c1+c2+precio) — una línea por
+    // producto en el periodo. Suma cantidades e importes. No una línea por
+    // movimiento individual.
+    const map: Record<string, LineaFactura> = {}
+    lineasBase.forEach(r => {
+      const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+      // Clave de agrupación: c1 + c2 + precio (mismo producto, mismo precio → una línea)
+      const k = r.c1 + '|' + r.c2 + '|' + pu.toFixed(2)
+      if (!map[k]) {
+        map[k] = {
+          fecha: fModo === 'mes' ? (fMes ? fMes + '-01' : r.fecha.slice(0, 7) + '-01') : r.fecha,
+          c1: r.c1, c2: r.c2, cant: 0, clienteId: r.clienteId, obs: '', precioUnitario: pu
+        }
+      }
+      map[k].cant += r.cant
+    })
+    lineas = Object.values(map).sort((a, b) => {
+      // Ordenar por c1 luego c2
+      const ka = a.c1 + a.c2
+      const kb = b.c1 + b.c2
+      return ka.localeCompare(kb)
+    })
     }
 
     const base = lineas.reduce((s, r) => s + (r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)) * r.cant, 0)
