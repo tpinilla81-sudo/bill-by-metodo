@@ -632,9 +632,9 @@ export function FacturasView() {
       </div>
 
       <div className="flex-1 min-h-0 bg-white rounded-lg border shadow-sm flex flex-col">
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="flex-1 overflow-x-auto">
           <table className="w-full text-sm min-w-[700px]">
-            <thead className="sticky top-0 z-10 shadow-sm">
+            <thead className="">
               <tr className="bg-rose-50">
                 <th className="p-2 text-left font-semibold border-b bg-rose-50">Nº</th>
                 <th className="p-2 text-left font-semibold border-b bg-rose-50">Fecha</th>
@@ -711,7 +711,7 @@ export function FacturasView() {
 
       {/* Detail Modal */}
       <Dialog open={!!selected} onOpenChange={(open) => { if (!open) { setSelected(null); setInvoiceData(null); setEditingNumero(false); setEditingFull(false); setLineasDraft([]); setCliDraft(null) } }}>
-        <DialogContent className="max-w-[900px] max-h-[95vh] overflow-auto">
+        <DialogContent className="max-w-[900px] max-h-[95vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5 text-rose-500" />

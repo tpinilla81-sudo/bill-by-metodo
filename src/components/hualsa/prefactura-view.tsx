@@ -1095,9 +1095,9 @@ export function PreFacturaView() {
       </div>
 
       <div className="flex-1 min-h-0 bg-white rounded-lg border shadow-sm flex flex-col">
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="flex-1 overflow-x-auto">
           <table className="w-full text-sm min-w-[700px]">
-            <thead className="sticky top-0 z-10 shadow-sm">
+            <thead className="">
               <tr className="bg-orange-50">
                 <th className="p-2 text-left border-b w-10 bg-orange-50"><Checkbox checked={checkAll} onCheckedChange={toggleAll} /></th>
                 <th className="p-2 text-left font-semibold border-b bg-orange-50">Fecha</th>
@@ -1159,7 +1159,7 @@ export function PreFacturaView() {
       </div>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-[900px] max-h-[95vh] overflow-auto">
+        <DialogContent className="max-w-[900px] max-h-[95vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Pre-Factura — Confirmar creación</DialogTitle>
           </DialogHeader>
