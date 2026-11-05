@@ -561,22 +561,22 @@ export function PreFacturaView() {
 
       // V29.72: Agrupar SOLO por c2 (código de producto) — no por c1+c2.
       // Porque ENTRADA PALET y SALIDA PALET tienen distinto c1 pero mismo c2.
-      // V29.74: cada grupo también acumula los MESES de sus registros (YYYY-MM)
-      // para mostrarlos en la nueva columna MES de la tabla de liquidación.
-      const porRef = new Map<string, { descripcion: string; nEntradas: number; nSalidas: number; diasAlmacenaje: number; transporte: number; meses: string[] }>()
+      // V29.76: separar POR MESES — la clave del grupo es MES + c2, así cada
+      // mes/descripción va en UNA fila propia (p.ej. 10F640 octubre y
+      // 10F640 noviembre = 2 filas). Ya no se unen varios meses con " / ".
+      const porRef = new Map<string, { mes: string; c2: string; descripcion: string; nEntradas: number; nSalidas: number; diasAlmacenaje: number; transporte: number }>()
       for (const r of selFacturable) {
         const esEnt = isEntradaPalet(r)
         const esSal = isSalidaPalet(r)
         if (!esEnt && !esSal) continue
-        // Agrupar por c2 (código de producto, p.ej. "10F640")
-        const ref = r.c2
+        // V29.76: clave = "YYYY-MM__c2" (mes del registro + código de producto)
+        const mesReg = (r.fecha || '').slice(0, 7)
+        const ref = `${mesReg}__${r.c2}`
         if (!porRef.has(ref)) {
           const desc = descripcionDeCatalogo(r.c1, r.c2, targetCliId)
-          porRef.set(ref, { descripcion: `${desc} ${r.c2}`.trim(), nEntradas: 0, nSalidas: 0, diasAlmacenaje: 0, transporte: 0, meses: [] })
+          porRef.set(ref, { mes: mesReg, c2: r.c2, descripcion: `${desc} ${r.c2}`.trim(), nEntradas: 0, nSalidas: 0, diasAlmacenaje: 0, transporte: 0 })
         }
         const g = porRef.get(ref)!
-        const mesReg = (r.fecha || '').slice(0, 7)
-        if (mesReg && !g.meses.includes(mesReg)) g.meses.push(mesReg)
         if (esEnt) g.nEntradas += Number(r.cant) || 1
         if (esSal) {
           g.nSalidas += Number(r.cant) || 1
@@ -607,35 +607,35 @@ export function PreFacturaView() {
         if (ent) {
           usadosLocal.add(ent.id)
           const dias = diasAlmacenaje(ent.fecha, s.fecha)
-          // Sumar los días a la referencia (c2) del producto de la SALIDA —
-          // la clave del grupo ES el c2 del registro (V29.72).
-          const refSal = s.c2 || ''
+          // V29.76: sumar los días al grupo MES+c2 del producto de la SALIDA
+          // (misma clave que usa el bucle de agrupación).
+          const refSal = `${(s.fecha || '').slice(0, 7)}__${s.c2 || ''}`
           if (porRef.has(refSal)) {
             porRef.get(refSal)!.diasAlmacenaje += dias
           }
         }
       }
 
-      // Generar líneas de factura — una por referencia
+      // V29.76: generar líneas de factura — una por MES + referencia,
+      // ordenadas por mes y luego por descripción.
       lineas = []
-      for (const [ref, g] of porRef) {
+      const gruposOrden = [...porRef.entries()].sort((a, b) => {
+        const ka = `${a[1].mes}__${a[1].descripcion}`
+        const kb = `${b[1].mes}__${b[1].descripcion}`
+        return ka.localeCompare(kb)
+      })
+      for (const [, g] of gruposOrden) {
         const costeEntradas = g.nEntradas * precioEntradaSalida
         const costeSalidas = g.nSalidas * precioEntradaSalida
         const totalCostes = g.diasAlmacenaje * costeDiario
         const transporte = g.transporte
         const costeTotal = costeEntradas + costeSalidas + totalCostes + transporte
-        // V29.74: MES de la línea — meses de los registros del grupo
-        // ("octubre 2026"); si el periodo abarca varios, se unen con " / ".
-        const mesStr = (() => {
-          const ms = [...g.meses].sort()
-          if (ms.length > 0) return ms.map(m => fmtMonth(m + '-01')).join(' / ')
-          if (fMes && /^\d{4}-\d{2}$/.test(fMes)) return fmtMonth(fMes + '-01')
-          return ''
-        })()
+        // V29.76: MES de la fila — el mes del grupo (UNO solo, p.ej. "octubre 2026")
+        const mesStr = /^\d{4}-\d{2}$/.test(g.mes) ? fmtMonth(g.mes + '-01') : (fMes && /^\d{4}-\d{2}$/.test(fMes) ? fmtMonth(fMes + '-01') : '')
 
         lineas.push({
           fecha: fFechaFact,
-          c1: ref,
+          c1: g.c2,
           c2: '',
           cant: 1,
           clienteId: targetCliId,

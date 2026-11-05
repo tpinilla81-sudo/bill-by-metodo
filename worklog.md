@@ -2232,3 +2232,18 @@ Cambios:
 
 Stage Summary:
 - La cabecera de pre-factura y factura ya NO muestra el recuadro "MES: …". El MES se ve solo en la columna de la tabla de liquidación (pantalla, PDF y Excel).
+
+## V29.76 · 2026-11-05 · FILAS SEPARADAS POR MES (MES/DESCRIPCIÓN = UNA FILA)
+Request:
+- "LOS TIENE QEU SEPARAR POR MESES, CADA MES/DESCRIPCION UNA FILA"
+
+Cambios:
+- prefactura-view.tsx (bloque SMURFIT): la clave de agrupación pasa de "solo c2" a "MES + c2" ("YYYY-MM__c2"). Antes, si el periodo abarcaba varios meses, el mismo producto salía en UNA fila con el MES unido ("Octubre / Noviembre"). Ahora cada mes/descripción va en su propia fila.
+- Los días de almacenaje (salida↔entrada por nº palet/lote) se suman al grupo MES+c2 de la SALIDA — cada fila lleva sus días × 0,18€ de su mes.
+- Filas ordenadas por mes y luego por descripción. La columna MES muestra UN solo mes por fila (sin " / ").
+- La factura del periodo hereda las filas tal cual (pantalla, PDF y Excel leen s.mes de cada línea), sin cambios extra necesarios.
+- scripts/simulate-smurfit-v2976.ts: simulación con octubre+noviembre → 3 filas (Oct 10F1027, Oct 10F640, Nov 10F640); 10F640 oct 44 días = 7,92€, 10F640 nov 11 días = 1,98€, 10F1027 oct 16 días = 2,88€. TODO OK.
+- Sidebar build label → V29.76-FILAS-POR-MES · 2026-11-05.
+
+Stage Summary:
+- Tabla SMURFIT de pre-factura y factura: una fila POR MES Y PRODUCTO. Mismo producto en dos meses = dos filas, cada una con sus entradas, salidas, días × 0,18€ y transporte de su mes.
