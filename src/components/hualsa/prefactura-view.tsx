@@ -359,7 +359,7 @@ export function PreFacturaView() {
     return registros.filter(r => {
       if (fDesde && r.fecha < fDesde) return false
       if (fHasta && r.fecha > fHasta) return false
-      if (fMes && r.fecha.slice(0, 7) !== fMes) return false
+      if (fMes && /^\d{4}-\d{2}$/.test(fMes) && r.fecha.slice(0, 7) !== fMes) return false
       if (fClientes.length > 0 && !fClientes.includes(r.clienteId)) return false
       // Comparación normalizada: "Viaje Nave" en el filtro coincide con "viaje  nave" en el registro
       if (fC1sNorm.length > 0 && !fC1sNorm.includes(normStr(r.c1))) return false
@@ -938,7 +938,8 @@ export function PreFacturaView() {
                       onChange={e => {
                         const year = e.target.value
                         const month = fMes ? fMes.slice(5, 7) : ''
-                        setFMes(year && month ? `${year}-${month}` : '')
+                        // V29.69: guardar el año aunque no tenga mes todavía
+                        setFMes(year ? (month ? `${year}-${month}` : `${year}-`) : '')
                       }}
                       className="flex h-9 w-[100px] items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm"
                     >
@@ -953,7 +954,8 @@ export function PreFacturaView() {
                       onChange={e => {
                         const month = e.target.value
                         const year = fMes ? fMes.slice(0, 4) : ''
-                        setFMes(year && month ? `${year}-${month}` : '')
+                        // V29.69: guardar el mes aunque no tenga año todavía
+                        setFMes(month ? (year ? `${year}-${month}` : `-${month}`) : (year ? `${year}-` : ''))
                       }}
                       className="flex h-9 flex-1 items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm"
                     >
