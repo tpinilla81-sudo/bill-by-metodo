@@ -63,6 +63,7 @@ export async function POST(req: Request) {
       total = 0,
       modo = 'dia',
       pedido = '',
+      modoFactura = 'simple',
       registroIds = [],
     } = body
 
@@ -87,6 +88,7 @@ export async function POST(req: Request) {
           total: Number(total) || 0,
           modo: String(modo || 'dia'),
           pedido: String(pedido || ''),
+          modoFactura: String(modoFactura || 'simple'),
           registroIds: JSON.stringify(registroIds || []),
           createdBy: session?.id || '',
         },

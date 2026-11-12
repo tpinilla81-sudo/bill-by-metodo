@@ -32,6 +32,7 @@ interface FacturaRow {
   impresa: boolean
   createdAt: string
   pedido: string
+  modoFactura: string   // V29.77: 'simple' | 'compacta' | 'smurfit'
 }
 
 interface InvoiceData {
@@ -46,6 +47,7 @@ interface InvoiceData {
   total: number
   pedido: string
   mesFactura: string
+  modoFactura: 'simple' | 'compacta' | 'smurfit'   // V29.77
 }
 
 export function FacturasView() {
@@ -141,6 +143,7 @@ export function FacturasView() {
       total: f.total,
       pedido: f.pedido || '',
       mesFactura: f.fecha ? f.fecha.slice(0, 7) : '',
+      modoFactura: (f.modoFactura as 'simple' | 'compacta' | 'smurfit') || 'simple',
     })
   }
 

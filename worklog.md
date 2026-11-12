@@ -2247,3 +2247,26 @@ Cambios:
 
 Stage Summary:
 - Tabla SMURFIT de pre-factura y factura: una fila POR MES Y PRODUCTO. Mismo producto en dos meses = dos filas, cada una con sus entradas, salidas, días × 0,18€ y transporte de su mes.
+
+## V29.77 · 2026-11-12 · SELECTOR "MODO FACTURA" (Simple / Compacta) + revertir V29.70 por defecto
+Request:
+- Las facturas de clientes NO-SMURFIT (FLORETTE, VEGAMAYOR) salían en formato comprimido (V29.70 juntaba c1+c2+precio). El usuario quiere volver al comportamiento simple (1 línea por registro) y añadir un selector para elegir.
+
+Cambios:
+- prefactura-view.tsx:
+  - Nuevo estado `fModoFactura: 'simple' | 'compacta'` (por defecto **'simple'** = 1 línea por registro, como antes de V29.70).
+  - Selector "Modo factura" en el formulario junto a "Agrupar por" con dos opciones:
+    - "Simple (1 línea/registro)" — cada registro va en su propia línea, sin agrupar.
+    - "Compacta (agrupa mismo día y concepto)" — agrupa c1+c2+precio (comportamiento V29.70).
+  - La rama `else` (no-SMURFIT) ahora decide según `fModoFactura`. SMURFIT sigue usando su propio modelo de tabla (no se ve afectado).
+  - `InvoiceData.modoFactura` ('simple' | 'compacta' | 'smurfit') persiste en la factura al guardar.
+- facturas-view.tsx: `FacturaRow` y `InvoiceData` con `modoFactura`; `openFactura` lee el campo de la factura guardada.
+- prisma/schema.prisma y schema.prisma.pg: nuevo campo `modoFactura String @default("simple")` en `Factura`.
+- api/facturas/route.ts: POST acepta y guarda `modoFactura`.
+- Sidebar build label → V29.77-SELECTOR-MODO-FACTURA · 2026-11-12.
+
+Stage Summary:
+- Las facturas nuevas de FLORETTE/VEGAMAYOR salen SIMPLE por defecto (1 línea por registro, como antes).
+- El selector permite cambiar a COMPACTA si se quiere agrupar (mismo día y concepto).
+- SMURFIT sigue con su modelo de tabla de liquidación por MES+c2 sin cambios.
+- Las facturas ya guardadas mantienen sus líneas tal cual se crearon (no se regeneran). Solo afecta a facturas nuevas.

@@ -237,6 +237,8 @@ function procesarAlmacenajePalets(
 interface InvoiceData {
   cli: Cliente; lineas: LineaFactura[]
   iva: number; numero: string; fechaFact: string; modo: string; base: number; ivaImp: number; total: number; pedido: string; mesFactura: string
+  // V29.77: 'simple' (1 línea por registro) | 'compacta' (agrupa c1+c2+precio) | 'smurfit' (modelo SMURFIT)
+  modoFactura: 'simple' | 'compacta' | 'smurfit'
   registroIds: string[]
 }
 
@@ -265,6 +267,10 @@ export function PreFacturaView() {
   const [fPedido, setFPedido] = useState('')  // V29.59: Nº de pedido del cliente (anual para SMURFIT)
   const [fIva, setFIva] = useState('')
   const [fModo, setFModo] = useState<'dia' | 'mes'>('dia')
+  // V29.77: modo de factura para clientes no-SMURFIT.
+  //   'simple'   → una línea por registro (comportamiento original, por defecto)
+  //   'compacta' → agrupar por c1+c2+precio (junta líneas mismo día y concepto)
+  const [fModoFactura, setFModoFactura] = useState<'simple' | 'compacta'>('simple')
 
   const [selection, setSelection] = useState<Record<string, boolean>>({})
   const [checkAll, setCheckAll] = useState(true)
@@ -662,28 +668,37 @@ export function PreFacturaView() {
       }
       lineas.sort((a, b) => a.fecha.localeCompare(b.fecha))
     } else {
-    // V29.70: SIEMPRE agrupar por descripción (c1+c2+precio) — una línea por
-    // producto en el periodo. Suma cantidades e importes. No una línea por
-    // movimiento individual.
-    const map: Record<string, LineaFactura> = {}
-    lineasBase.forEach(r => {
-      const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
-      // Clave de agrupación: c1 + c2 + precio (mismo producto, mismo precio → una línea)
-      const k = r.c1 + '|' + r.c2 + '|' + pu.toFixed(2)
-      if (!map[k]) {
-        map[k] = {
-          fecha: fModo === 'mes' ? (fMes ? fMes + '-01' : r.fecha.slice(0, 7) + '-01') : r.fecha,
-          c1: r.c1, c2: r.c2, cant: 0, clienteId: r.clienteId, obs: '', precioUnitario: pu
+    // V29.77: clientes no-SMURFIT.
+    //   modo 'simple'   (por defecto) → una línea por registro (comportamiento
+    //                    original, antes de V29.70). NO junta líneas.
+    //   modo 'compacta' → agrupa por c1+c2+precio (junta mismo día y concepto).
+    if (fModoFactura === 'compacta') {
+      const map: Record<string, LineaFactura> = {}
+      lineasBase.forEach(r => {
+        const pu = r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+        // Clave de agrupación: c1 + c2 + precio (mismo producto, mismo precio → una línea)
+        const k = r.c1 + '|' + r.c2 + '|' + pu.toFixed(2)
+        if (!map[k]) {
+          map[k] = {
+            fecha: fModo === 'mes' ? (fMes ? fMes + '-01' : r.fecha.slice(0, 7) + '-01') : r.fecha,
+            c1: r.c1, c2: r.c2, cant: 0, clienteId: r.clienteId, obs: '', precioUnitario: pu
+          }
         }
-      }
-      map[k].cant += r.cant
-    })
-    lineas = Object.values(map).sort((a, b) => {
-      // Ordenar por c1 luego c2
-      const ka = a.c1 + a.c2
-      const kb = b.c1 + b.c2
-      return ka.localeCompare(kb)
-    })
+        map[k].cant += r.cant
+      })
+      lineas = Object.values(map).sort((a, b) => {
+        // Ordenar por c1 luego c2
+        const ka = a.c1 + a.c2
+        const kb = b.c1 + b.c2
+        return ka.localeCompare(kb)
+      })
+    } else {
+      // V29.77: modo 'simple' — cada registro va en su propia línea, sin agrupar.
+      lineas = lineasBase.map(r => ({
+        fecha: fModo === 'mes' ? (fMes ? fMes + '-01' : r.fecha.slice(0, 7) + '-01') : r.fecha,
+        c1: r.c1, c2: r.c2, cant: r.cant, clienteId: r.clienteId, obs: r.obs || '', precioUnitario: r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)
+      })).sort((a, b) => a.fecha.localeCompare(b.fecha))
+    }
     }
 
     const base = lineas.reduce((s, r) => s + (r.precioUnitario > 0 ? r.precioUnitario : precioUnit(r.c1, r.c2, r.clienteId)) * r.cant, 0)
@@ -693,7 +708,7 @@ export function PreFacturaView() {
     // excluidas quedan libres para facturarse en su propio mes.
     const registroIds = [...selFacturable.map(r => r.id)]
 
-    setInvoiceData({ cli, lineas, iva, numero: '', fechaFact: fFechaFact, modo: fModo, base, ivaImp, total, pedido: fPedido, mesFactura: fMes, registroIds })
+    setInvoiceData({ cli, lineas, iva, numero: '', fechaFact: fFechaFact, modo: fModo, base, ivaImp, total, pedido: fPedido, mesFactura: fMes, modoFactura: esSmurfit ? 'smurfit' : fModoFactura, registroIds })
     setModalOpen(true)
   }
 
@@ -717,6 +732,7 @@ export function PreFacturaView() {
           total: invoiceData.total,
           modo: invoiceData.modo,
           pedido: invoiceData.pedido,
+          modoFactura: invoiceData.modoFactura,
           registroIds: invoiceData.registroIds,
         })
       })
@@ -1125,6 +1141,18 @@ export function PreFacturaView() {
                   <SelectContent>
                     <SelectItem value="dia">Días</SelectItem>
                     <SelectItem value="mes">Mes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* V29.77: selector de modo de factura (solo clientes no-SMURFIT).
+                  Simple = 1 línea por registro; Compacta = agrupa c1+c2+precio. */}
+              <div>
+                <Label className="text-xs uppercase font-bold text-slate-500">Modo factura</Label>
+                <Select value={fModoFactura} onValueChange={v => setFModoFactura(v as 'simple' | 'compacta')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="simple">Simple (1 línea/registro)</SelectItem>
+                    <SelectItem value="compacta">Compacta (agrupa mismo día y concepto)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

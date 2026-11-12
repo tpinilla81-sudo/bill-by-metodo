@@ -144,6 +144,7 @@ model Factura {
   impresa       Boolean  @default(false)
   createdBy     String   @default("")
   pedido        String   @default("")     // V29.59: Nº de pedido del cliente
+  modoFactura   String   @default("simple") // V29.77: "simple" | "compacta" | "smurfit"
   deletedAt     DateTime?                // V29.52: soft delete
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
