@@ -2270,3 +2270,15 @@ Stage Summary:
 - El selector permite cambiar a COMPACTA si se quiere agrupar (mismo día y concepto).
 - SMURFIT sigue con su modelo de tabla de liquidación por MES+c2 sin cambios.
 - Las facturas ya guardadas mantienen sus líneas tal cual se crearon (no se regeneran). Solo afecta a facturas nuevas.
+
+## V29.78 · 2026-11-12 · BOTÓN "REGENERAR (SIMPLE)" en factura guardada
+Request:
+- El usuario quiere convertir una factura ya guardada de VEGAMAYOR (10/11/2026, agrupada por V29.70) al modo Simple (1 línea por registro). Solo para esta factura, le dice cuándo borrarla.
+
+Cambios:
+- Nuevo endpoint POST /api/facturas/[id]/regenerar — lee los registroIds de la factura, busca los registros y catálogo, reconstruye las líneas en modo 'simple' (1 línea por registro, sin agrupar), recalcula base/iva/total con el IVA existente, marca modoFactura='simple'. Bloquea facturas SMURFIT (su modelo es distinto).
+- facturas-view.tsx: función regenerarLineas + botón "Regenerar (Simple)" visible solo para admin, en facturas no-SMURFIT y no impresas (evita regenerar algo ya entregado al cliente).
+- Sidebar build label → V29.78-REGENERAR-FACTURA · 2026-11-12.
+
+Stage Summary:
+- Abre la factura de VEGAMAYOR del 10/11/2026, pulsa "Regenerar (Simple)" → las líneas se reconstruyen a partir de los registroIds guardados, una línea por registro. El número, fecha, cliente y pedido se mantienen.

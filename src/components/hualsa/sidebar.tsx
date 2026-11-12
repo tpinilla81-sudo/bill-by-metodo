@@ -263,7 +263,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
             {reloading ? 'Actualizando…' : 'Actualizar app'}
           </button>
           {displayName}
-          <div className="mt-1 text-[9px] text-green-700 font-mono">build: V29.77-SELECTOR-MODO-FACTURA · 2026-11-12</div>
+          <div className="mt-1 text-[9px] text-green-700 font-mono">build: V29.78-REGENERAR-FACTURA · 2026-11-12</div>
         </div>
       </aside>
     </>

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Printer, FileSpreadsheet, Receipt, Search, ChevronLeft, Edit3, Save, Trash2, Eye, Plus, X } from 'lucide-react'
+import { Printer, FileSpreadsheet, Receipt, Search, ChevronLeft, Edit3, Save, Trash2, Eye, Plus, X, RefreshCw } from 'lucide-react'
 import { fmtCurrency, fmtDate, fmtMonth, type Cliente, type CatalogoItem } from '@/lib/hualsa-utils'
 import { useConfig, DEFAULT_LABELS_FACTURAS, type ResolvedConfig } from '@/lib/config'
 import { useAuth } from '@/lib/auth-context'
@@ -377,6 +377,43 @@ export function FacturasView() {
     } catch (err) {
       console.error(err)
       alert('Error inesperado')
+    }
+  }
+
+  // V29.78: regenerar las líneas de una factura ya guardada en modo 'simple'
+  // (1 línea por registro, sin agrupar). Solo para facturas no-SMURFIT.
+  const [regenerando, setRegenerando] = useState(false)
+  async function regenerarLineas(f: FacturaRow) {
+    if (!confirm(`¿Regenerar las líneas de la factura de ${f.clienteNombre} en modo Simple (1 línea por registro)?
+
+Se reemplazarán las líneas actuales por una línea por cada registro original, recalculando base, IVA y total. El número, fecha, cliente y pedido se mantienen.`)) return
+    setRegenerando(true)
+    try {
+      const res = await fetch(`/api/facturas/${f.id}/regenerar`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        alert('Error regenerando: ' + (data.error || res.status))
+        return
+      }
+      // Refrescar la factura en el estado local y en la vista previa.
+      const refreshed: FacturaRow = {
+        ...f,
+        lineas: data.factura.lineas,
+        base: data.factura.base,
+        ivaImp: data.factura.ivaImp,
+        total: data.factura.total,
+        modoFactura: data.factura.modoFactura,
+      }
+      setFacturas(prev => prev.map(x => x.id === f.id ? refreshed : x))
+      setSelected(refreshed)
+      // Reabrir la factura con las líneas nuevas
+      openFactura(refreshed)
+      alert(`✓ Factura regenerada: ${data.lineasGeneradas} líneas (modo Simple)`)
+    } catch (err) {
+      console.error(err)
+      alert('Error inesperado')
+    } finally {
+      setRegenerando(false)
     }
   }
 
@@ -907,6 +944,12 @@ export function FacturasView() {
               <Button variant="outline" onClick={() => toggleImpresa(selected, false)} className="text-amber-700 border-amber-300 hover:bg-amber-50" title="Quitar el tick de impresa">
                 <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 mr-1"><path fillRule="evenodd" d="M16.704 5.29a1 1 0 0 1 0 1.42l-7.5 7.5a1 1 0 0 1-1.42 0l-3.5-3.5a1 1 0 1 1 1.42-1.42l2.79 2.79 6.79-6.79a1 1 0 0 1 1.42 0Z" clipRule="evenodd" /></svg>
                 Quitar tick impresa
+              </Button>
+            )}
+            {/* V29.78: regenerar líneas en modo Simple (solo facturas no-SMURFIT, no impresas) */}
+            {selected && (user?.role === 'admin' || user?.role === 'superadmin') && !/SMURFIT/i.test(selected.clienteNombre || '') && !selected.impresa && (
+              <Button variant="outline" onClick={() => regenerarLineas(selected)} disabled={regenerando} className="text-blue-700 border-blue-300 hover:bg-blue-50" title="Reconstruir las líneas con 1 línea por registro (modo Simple)">
+                <RefreshCw className={`h-4 w-4 mr-1 ${regenerando ? 'animate-spin' : ''}`} /> {regenerando ? 'Regenerando…' : 'Regenerar (Simple)'}
               </Button>
             )}
             <Button variant="outline" onClick={() => invoiceData && handlePrintInvoice(invoiceData, catalogo, config)}>
