@@ -9,6 +9,7 @@ import { CatalogoView } from '@/components/hualsa/catalogo-view'
 import { FacturasView } from '@/components/hualsa/facturas-view'
 import { PreFacturaView } from '@/components/hualsa/prefactura-view'
 import { StockAlmacenView } from '@/components/hualsa/stock-almacen-view'
+import { AgendaView } from '@/components/hualsa/agenda-view'
 import { BackupView } from '@/components/hualsa/backup-view'
 import { ConfiguracionView } from '@/components/hualsa/configuracion-view'
 import { AdminView } from '@/components/hualsa/admin-view'
@@ -17,10 +18,10 @@ import { ConfigProvider, useConfig } from '@/lib/config'
 import { AuthProvider, useAuth } from '@/lib/auth-context'
 import { canAccessConfig } from '@/lib/permissions'
 
-export type View = 'entrada' | 'registros' | 'stock' | 'clientes' | 'catalogo' | 'prefactura' | 'facturas' | 'backup' | 'config' | 'admin' | 'suscripcion'
+export type View = 'entrada' | 'agenda' | 'registros' | 'stock' | 'clientes' | 'catalogo' | 'prefactura' | 'facturas' | 'backup' | 'config' | 'admin' | 'suscripcion'
 
 // Screen permission keys (including sub-permissions)
-const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'registros', 'stock', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa', 'configuracion.usuarios', 'configuracion.campos'] as const
+const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'agenda', 'registros', 'stock', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa', 'configuracion.usuarios', 'configuracion.campos'] as const
 
 // Parse permissions from JSON string to array
 function parsePermissions(permissionsStr: string): string[] {
@@ -203,10 +204,11 @@ function AppContent() {
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Table views: manage their own internal scroll */}
         {/* key={effectiveTenantId} forces remount when superadmin switches tenant, ensuring fresh data */}
-        {['entrada','registros','clientes','catalogo','prefactura','facturas'].includes(activeView) && (
+        {['entrada','agenda','registros','clientes','catalogo','prefactura','facturas'].includes(activeView) && (
           <div key={effectiveTenantId} className="p-3 md:p-6 pt-16 md:pt-6 pb-4 flex-1 min-h-0 overflow-hidden">
             {activeView === 'entrada' && hasPermission(user.role, user.permissions, 'entrada') && <div className="h-full flex flex-col"><EntradaView userRole={user.role} userPermissions={user.permissions} /></div>}
             {activeView === 'registros' && hasPermission(user.role, user.permissions, 'registros') && <div className="h-full flex flex-col"><RegistrosView /></div>}
+            {activeView === 'agenda' && hasPermission(user.role, user.permissions, 'agenda') && <div className="h-full flex flex-col overflow-y-auto"><AgendaView /></div>}
             {activeView === 'clientes' && hasPermission(user.role, user.permissions, 'clientes') && <div className="h-full flex flex-col"><ClientesView /></div>}
             {activeView === 'catalogo' && hasPermission(user.role, user.permissions, 'catalogo') && <div className="h-full flex flex-col"><CatalogoView /></div>}
             {activeView === 'prefactura' && hasPermission(user.role, user.permissions, 'prefactura') && <div className="h-full flex flex-col"><PreFacturaView /></div>}

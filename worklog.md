@@ -2282,3 +2282,23 @@ Cambios:
 
 Stage Summary:
 - Abre la factura de VEGAMAYOR del 10/11/2026, pulsa "Regenerar (Simple)" → las líneas se reconstruyen a partir de los registroIds guardados, una línea por registro. El número, fecha, cliente y pedido se mantienen.
+
+## V29.79 · 2026-11-14 · AGENDA IA — dictado por voz → agenda → registros
+Request:
+- "Podemos meter un agente IA para que el usuario pueda por voz, generar una agenda con las entradas y luego que esa agenda la pueda pasar el agente a registros?"
+
+Cambios:
+- NUEVA PESTAÑA "AGENDA IA" (violeta, con icono Sparkles) entre REGISTROS y STOCK ALMACÉN:
+  - Botón "Dictar por voz" (Web Speech API es-ES, Chrome/Edge/Safari) — transcribe en vivo al cuadro de texto (también editable a mano; fallback si el navegador no soporta voz).
+  - "Interpretar con IA" → POST /api/agenda/interpretar: el LLM recibe el dictado + el VOCABULARIO REAL del tenant (lista de clientes y c1/c2 del catálogo) y devuelve las líneas en JSON {fecha, cliente, c1, c2, cant, obs}. Fechas relativas ("hoy", "mañana") calculadas desde la fecha base. Corrige errores de dictado al nombre más parecido (fuzzy match servidor).
+  - Tabla de agenda EDITABLE: fecha, cliente (select), concepto c1 (select), detalle c2 (select), cantidad, obs. Filas incompletas marcadas en ámbar. Añadir/quitar líneas a mano.
+  - "Pasar a entradas/registros" → reutiliza el batch de POST /api/registros (autodetecta cliente y precio del catálogo). Checkbox "Directo a REGISTROS" (si no, van a ENTRADAS como hasta ahora).
+  - El draft de la agenda persiste en localStorage (sobrevive recargas).
+- API nueva: src/app/api/agenda/interpretar/route.ts (z-ai-web-dev-sdk SOLO en backend, con permiso de tenant).
+- page.tsx: View 'agenda' + render; sidebar.tsx: permiso 'agenda' + nav item.
+- scripts/test-agenda-ia.ts: test real del agente → "5 palets de Vegamayor por viaje de nave + mañana 3 salidas de Smurfit 10F640" → 2 líneas correctas con fechas, clientes exactos y cantidades. TODO OK.
+- Sidebar build label → V29.79-AGENDA-IA-VOZ · 2026-11-14.
+
+Stage Summary:
+- Nueva pestaña AGENDA IA: dicta por voz → la IA genera la agenda con tus clientes y conceptos reales → editas lo que haga falta → pasas todo a ENTRADAS o REGISTROS de golpe.
+- El dictado necesita Chrome/Edge/Safari (micrófono HTTPS). Si la IA no está disponible, la agenda funciona igual tecleando y creando líneas a mano.
