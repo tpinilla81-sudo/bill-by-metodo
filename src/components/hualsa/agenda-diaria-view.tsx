@@ -3,12 +3,14 @@
 // V29.80 — AGENDA DIARIA
 // El usuario navega por días y DICTA POR VOZ (o teclea) lo que va haciendo;
 // el agente IA va rellenando la agenda directamente (POST /api/agenda-diaria/
-// interpretar). Dos apartados como el "Registro Diario" original:
+// interpretar). Dos apartados:
 //   - LOGÍSTICA: servicios del día agrupados en CARGAS (1, 2...) con subtotal
 //     por carga y Total Día.
 //   - FACTURACIÓN: entregas agrupadas por CLIENTE con total y recuentos por
 //     destino (lo de antes de la "/").
 // Cada línea es editable y borrable; también se pueden añadir a mano.
+// V29.85 — el diario es SOLO la agenda que rellena el agente: no se vincula con
+// Registros ni Facturas (no los lee ni los escribe).
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -278,7 +280,7 @@ export function AgendaDiariaView() {
 
   // ── AGENTE: interpretar dictado y rellenar la agenda ──────────────────────
   async function handleInterpretar() {
-    if (!texto.trim()) { setMsg('Escribe o dicta primero las entradas'); return }
+    if (!texto.trim()) { setMsg('Escribe o dicta primero el texto'); return }
     setInterpretando(true)
     setMsg('')
     try {
@@ -463,7 +465,7 @@ export function AgendaDiariaView() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Agenda Diaria</h1>
-          <p className="text-sm text-slate-500">Dicta por voz tus entradas y el agente va rellenando la agenda del día.</p>
+          <p className="text-sm text-slate-500">Dicta por voz y el agente rellena la agenda del día — es solo un cuaderno, no toca registros ni facturas.</p>
         </div>
         {items.length > 0 && (
           <Button variant="outline" size="sm" onClick={vaciarDia} className="text-red-600 border-red-300 hover:bg-red-50">
@@ -503,7 +505,7 @@ export function AgendaDiariaView() {
             >
               {grabando ? <><MicOff className="h-4 w-4 mr-2" /> Parar…</> : <><Mic className="h-4 w-4 mr-2" /> Dictar por voz</>}
             </Button>
-            {grabando && <span className="text-sm text-red-600 font-bold">● Grabando — habla claro, una entrada por frase</span>}
+            {grabando && <span className="text-sm text-red-600 font-bold">● Grabando — habla claro, una línea por frase</span>}
             {!soportaVoz && <span className="text-xs text-amber-600">Tu navegador no soporta dictado por voz (usa Chrome/Edge) — puedes escribir el texto</span>}
             <Button onClick={handleInterpretar} disabled={interpretando || !texto.trim()} className="bg-[#005bb5] hover:bg-[#003d7a] text-white ml-auto">
               {interpretando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}

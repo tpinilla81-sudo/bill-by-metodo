@@ -4,7 +4,8 @@ import { requireTenantId } from '@/lib/tenant-context'
 import { getSessionUser } from '@/lib/auth'
 
 // V29.80 — AGENDA DIARIA
-// Agenda del día con formato "Registro Diario": líneas de LOGÍSTICA agrupadas
+// V29.85 — Agenda del día SOLO como la agenda que rellena el agente (sin vínculo
+// con Registros ni Facturas): líneas de LOGÍSTICA agrupadas
 // en cargas (1, 2, 3...) y líneas de FACTURACIÓN agrupadas por cliente.
 // El usuario dicta por voz y el agente (POST /api/agenda-diaria/interpretar)
 // rellena la agenda; estas rutas son el CRUD de soporte.

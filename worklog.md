@@ -2422,3 +2422,24 @@ Verificación:
 
 Stage Summary:
 - Al dictar un concepto del catálogo (c2), el agente rellena SIEMPRE el cliente y el precio correctos: primero el LLM con el catálogo en el prompt y, si falla, el código impone las reglas 10 y 11 de forma determinística. El dictado manda siempre en lo que el usuario dijo explícitamente.
+
+### V29.85 · 2026-11-15 · DIARIO SOLO AGENDA — sin vínculo con Registros
+Request:
+- "El diario solamente es para hacer la agenda por el agente. Olvídate de vincular con registros por ahora. Quita todo lo relacionado para no confundir."
+
+Cambios:
+- Auditado el código: la vinculación funcional de la antigua AGENDA IA (V29.79: botón "Pasar a entradas/registros", checkbox "Directo a REGISTROS", endpoint /api/agenda/interpretar, draft en localStorage) ya no existe — se eliminó con V29.81. No hay ninguna ruta de agenda que lea o escriba la tabla Registro.
+- Purgado el lenguaje que podía confundir:
+  - Subtítulo: «Dicta por voz tus entradas y el agente va rellenando la agenda del día.» → «Dicta por voz y el agente rellena la agenda del día — es solo un cuaderno, no toca registros ni facturas.»
+  - Mensaje vacío: «Escribe o dicta primero las entradas» → «Escribe o dicta primero el texto».
+  - Grabando: «una entrada por frase» → «una línea por frase».
+  - Comentarios de cabecera (vista + GET) sin "Registro Diario", con nota explícita V29.85: el diario es SOLO la agenda del agente, no vincula con Registros ni Facturas.
+- La Agenda Diaria queda definida como cuaderno del día: dictado → agente → líneas editables/borrables; nada más.
+
+Verificación:
+- rg de "registro diario|tus entradas|pasar a registro|directo a registro" en agenda-diaria*: sin rastros.
+- bun run build OK; reinicio del custom server (server-v2985.log); label V29.85-DIARIO-SOLO-AGENDA.
+- Tests: test-agenda-diaria-http.ts 17/17 OK; test-agenda-catalogo.ts 16/16 OK.
+
+Stage Summary:
+- El diario es únicamente la agenda que rellena el agente por dictado; cualquier pista de vinculación con Registros (real o de nombre) desaparece de la UI y del código.
