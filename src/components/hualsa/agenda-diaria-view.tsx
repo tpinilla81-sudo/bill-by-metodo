@@ -133,6 +133,7 @@ export function AgendaDiariaView() {
   const [guardandoForm, setGuardandoForm] = useState(false)
   const [flashIds, setFlashIds] = useState<string[]>([])
   const [clientesLista, setClientesLista] = useState<string[]>([]) // clientes del tenant (V29.82)
+  const [conceptosLista, setConceptosLista] = useState<string[]>([]) // conceptos del catálogo (V29.83)
   const recRef = useRef<SpeechRecognitionLike | null>(null)
   const textoBaseRef = useRef('')
   // V29.82 — robustez del dictado: Chrome corta el reconocimiento tras silencios
@@ -166,6 +167,8 @@ export function AgendaDiariaView() {
         setItems((data.items || []) as AgendaDiaLine[])
         // V29.82 — lista completa de clientes del tenant (datalist del formulario)
         if (Array.isArray(data.clientes)) setClientesLista(data.clientes as string[])
+        // V29.83 — conceptos del catálogo (datalist del concepto)
+        if (Array.isArray(data.conceptos)) setConceptosLista(data.conceptos as string[])
       }
       else setMsg('⚠ ' + (data.error || 'Error cargando la agenda'))
     } catch (err: any) {
@@ -639,8 +642,12 @@ export function AgendaDiariaView() {
                   value={form.concepto}
                   onChange={e => setForm({ ...form, concepto: e.target.value })}
                   placeholder={form.tipo === 'logistica' ? 'Piking Bobinas, Hualsa/Milagro…' : 'Milca/Milagro, La Boquera/Milca…'}
+                  list="agenda-diaria-conceptos"
                   className="mt-1"
                 />
+                <datalist id="agenda-diaria-conceptos">
+                  {[...new Set([...conceptosLista, ...items.map(i => i.concepto).filter(Boolean)])].map(c => <option key={c} value={c} />)}
+                </datalist>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>

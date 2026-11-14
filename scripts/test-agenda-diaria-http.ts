@@ -5,6 +5,7 @@ const BASE = 'http://localhost:3000'
 const FECHA_TEST = '2026-01-01' // sábado pasado, no toca días reales
 
 let cookie = ''
+let tenantId = '' // V29.83: operar sobre el tenant de Hualsa (uso real + catálogo)
 
 async function api(method: string, path: string, body?: any) {
   const res = await fetch(BASE + path, {
@@ -12,6 +13,7 @@ async function api(method: string, path: string, body?: any) {
     headers: {
       'Content-Type': 'application/json',
       ...(cookie ? { Cookie: cookie } : {}),
+      ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   })
@@ -34,9 +36,16 @@ async function main() {
   const login = await api('POST', '/api/auth/login', { email: 'admin@bill.es', password: 'admin123' })
   check(login.status === 200 || login.json?.user, 'login OK', `status ${login.status}`)
 
+  // Tenant de Hualsa (catálogo y vocabulario real)
+  const ts = await api('GET', '/api/tenants')
+  const lista: any[] = ts.json?.tenants || ts.json?.items || ts.json || []
+  const hualsa = lista.find((t: any) => /hualsa/i.test(t.name || t.nombre || ''))
+  tenantId = hualsa?.id || ''
+  check(!!tenantId, 'tenant Hualsa localizado', tenantId)
+
   // 2. INTERPRETAR (agente real: vocabulario de BD + LLM + guardado)
   console.log('── INTERPRETAR (endpoint real) ──')
-  const texto = 'pikin bobinas 10 bobinas a 1,20 euros. nueva carga. hualsa milagro 125 euros'
+  const texto = 'pikin bobinas 10 bobinas a 1,20 euros. nueva carga. viaje doypack milagro 125 euros'
   const t0 = Date.now()
   const inter = await api('POST', '/api/agenda-diaria/interpretar', { texto, fecha: FECHA_TEST })
   const dt = Date.now() - t0
@@ -48,8 +57,8 @@ async function main() {
   check(!!piking && /piking/i.test(piking.concepto), 'fuzzy-match: "pikin bobinas" → "Piking Bobinas"', piking?.concepto)
   check(piking && Math.abs(Number(piking.importe) - 12) < 0.01, 'importe 10×1,20 = 12', piking?.importe)
   check(piking && Number(piking.carga) === 1, 'primera carga = 1', piking?.carga)
-  const hualsa = (inter.json?.items || []).find((i: any) => /hualsa/i.test(i.concepto || ''))
-  check(hualsa && Number(hualsa.carga) === 2, '"nueva carga" → segunda línea va a carga 2', hualsa?.carga)
+  const lineaHualsa = (inter.json?.items || []).find((i: any) => /doypack/i.test(i.concepto || ''))
+  check(lineaHualsa && Number(lineaHualsa.carga) === 2, '"nueva carga" → segunda línea va a carga 2', lineaHualsa?.concepto)
 
   // 3. GET agenda del día de prueba
   console.log('── GET agenda ──')

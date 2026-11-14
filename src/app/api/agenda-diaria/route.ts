@@ -42,7 +42,24 @@ export async function GET(req: Request) {
       select: { nombre: true },
       orderBy: { nombre: 'asc' },
     })
-    return NextResponse.json({ items, fecha, clientes: clientes.map(c => c.nombre).filter(Boolean) })
+    // V29.83 — conceptos del CATÁLOGO para el datalist del concepto (tipear
+    // manualmente también usa los nombres exactos del catálogo)
+    const catRaw = await db.catalogo.findMany({
+      where: { tenantId: tid, deletedAt: null },
+      select: { c2: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 300,
+    })
+    const conceptosCatalogo: string[] = []
+    const vistos = new Set<string>()
+    for (const c of catRaw) {
+      const n = String(c.c2 || '').trim().replace(/\s+/g, ' ')
+      const k = n.toLowerCase()
+      if (!n || vistos.has(k)) continue
+      vistos.add(k)
+      conceptosCatalogo.push(n)
+    }
+    return NextResponse.json({ items, fecha, clientes: clientes.map(c => c.nombre).filter(Boolean), conceptos: conceptosCatalogo })
   } catch (err: any) {
     console.error('Agenda diaria GET error:', err)
     return NextResponse.json({ error: 'Error cargando agenda: ' + (err?.message || '') }, { status: 500 })

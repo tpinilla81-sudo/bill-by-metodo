@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     // ── Vocabulario real del tenant ──────────────────────────────────────────
     const clientes = await db.cliente.findMany({
       where: { tenantId: tid, deletedAt: null },
-      select: { nombre: true },
+      select: { id: true, nombre: true },
       orderBy: { nombre: 'asc' },
     })
     const vocabAgenda = await db.agendaDia.findMany({
@@ -77,6 +77,33 @@ export async function POST(req: Request) {
     const clientesAgenda = [...new Set(vocabAgenda.map(v => v.cliente).filter(Boolean))]
     const conceptosLog = [...new Set(vocabAgenda.filter(v => v.tipo === 'logistica').map(v => v.concepto).filter(Boolean))]
     const conceptosFac = [...new Set(vocabAgenda.filter(v => v.tipo === 'facturacion').map(v => v.concepto).filter(Boolean))]
+
+    // ── CATÁLOGO (V29.83): fuente de verdad — conceptos exactos, precio estándar
+    //    y cliente asociado. El dictado se COMPARA contra este catálogo.
+    const catalogoRaw = await db.catalogo.findMany({
+      where: { tenantId: tid, deletedAt: null },
+      select: { c1: true, c2: true, final: true, clienteId: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 300,
+    })
+    const nombreClienteId = new Map(clientes.map(c => [c.id, c.nombre]))
+    const catVistos = new Set<string>()
+    const catalogo: { nombre: string; grupo: string; precio: number; cliente: string }[] = []
+    for (const c of catalogoRaw) {
+      const nombre = String(c.c2 || '').trim().replace(/\s+/g, ' ')
+      const key = normStr(nombre)
+      if (!nombre || !key || catVistos.has(key)) continue
+      catVistos.add(key)
+      catalogo.push({
+        nombre,
+        grupo: String(c.c1 || '').trim().replace(/\s+/g, ' '),
+        precio: Number(c.final) || 0,
+        cliente: nombreClienteId.get(c.clienteId) || '',
+      })
+    }
+    const catalogoNombres = catalogo.map(c => c.nombre)
+
+    const fmtPrecio = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',')
 
     const system = `Eres el agente de la AGENDA DIARIA de TRANSPORTES HUALSA. El usuario dicta por voz (o escribe) lo que va haciendo durante el día y TÚ rellenas su agenda.
 
@@ -93,13 +120,19 @@ REGLAS:
 2. tipo "facturacion": entregas/salidas a facturar. cliente = a quién se factura (de la LISTA DE CLIENTES o CLIENTES DE AGENDA; corrige errores de dictado al más parecido). concepto = el destino/ruta tal como se dicta, en formato "X/Y" si lo dice así (p.ej. "Milca/Milagro"). Si menciona "facturar a X", X va en nota.
 3. IMPORTES: "125 euros" → importe 125, cantidad 0. "72 bobinas a 1,20" → cantidad 72, unidad "b", importe 86.4 (cantidad × precio). "3 palets a 3 euros" → cantidad 3, unidad "p", importe 9. "19 palets, movimiento palets, 57 euros" → cantidad 19, unidad "p", importe 57. Decimales con coma o punto, intérpreta bien (1,20 = 1.20).
 4. unidad: b = bobinas, p = palets/piezas, u = unidades; si dice la palabra completa ("rollos") guárdala tal cual. Si no hay cantidad, cantidad 0 y unidad "".
-5. CONCEPTO: usa los nombres EXACTOS de las listas de conceptos habituales cuando encajen (corrige errores de dictado al más parecido). Si es nuevo, escríbelo limpio (primera letra mayúscula, sin muletillas).
+5. CONCEPTO: PRIMERO compara el dictado con el CATÁLOGO DE SERVICIOS (regla 9); si no encaja ninguno, usa los nombres EXACTOS de las listas de conceptos habituales cuando encajen (corrige errores de dictado al más parecido). Si es nuevo, escríbelo limpio (primera letra mayúscula, sin muletillas).
 6. Una línea por servicio/entrega. Si repite cantidades ("dos veces 90 euros") → dos líneas.
 7. Todo lo dictado pertenece al día ${fecha} (la agenda se navega por día, ignora cualquier otra fecha).
-8. Si una frase es ambigua pero se entiende el importe, guárdala con lo que sepas; no inventes importes que no se han dicho.
+8. Si una frase es ambigua pero se entiende el importe, guárdala con lo que sepas; no inventes importes que no se han dicho (los calculados del catálogo sí valen, ver regla 10).
+9. CATÁLOGO (FUENTE DE VERDAD): antes de crear cada línea, COMPÁRALA con el CATÁLOGO DE SERVICIOS de abajo comparando los NOMBRES (servicio/destino), NO los precios. Si corresponde a un concepto del catálogo (aunque el dictado traiga errores de voz o diga el nombre a medias), concepto = el nombre EXACTO del catálogo, tal cual, sin reformarlo. NO elijas una entrada del catálogo solo porque el importe coincida; si ningún nombre encaja, es un concepto nuevo (regla 5).
+10. PRECIOS DEL CATÁLOGO: si el servicio está en el catálogo y el usuario NO dice importe, usa el precio del catálogo: si es precio por unidad (palets, bobinas...), importe = cantidad dictada × precio ("descarga rialto 5 palets" con precio 3 → 15, cantidad 5, unidad "p"); si es precio fijo (viajes, alquiler...), úsalo tal cual ("viaje daroca" → su precio exacto). Si el usuario SÍ dice importe, manda el dictado aunque difiera del catálogo.
+11. CLIENTE DEL CATÁLOGO: si la entrada del catálogo tiene cliente asociado y es una línea de facturación y el dictado NO dice "facturar a X", usa ese cliente.
 
 LISTA DE CLIENTES:
 ${clientesVocab.slice(0, 60).map(c => `- ${c}`).join('\n') || '(sin clientes)'}
+
+CATÁLOGO DE SERVICIOS (FUENTE DE VERDAD — compara cada línea dictada con esta lista POR NOMBRE y usa el nombre EXACTO; [grupo] — precio estándar en € — cliente asociado si lo tiene):
+${catalogo.slice(0, 80).map(c => `- ${c.nombre} [${c.grupo || '—'}] — ${fmtPrecio(c.precio)}€${c.cliente ? ` — cliente: ${c.cliente}` : ''}`).join('\n') || '(catálogo vacío)'}
 
 CLIENTES DE AGENDA (usados antes):
 ${clientesAgenda.slice(0, 60).map(c => `- ${c}`).join('\n') || '(ninguno aún)'}
@@ -134,8 +167,10 @@ Dictado a interpretar (puede tener errores de transcripción de voz — interpre
 
     // ── Normalizar + fuzzy match de cliente/concepto ─────────────────────────
     const vocabClientes = [...new Set([...clientesVocab, ...clientesAgenda])]
-    const vocabLog = conceptosLog
-    const vocabFac = conceptosFac
+    // V29.83 — el catálogo va primero: si el dictado encaja con un concepto del
+    // catálogo, el nombre guardado es el EXACTO del catálogo
+    const vocabLog = [...new Set([...catalogoNombres, ...conceptosLog])]
+    const vocabFac = [...new Set([...catalogoNombres, ...conceptosFac])]
 
     // Carga en curso del día (para líneas logística sin carga explícita)
     const existentes = await db.agendaDia.findMany({

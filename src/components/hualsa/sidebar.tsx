@@ -264,7 +264,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
             {reloading ? 'Actualizando…' : 'Actualizar app'}
           </button>
           {displayName}
-          <div className="mt-1 text-[9px] text-green-700 font-mono">build: V29.82-DIARIO-ROBUSTO · 2026-11-15</div>
+          <div className="mt-1 text-[9px] text-green-700 font-mono">build: V29.83-AGENTE-CATALOGO · 2026-11-15</div>
         </div>
       </aside>
     </>

@@ -2382,3 +2382,23 @@ Verificación:
 
 Stage Summary:
 - La Agenda Diaria queda lista para uso real continuado: el dictado aguanta pausas largas sin cortarse, el teclado español (comas) funciona en importes y cantidades, y los errores de micrófono se comunican con claridad. El agente LLM, fuzzy-match, cargas y totales verificados 17/17 + E2E navegador.
+
+### V29.83 · 2026-11-15 · AGENTE CATÁLOGO — el dictado se compara con el catálogo (fuente de verdad)
+Request:
+- "El agente tiene que aprender a interpretar y comparar con el catálogo para q sea todo correcto".
+
+Cambios:
+- POST /api/agenda-diaria/interpretar: carga el CATÁLOGO del tenant (c2 deduplicado, con grupo c1, precio estándar final y cliente asociado vía clienteId→Cliente) y lo inyecta en el prompt como sección "CATÁLOGO DE SERVICIOS (FUENTE DE VERDAD)" con precios formateados en coma.
+- Reglas nuevas del agente: (9) compara cada línea dictada con el catálogo POR NOMBRE (no por precio) y guarda el nombre EXACTO sin reformar; si ningún nombre encaja, es concepto nuevo. (10) si el usuario no dice importe, usa el precio del catálogo: precio por unidad × cantidad dictada; precio fijo (viajes/alquiler) tal cual; si el usuario SÍ dice importe, manda el dictado. (11) si la entrada del catálogo tiene cliente asociado y es facturación sin "facturar a X", usa ese cliente. Regla 5 reordenada: catálogo primero, conceptos habituales después. Regla 8 aclara que los importes del catálogo no cuentan como inventados.
+- Red de seguridad en código: fuzzyMatch del concepto incluye los nombres del catálogo ANTES que los conceptos de agenda (vocabLog/vocabFac), con normalización de espacios dobles ("DESCARGA  RIALTO" → matchea "DESCARGA RIALTO").
+- GET /api/agenda-diaria devuelve también `conceptos` (catálogo deduplicado); el diálogo manual usa un datalist de conceptos (catálogo + usados) para tipear con los nombres exactos.
+- Tests actualizados/nuevos (operan sobre el tenant de Hualsa con header x-tenant-id, donde vive el catálogo de 72 entradas): test-agenda-diaria-http.ts 17/17 OK; test-agenda-catalogo.ts NUEVO 10/10 OK — (1) "descarga rialto 5 palets" → "DESCARGA RIALTO" 15€ 5p (5×3 del catálogo), (2) "viaje daroca" → "VIAJE DAROCA" 585,78€ (precio fijo), (3) "pikin bobina milagro 10 bobinas a 1,20" → "PIKING BOBINA MILAGRO" 12€ (el importe dictado manda). scripts/check-tenant-catalogo.ts (auditoría tenant/catálogo) y inspect-catalogo-v2983.ts.
+- Hallazgo de depuración: el primer run del test fallaba porque admin@bill.es es superadmin del tenant "Sistema" (sin catálogo); el catálogo/clients reales pertenecen a "Transportes Hualsa 2021 SL." — ahora los tests cambian de tenant como la UI. Ajuste anti-falso-positivo: el LLM renombraba "hualsa milagro 125€" a "VIAJE VEGA" (emparejaba por precio); la regla 9 prohíbe emparejar por precio y el test usa un dictado no ambiguo ("viaje doypack milagro").
+- Sidebar build label → V29.83-AGENTE-CATALOGO · 2026-11-15.
+
+Verificación:
+- bun run build OK, reinicio del custom server (1 proceso), label V29.83 en navegador con SW limpio.
+- Navegador con tenant Hualsa activo: dictado "descarga rialto 5 palets. viaje daroca" → "✓ Añadidas a la agenda: 2 de logística", cuaderno renderiza "DESCARGA RIALTO; 15€. 5p." y "VIAJE DAROCA; 585,78€", Total Dia; 600,78€ exacto; "Vaciar día" deja el día de prueba limpio (no se toca el día real).
+
+Stage Summary:
+- El agente de la Agenda Diaria ahora INTERPRETA y COMPARA con el catálogo: conceptos con nombre exacto del catálogo, precios estándar cuando no se dictan (por unidad o fijos) y cliente asociado del catálogo; el precio solo determina importes, nunca el concepto.
