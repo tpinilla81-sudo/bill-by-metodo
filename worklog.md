@@ -2469,3 +2469,28 @@ Pendiente del usuario (hosting):
 
 Stage Summary:
 - El agente del diario funciona ahora en cualquier entorno: producción lee la configuración de la variable de entorno Z_AI_CONFIG y el entorno local sigue usando los ficheros estándar; el error de configuración se muestra en claro en lugar de un fallo técnico.
+
+### V29.87 · 2026-11-15 · DIAGNÓSTICO DE CONFIGURACIÓN IA EN PRODUCCIÓN
+Request:
+- "Error" + captura: en producción aparece el mensaje claro de V29.86 → confirma que el nuevo build está desplegado pero Z_AI_CONFIG aún no está definida en el hosting.
+
+Diagnóstico:
+- El 503 de V29.86 no distinguía entre variable ausente, JSON inválido o incompleto.
+- vercel.json usa schema.prisma.pg y el .env commiteado tiene DATABASE_URL=file (SQLite local) → la DATABASE_URL de Postgres de producción está definida en el dashboard de Vercel → el mecanismo de variables de entorno ya se usa y funciona en ese hosting; Z_AI_CONFIG va en el mismo sitio.
+
+Cambios:
+- crearZai() lanza errores diferenciados: Z_AI_CONFIG_BAD_JSON (definida pero no JSON) y Z_AI_CONFIG_INCOMPLETE (definida sin baseUrl/apiKey).
+- El 503 ahora explica el problema concreto y el remedio: "define la variable de entorno Z_AI_CONFIG en el hosting (Vercel → Settings → Environment Variables, igual que DATABASE_URL) con el JSON { baseUrl, apiKey } del SDK. Tras definirla o corregirla, haz redeploy."
+- Nunca se loguea ni se devuelve el contenido de la variable (contiene la apiKey).
+
+Verificación:
+- bun run build OK. Tres arranques del server:
+  - Z_AI_CONFIG="no-es-json" → 503 "su contenido NO es JSON válido" ✓
+  - Z_AI_CONFIG='{"baseUrl":"https://x/v1"}' → 503 "le falta baseUrl y/o apiKey" ✓
+  - Server normal → suites completas 17/17 + catálogo 16/16 + test-zai-config 4/4 ✓
+- Label V29.87-CONFIG-IA-DIAGNOSTICO.
+
+Pendiente del usuario (hosting): definir Z_AI_CONFIG en Vercel (mismo lugar que DATABASE_URL) y redeployar; las tres ramas de error ahora diagnostican cualquier equivocación al pegarla.
+
+Stage Summary:
+- El error del agente en producción ahora se autodiagnostica: falta la variable, JSON roto o incompleta, con instrucciones exactas en cada caso.

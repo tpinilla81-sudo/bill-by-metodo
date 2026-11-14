@@ -22,6 +22,8 @@ import ZAI from 'z-ai-web-dev-sdk'
 // se sube al hosting): ahora la configuración puede venir por la variable de
 // entorno Z_AI_CONFIG (JSON con baseUrl y apiKey) con fallback a los ficheros
 // estándar del SDK (proyecto/home//etc) como en el entorno local.
+// V29.87 — diagnóstico diferenciado: el 503 distingue si Z_AI_CONFIG no está
+// definida, si su contenido no es JSON válido o si le falta baseUrl/apiKey.
 
 function normStr(s: string): string {
   return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -58,16 +60,23 @@ function fuzzyMatch(txt: string, vocab: string[]): string {
   return txt
 }
 
-// V29.86 — configuración del SDK: variable de entorno Z_AI_CONFIG (producción)
+// V29.86/87 — configuración del SDK: variable de entorno Z_AI_CONFIG (producción)
 // con prioridad; si no, los ficheros estándar del SDK (proyecto / home / /etc).
-// NUNCA se loguea el contenido (contiene la apiKey).
+// Errores diferenciados (prefijos Z_AI_CONFIG_*) para diagnosticar sin revelar
+// nunca el contenido de la variable (contiene la apiKey).
 async function crearZai() {
   const raw = String(process.env.Z_AI_CONFIG || '').trim()
   if (raw) {
+    let cfg: any = null
     try {
-      const cfg = JSON.parse(raw)
-      if (cfg && cfg.baseUrl && cfg.apiKey) return new ZAI(cfg)
-    } catch { /* JSON inválido → fallback a ficheros */ }
+      cfg = JSON.parse(raw)
+    } catch {
+      throw new Error('Z_AI_CONFIG_BAD_JSON')
+    }
+    if (!cfg || !cfg.baseUrl || !cfg.apiKey) {
+      throw new Error('Z_AI_CONFIG_INCOMPLETE')
+    }
+    return new ZAI(cfg)
   }
   return ZAI.create()
 }
@@ -275,9 +284,14 @@ Dictado a interpretar (puede tener errores de transcripción de voz — interpre
   } catch (err: any) {
     console.error('Agenda diaria interpretar error:', err)
     const m = String(err?.message || '')
-    // V29.86 — mensaje claro cuando el hosting no tiene la configuración del SDK
-    if (/Configuration file not found|\.z-ai-config/i.test(m)) {
-      return NextResponse.json({ error: 'El agente IA no está configurado en este servidor: define la variable de entorno Z_AI_CONFIG (JSON con { "baseUrl", "apiKey" }) o crea el fichero .z-ai-config en el servidor, y reinicia.' }, { status: 503 })
+    // V29.87 — mensaje claro y diferenciado según el problema de configuración
+    if (/Z_AI_CONFIG_BAD_JSON|Z_AI_CONFIG_INCOMPLETE|Configuration file not found|\.z-ai-config/i.test(m)) {
+      const detalle = m.includes('Z_AI_CONFIG_BAD_JSON')
+        ? 'la variable de entorno Z_AI_CONFIG está definida pero su contenido NO es JSON válido'
+        : m.includes('Z_AI_CONFIG_INCOMPLETE')
+          ? 'la variable de entorno Z_AI_CONFIG está definida pero le falta "baseUrl" y/o "apiKey"'
+          : 'no hay configuración del agente IA: define la variable de entorno Z_AI_CONFIG en el hosting (Vercel → Settings → Environment Variables, igual que DATABASE_URL) con el JSON { "baseUrl", "apiKey" } del SDK'
+      return NextResponse.json({ error: 'El agente IA no está disponible en este servidor: ' + detalle + '. Tras definirla o corregirla, haz redeploy.' }, { status: 503 })
     }
     return NextResponse.json({ error: 'Error interpretando con IA: ' + (m || 'desconocido') }, { status: 500 })
   }
