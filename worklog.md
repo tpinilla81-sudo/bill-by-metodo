@@ -2346,3 +2346,16 @@ Cambios:
 
 Stage Summary:
 - La app queda con una sola agenda: AGENDA DIARIA (el cuaderno del día con dictado por voz). AGENDA IA eliminada por completo: UI, permiso y endpoint.
+
+### V29.81 (post-lanzamiento) · 2026-11-15 · Verificación integral de AGENDA DIARIA — "que funcione bien"
+Request:
+- "Solo lo que quiero es que funcione bien el diario".
+
+Pruebas realizadas (sin cambios de app):
+- scripts/test-agenda-diaria.ts (núcleo LLM): 10/10 OK — dictado del cuaderno original → Total Día logística 511,6€ exacto, cargas separadas por «nueva carga», «dos veces 90 euros» → 2 líneas, decimales con coma (72×1,20=86,4).
+- scripts/test-agenda-diaria-http.ts (NUEVO, end-to-end HTTP): 17/17 OK — login → POST /api/agenda-diaria/interpretar (endpoint real, ~1s) → fuzzy-match «pikin bobinas»→«Piking Bobinas» con vocabulario de BD → GET con totales → PUT edición → POST manual (formato plano) → DELETE con soft delete → cleanup completo (fecha de prueba 2026-01-01, sin tocar días reales).
+- Navegador (flujo real de usuario en el día actual): dictado → «✓ Añadidas a la agenda: 2 de logística», 2 cargas, Logística Hualsa (137€); edición en diálogo (importe 12→15, total 140€); pestaña Facturación Día; borrar línea con confirm nativo (140→125→0); estado vacío limpio; navegación ‹ › + botón «Ir a hoy»; «Nueva carga» abre formulario. Sin errores de página.
+- scripts/query-agenda.ts (NUEVO): consulta rápida de AgendaDia para auditoría/cleanup.
+- Revisada la lógica de fechas de agenda-diaria-view.tsx: hoyISO() usa hora local (sin bug UTC de medianoche) y addDias/fmt usan T12:00:00 (seguro con DST). El endpoint interpretar recibe la fecha local del cliente.
+- Limpieza del reciclaje del sandbox: deshecho commit basura (db no-op), bun install, next build, core.fileMode=false para ignorar cambios de modo, servidor custom-server.js re-arrancado.
+- Conclusión: AGENDA DIARIA funciona bien — agente, CRUD, totales, edición, borrado, navegación y fechas OK. No requiere redeploy de código (build V29.81 ya en producción).
