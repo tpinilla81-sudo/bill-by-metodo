@@ -13,6 +13,11 @@ import ZAI from 'z-ai-web-dev-sdk'
 // El prompt incluye el VOCABULARIO REAL del tenant (clientes, conceptos y
 // destinos ya usados en la agenda) para reutilizar los nombres exactos y
 // corregir errores de transcripción de voz.
+// V29.83 — el CATÁLOGO del tenant es la fuente de verdad: el dictado se compara
+// con él (nombres exactos, precio estándar y cliente asociado).
+// V29.84 — red de seguridad en CÓDIGO: aunque el LLM olvide las reglas 10/11,
+// al dictar un concepto del catálogo el código rellena el CLIENTE (facturación
+// sin "facturar a X") y el IMPORTE (cantidad dictada × precio por unidad).
 
 function normStr(s: string): string {
   return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -102,6 +107,8 @@ export async function POST(req: Request) {
       })
     }
     const catalogoNombres = catalogo.map(c => c.nombre)
+    // V29.84 — lookup directo nombre→entrada del catálogo para las redes de seguridad
+    const catPorNombre = new Map(catalogo.map(c => [normStr(c.nombre), c]))
 
     const fmtPrecio = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',')
 
@@ -186,10 +193,19 @@ Dictado a interpretar (puede tener errores de transcripción de voz — interpre
       const conceptoTxt = String(it.concepto || '').trim().slice(0, 120)
       if (!conceptoTxt) continue
 
-      const clienteTxt = String(it.cliente || '').trim()
-      const clienteMatch = tipo === 'facturacion' ? fuzzyMatch(clienteTxt, vocabClientes) : ''
-
       const concepto = tipo === 'logistica' && vocabLog.length > 0 ? fuzzyMatch(conceptoTxt, vocabLog) : (tipo === 'facturacion' && vocabFac.length > 0 ? fuzzyMatch(conceptoTxt, vocabFac) : conceptoTxt)
+
+      const clienteTxt = String(it.cliente || '').trim()
+      let clienteMatch = tipo === 'facturacion' ? fuzzyMatch(clienteTxt, vocabClientes) : ''
+
+      // V29.84 — REGLA 11 EN CÓDIGO (red de seguridad): si es facturación, el
+      // concepto encaja con una entrada del catálogo y esta tiene cliente asociado,
+      // y el dictado NO dijo "facturar a X" (el LLM deja cliente vacío), el cliente
+      // se rellena desde el catálogo. Si el dictado SÍ dijo cliente, manda el dictado.
+      const catEntry = catPorNombre.get(normStr(concepto))
+      if (tipo === 'facturacion' && !clienteTxt && catEntry?.cliente) {
+        clienteMatch = catEntry.cliente
+      }
 
       let carga = 0
       if (tipo === 'logistica') {
@@ -205,6 +221,14 @@ Dictado a interpretar (puede tener errores de transcripción de voz — interpre
       const importeRaw = Number(String(it.importe ?? 0).toString().replace(',', '.'))
       const cantidadRaw = Number(String(it.cantidad ?? 0).toString().replace(',', '.'))
 
+      // V29.84 — REGLA 10 EN CÓDIGO (red de seguridad): cantidad dictada y el LLM
+      // no puso importe → precio por unidad del catálogo × cantidad (el importe
+      // dictado siempre manda; este caso solo dispara con importe 0/vacío).
+      let importe = Number.isFinite(importeRaw) ? importeRaw : 0
+      if (importe <= 0 && cantidadRaw > 0 && catEntry && catEntry.precio > 0) {
+        importe = Math.round(cantidadRaw * catEntry.precio * 100) / 100
+      }
+
       const row = await db.agendaDia.create({
         data: {
           tenantId: tid,
@@ -216,7 +240,7 @@ Dictado a interpretar (puede tener errores de transcripción de voz — interpre
           nota: String(it.nota || '').trim().slice(0, 160),
           cantidad: Number.isFinite(cantidadRaw) ? cantidadRaw : 0,
           unidad: String(it.unidad || '').trim().slice(0, 12),
-          importe: Number.isFinite(importeRaw) ? importeRaw : 0,
+          importe: importe,
           orden: ++maxOrden,
           creadoPor: user?.id || 'voz',
           viaVoz: true,

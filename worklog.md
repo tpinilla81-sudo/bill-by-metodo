@@ -2402,3 +2402,23 @@ Verificación:
 
 Stage Summary:
 - El agente de la Agenda Diaria ahora INTERPRETA y COMPARA con el catálogo: conceptos con nombre exacto del catálogo, precios estándar cuando no se dictan (por unidad o fijos) y cliente asociado del catálogo; el precio solo determina importes, nunca el concepto.
+
+### V29.84 · 2026-11-15 · CATÁLOGO: CLIENTE Y PRECIO RELLENADOS AL DICTAR (red de seguridad en código)
+Request:
+- "De esa forma al dictar el concepto 2, el agente puede rellenar el cliente y el precio" — confirmación del diseño de V29.83: se garantiza en CÓDIGO, no solo en el prompt.
+
+Cambios:
+- POST /api/agenda-diaria/interpretar: mapa nombre→entrada del catálogo (catPorNombre) y redes de seguridad determinísticas tras el fuzzy-match:
+  - Regla 11 en código: facturación cuyo concepto encaja con el catálogo y sin cliente dictado (el LLM lo deja vacío cuando no hay "facturar a X") → cliente = el asociado en el catálogo (todas las entradas apuntan a FLORETTE HORTICOLA NAVARRA SLU; las "MiLCA - MILAGRO facturar vega" a VEGAMAYOR). Si el dictado SÍ dijo cliente, manda el dictado.
+  - Regla 10 en código: importe 0/vacío con cantidad dictada > 0 y precio del catálogo > 0 → importe = cantidad × precio por unidad (redondeo a 2 decimales). La red solo dispara con importe 0; el importe dictado siempre manda.
+- test-agenda-catalogo.ts ampliado: CASO 4 "milca milagro 70 euros" → tipo facturación, cliente FLORETTE rellenado del catálogo, importe 70; CASO 5 "milca milagro facturar a vega 20 euros" → cliente VEGAMAYOR, importe 20. Cleanup 5/5.
+- scripts/q-cat.ts: auditoría del catálogo del tenant (c1/c2/precio/cliente asociado).
+- Cabecera del endpoint actualizada (V29.83 fuente de verdad + V29.84 redes de seguridad). Sin cambios de UI.
+
+Verificación:
+- bun run build OK; reinicio del custom server (server-v2984.log, 1 proceso, puerto 3000).
+- Tests: test-agenda-diaria-http.ts 17/17 OK; test-agenda-catalogo.ts 16/16 OK (casos 1-3 de V29.83 intactos: DESCARGA RIALTO 5p=15€, VIAJE DAROCA 585,78€, PIKING BOBINA MILAGRO 10b=12€ con dictado con errores; casos 4-5 nuevos de facturación en verde).
+- Estado git saneado tras reciclaje del sandbox (commit basura deshecho, skills/ restaurados).
+
+Stage Summary:
+- Al dictar un concepto del catálogo (c2), el agente rellena SIEMPRE el cliente y el precio correctos: primero el LLM con el catálogo en el prompt y, si falla, el código impone las reglas 10 y 11 de forma determinística. El dictado manda siempre en lo que el usuario dijo explícitamente.

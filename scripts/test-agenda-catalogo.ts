@@ -81,6 +81,23 @@ async function main() {
   check(Math.abs(Number(c3.importe) - 12) < 0.01, 'importe dictado manda: 10 × 1,20 = 12', c3.importe)
   check(Number(c3.cantidad) === 10 && String(c3.unidad) === 'b', 'cantidad 10 unidad "b"', `${c3.cantidad}${c3.unidad}`)
 
+  // 4) FACTURACIÓN: cliente asociado del catálogo (dictado sin "facturar a")
+  console.log('── CASO 4: "milca milagro 70 euros" (facturación → cliente del catálogo) ──')
+  const it4 = await interpretar('milca milagro 70 euros')
+  const c4 = it4[0] || {}
+  check(String(c4.tipo) === 'facturacion', 'tipo facturación', c4.tipo)
+  check(/milca/i.test(String(c4.concepto || '')), 'concepto del catálogo (familia MILCA)', c4.concepto)
+  check(/florette/i.test(String(c4.cliente || '')), 'cliente rellenado del catálogo: FLORETTE', c4.cliente)
+  check(Math.abs(Number(c4.importe) - 70) < 0.01, 'importe dictado manda: 70', c4.importe)
+
+  // 5) FACTURACIÓN con "facturar a vega": el catálogo lo asocia a VEGAMAYOR
+  console.log('── CASO 5: "milca milagro facturar a vega 20 euros" (→ VEGAMAYOR) ──')
+  const it5 = await interpretar('milca milagro facturar a vega 20 euros')
+  const c5 = it5[0] || {}
+  check(String(c5.tipo) === 'facturacion', 'tipo facturación', c5.tipo)
+  check(/vegamayor/i.test(String(c5.cliente || '')), 'cliente VEGAMAYOR (dictado o catálogo)', c5.cliente)
+  check(Math.abs(Number(c5.importe) - 20) < 0.01, 'importe dictado manda: 20', c5.importe)
+
   // Limpieza: dejar la fecha de prueba vacía
   console.log('── CLEANUP ──')
   const get = await api('GET', `/api/agenda-diaria?fecha=${FECHA_TEST}`)
