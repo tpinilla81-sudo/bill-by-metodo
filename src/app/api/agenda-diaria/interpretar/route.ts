@@ -18,6 +18,10 @@ import ZAI from 'z-ai-web-dev-sdk'
 // V29.84 — red de seguridad en CÓDIGO: aunque el LLM olvide las reglas 10/11,
 // al dictar un concepto del catálogo el código rellena el CLIENTE (facturación
 // sin "facturar a X") y el IMPORTE (cantidad dictada × precio por unidad).
+// V29.86 — el SDK de IA en producción no encuentra .z-ai-config (ese fichero no
+// se sube al hosting): ahora la configuración puede venir por la variable de
+// entorno Z_AI_CONFIG (JSON con baseUrl y apiKey) con fallback a los ficheros
+// estándar del SDK (proyecto/home//etc) como en el entorno local.
 
 function normStr(s: string): string {
   return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -52,6 +56,20 @@ function fuzzyMatch(txt: string, vocab: string[]): string {
     if (mejorPuntos > 0) return mejor
   }
   return txt
+}
+
+// V29.86 — configuración del SDK: variable de entorno Z_AI_CONFIG (producción)
+// con prioridad; si no, los ficheros estándar del SDK (proyecto / home / /etc).
+// NUNCA se loguea el contenido (contiene la apiKey).
+async function crearZai() {
+  const raw = String(process.env.Z_AI_CONFIG || '').trim()
+  if (raw) {
+    try {
+      const cfg = JSON.parse(raw)
+      if (cfg && cfg.baseUrl && cfg.apiKey) return new ZAI(cfg)
+    } catch { /* JSON inválido → fallback a ficheros */ }
+  }
+  return ZAI.create()
 }
 
 export async function POST(req: Request) {
@@ -152,7 +170,7 @@ ${conceptosFac.slice(0, 60).map(c => `- ${c}`).join('\n') || '(ninguno aún)'}
 
 Dictado a interpretar (puede tener errores de transcripción de voz — interpreta por contexto):`
 
-    const zai = await ZAI.create()
+    const zai = await crearZai()
     const completion = await zai.chat.completions.create({
       messages: [
         { role: 'assistant', content: system },
@@ -256,6 +274,11 @@ Dictado a interpretar (puede tener errores de transcripción de voz — interpre
     return NextResponse.json({ items: creadas, count: creadas.length })
   } catch (err: any) {
     console.error('Agenda diaria interpretar error:', err)
-    return NextResponse.json({ error: 'Error interpretando con IA: ' + (err?.message || 'desconocido') }, { status: 500 })
+    const m = String(err?.message || '')
+    // V29.86 — mensaje claro cuando el hosting no tiene la configuración del SDK
+    if (/Configuration file not found|\.z-ai-config/i.test(m)) {
+      return NextResponse.json({ error: 'El agente IA no está configurado en este servidor: define la variable de entorno Z_AI_CONFIG (JSON con { "baseUrl", "apiKey" }) o crea el fichero .z-ai-config en el servidor, y reinicia.' }, { status: 503 })
+    }
+    return NextResponse.json({ error: 'Error interpretando con IA: ' + (m || 'desconocido') }, { status: 500 })
   }
 }

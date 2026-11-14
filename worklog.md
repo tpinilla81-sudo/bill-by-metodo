@@ -2443,3 +2443,29 @@ Verificación:
 
 Stage Summary:
 - El diario es únicamente la agenda que rellena el agente por dictado; cualquier pista de vinculación con Registros (real o de nombre) desaparece de la UI y del código.
+
+### V29.86 · 2026-11-15 · AGENTE IA EN PRODUCCIÓN — configuración por variable de entorno (error ".z-ai-config")
+Request:
+- "Da error" + captura del móvil: al dictar en producción, el agente devolvía el error del SDK "Configuration file not found or invalid. Please create .z-ai-config in your project, home directory, or /etc".
+
+Diagnóstico:
+- z-ai-web-dev-sdk SOLO lee ficheros (.z-ai-config en proyecto/home//etc); ZAI.create() no acepta parámetros. En producción ese fichero no existe (está en .gitignore y no se sube al hosting) → ZAI.create() lanzaba y el dictado fallaba SIEMPRE en producción. En el sandbox funcionaba por /etc/.z-ai-config.
+- El SDK exporta la clase ZAI: new ZAI({ baseUrl, apiKey }) es válido.
+
+Cambios:
+- interpretar/route.ts: nuevo helper crearZai() — si existe la variable de entorno Z_AI_CONFIG (JSON con baseUrl y apiKey) se usa new ZAI(cfg); si no, fallback a ZAI.create() (ficheros estándar, sandbox local). Nunca se loguea el contenido (contiene la apiKey).
+- Catch del POST: si el error es de configuración (Configuration file not found / .z-ai-config) responde 503 con mensaje claro en español: "El agente IA no está configurado en este servidor: define la variable de entorno Z_AI_CONFIG (JSON con { "baseUrl", "apiKey" }) o crea el fichero .z-ai-config en el servidor, y reinicia."
+- scripts/test-zai-config.ts (NUEVO): valida las dos rutas de configuración con un chat real SIN exponer la clave (4 checks: fichero con baseUrl+apiKey, baseUrl con protocolo, chat por env var, chat por ficheros).
+- scripts/test-interpretar-min.ts (NUEVO): mini E2E del endpoint para validar el server arrancado con Z_AI_CONFIG por variable de entorno.
+
+Verificación:
+- test-zai-config: TODO OK — chat completion funciona por Z_AI_CONFIG (new ZAI(cfg)) y por ficheros (ZAI.create()).
+- Server arrancado con Z_AI_CONFIG="$(cat /etc/.z-ai-config)": test-interpretar-min 5/5 OK ("viaje daroca" → VIAJE DAROCA 585,78€, cleanup 1/1) — la ruta que usará producción.
+- Server normal (ficheros): bun run build OK; tests completos 17/17 + catálogo 16/16.
+- Label V29.86-AGENTE-IA-PROD.
+
+Pendiente del usuario (hosting):
+- Definir en el hosting (Vercel → Settings → Environment Variables) la variable Z_AI_CONFIG con el JSON de configuración del SDK (mismo formato que .z-ai-config: baseUrl con /v1 y apiKey) y redeployar. La clave no se comparte por chat.
+
+Stage Summary:
+- El agente del diario funciona ahora en cualquier entorno: producción lee la configuración de la variable de entorno Z_AI_CONFIG y el entorno local sigue usando los ficheros estándar; el error de configuración se muestra en claro en lugar de un fallo técnico.
