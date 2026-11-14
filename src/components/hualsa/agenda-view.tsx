@@ -217,7 +217,7 @@ export function AgendaView() {
   const c2Options = [...new Set(catalogo.map(x => x.c2).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'))
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-6xl mx-auto">
+    <div className="w-full p-4 md:p-6 space-y-4 max-w-6xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Agenda IA</h1>

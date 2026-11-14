@@ -2302,3 +2302,31 @@ Cambios:
 Stage Summary:
 - Nueva pestaña AGENDA IA: dicta por voz → la IA genera la agenda con tus clientes y conceptos reales → editas lo que haga falta → pasas todo a ENTRADAS o REGISTROS de golpe.
 - El dictado necesita Chrome/Edge/Safari (micrófono HTTPS). Si la IA no está disponible, la agenda funciona igual tecleando y creando líneas a mano.
+
+## V29.80 · 2026-11-15 · AGENDA DIARIA — dictado por voz → agenda del día (formato "Registro Diario")
+Request:
+- "Lo que hacemos es integrar otra función en otra sección que la vamos a llamar agenda diaria. Hay el usuario por voz, va indicando las entradas que tiene y el agente va rellenando la agenda." + 2 capturas del "Registro Diario" original (Logistica Hualsa con cargas 1/2 y Facturación Día por cliente).
+
+Cambios:
+- NUEVA PESTAÑA "AGENDA DIARIA" (lima, icono CalendarDays) entre AGENDA IA y STOCK ALMACÉN, con permiso propio 'agendaDiaria' (también añadido el de AGENDA IA que faltaba en Configuración).
+- NUEVO MODELO AgendaDia (schema.prisma + schema.prisma.pg): fecha, tipo (logistica|facturacion), carga (nº de carga), cliente, concepto, nota, cantidad, unidad (b/p/u...), importe, orden, viaVoz, soft delete.
+- APIs nuevas:
+  - GET/POST /api/agenda-diaria — líneas del día; POST acepta batch; las líneas logística sin carga explícita se añaden a la carga EN CURSO del día (continúa donde lo dejaste).
+  - PUT/DELETE /api/agenda-diaria/[id] — edición y soft delete.
+  - POST /api/agenda-diaria/interpretar — el AGENTE: LLM (z-ai sdk, solo backend) convierte el dictado en líneas y LAS GUARDA directamente en la agenda del día. El prompt incluye el vocabulario real del tenant (clientes de la tabla + clientes/conceptos usados antes en la agenda) y fuzzy-match servidor corrige errores de dictado ("pikin bobinas" → "Piking Bobinas", "para Florette" → "FLORETTE HORTICOLA NAVARRA SLU").
+- UI agenda-diaria-view.tsx (mobile-first, formato cuaderno):
+  - Navegación por días (‹ fecha › + "Ir a hoy"), fecha larga en español.
+  - Dictado por voz (Web Speech API es-ES, Chrome/Edge/Safari) + textarea editable (fallback a mano) + botón "Añadir a la agenda": el agente rellena y las líneas nuevas se resaltan unos segundos. Si solo entró un tipo, salta a esa pestaña.
+  - Pestaña "Logística Hualsa": cargas numeradas (1, 2...), líneas "Concepto; importe€. Xb.", Total por carga, botón "+ Nueva carga" y "Total Dia; X€".
+  - Pestaña "Facturación Día": agrupado por CLIENTE (subrayado), líneas "Destino/ruta; importe€ nota", Total y recuentos por destino (lo de antes de la "/"), como el cuaderno original.
+  - Cada línea editable (diálogo: concepto, importe, cantidad, unidad, carga o cliente con autocompletado, nota) y borrable; borrar carga completa; vaciar el día.
+- Corregido overflow horizontal en móvil (mx-auto dentro de flex-col → fit-content): w-full en Agenda Diaria y también en Agenda IA (V29.79).
+- page.tsx: View 'agendaDiaria' + render + permisos; sidebar.tsx: nav + permisos + label.
+- scripts/test-agenda-diaria.ts: test real del agente con el dictado de las capturas → carga 1 (5 líneas), "nueva carga" separa carga 2 (3 líneas), Piking 86,4€/91,2€, Total Día logística = 511,6€ EXACTO como el cuaderno, facturación Florette con cliente real, "dos veces 90 euros" → 2 líneas. TODO OK.
+- Verificación en navegador (desktop + iPhone 14): dictado real → 2 logística + 1 facturación con fuzzy correcto; edición de línea; totales; pestañas; sin overflow horizontal.
+- Sidebar build label → V29.80-AGENDA-DIARIA · 2026-11-15.
+
+Stage Summary:
+- Nueva sección AGENDA DIARIA: dictas por voz lo que va pasando ("hualsa milagros 125 euros", "nueva carga", "para Florette milca milagro 20 euros") y el agente va rellenando el cuaderno del día con el formato de siempre; luego editas/tocas lo que quieras.
+- El dictado necesita Chrome/Edge/Safari con micrófono (HTTPS). Sin voz funciona igual escribiendo el texto.
+- La agenda diaria es independiente de ENTRADAS/REGISTROS/Facturas: es el cuaderno operativo diario (con subtotales por carga y facturación por cliente).

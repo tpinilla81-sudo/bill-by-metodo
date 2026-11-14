@@ -95,6 +95,7 @@ model Tenant {
   facturaSeqs   FacturaSeq[]
   facturas      Factura[]
   backups       Backup[]
+  agendaDia     AgendaDia[]
 }
 
 model User {
@@ -149,6 +150,30 @@ model Factura {
 
   @@index([tenantId, fecha])
   @@index([tenantId, clienteId])
+}
+
+model AgendaDia {
+  id        String    @id @default(cuid())
+  tenantId  String
+  fecha     String                  // YYYY-MM-DD del día de la agenda
+  tipo      String    @default("logistica") // "logistica" | "facturacion"
+  carga     Int       @default(1)   // nº de carga/grupo (logistica): 1, 2, 3...
+  cliente   String    @default("")  // cliente de facturación (facturacion): Florette, Milca...
+  concepto  String    @default("")  // texto de la línea: Hualsa/Milagro, Piking Bobinas, Milca/Milagro...
+  nota      String    @default("")  // nota breve: "Facturar a Vega", "envases"...
+  cantidad  Float     @default(0)   // cantidad (0 si no aplica)
+  unidad    String    @default("")  // b, p, u, rollos... (abreviatura dictada)
+  importe   Float     @default(0)   // importe en € de la línea
+  orden     Int       @default(0)   // orden dentro del grupo
+  creadoPor String    @default("")  // userId que lo creó ("voz" si vino por dictado)
+  viaVoz    Boolean   @default(false)
+  deletedAt DateTime?               // V29.52: soft delete — null = activo
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, fecha])
 }
 
 model Backup {
