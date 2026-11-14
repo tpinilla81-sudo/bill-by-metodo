@@ -8,9 +8,18 @@ import { getSessionUser } from '@/lib/auth'
 // en cargas (1, 2, 3...) y líneas de FACTURACIÓN agrupadas por cliente.
 // El usuario dicta por voz y el agente (POST /api/agenda-diaria/interpretar)
 // rellena la agenda; estas rutas son el CRUD de soporte.
+// V29.82 — el GET devuelve también la lista de clientes del tenant (para el
+// datalist de «añadir a mano») y el fallback de fecha usa Europe/Madrid.
+
+// Hoy en España (el fallback UTC daba el día anterior de madrugada)
+function hoyMadrid(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
+}
 
 function normFecha(f: any): string {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(f || '')) ? String(f) : new Date().toISOString().slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(f || '')) ? String(f) : hoyMadrid()
 }
 
 // GET /api/agenda-diaria?fecha=YYYY-MM-DD → líneas del día (ambos tipos)
@@ -27,7 +36,13 @@ export async function GET(req: Request) {
       where,
       orderBy: [{ createdAt: 'asc' }],
     })
-    return NextResponse.json({ items, fecha })
+    // Lista de clientes del tenant para el datalist del formulario manual
+    const clientes = await db.cliente.findMany({
+      where: { tenantId: tid, deletedAt: null },
+      select: { nombre: true },
+      orderBy: { nombre: 'asc' },
+    })
+    return NextResponse.json({ items, fecha, clientes: clientes.map(c => c.nombre).filter(Boolean) })
   } catch (err: any) {
     console.error('Agenda diaria GET error:', err)
     return NextResponse.json({ error: 'Error cargando agenda: ' + (err?.message || '') }, { status: 500 })

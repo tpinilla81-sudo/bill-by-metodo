@@ -2359,3 +2359,26 @@ Pruebas realizadas (sin cambios de app):
 - Revisada la lógica de fechas de agenda-diaria-view.tsx: hoyISO() usa hora local (sin bug UTC de medianoche) y addDias/fmt usan T12:00:00 (seguro con DST). El endpoint interpretar recibe la fecha local del cliente.
 - Limpieza del reciclaje del sandbox: deshecho commit basura (db no-op), bun install, next build, core.fileMode=false para ignorar cambios de modo, servidor custom-server.js re-arrancado.
 - Conclusión: AGENDA DIARIA funciona bien — agente, CRUD, totales, edición, borrado, navegación y fechas OK. No requiere redeploy de código (build V29.81 ya en producción).
+
+### V29.82 · 2026-11-15 · DIARIO ROBUSTO — dictado que no se corta, comas decimales y pequeñas robustez
+Request:
+- Continuación de "Solo lo que quiero es que funcione bien el diario": revisión a fondo de la Agenda Diaria y corrección de los puntos débiles encontrados.
+
+Cambios (código):
+- DICTADO SIN CORTES (agenda-diaria-view.tsx): crearRec() reemplaza al reconocedor suelto — onend REINICIA el reconocimiento automáticamente mientras el usuario no pulse «Parar» (Chrome lo corta tras ~60s de silencio o por gestión de energía; antes el dictado simplemente se moría). El texto ya reconocido nunca se pierde (textoBaseRef se re-ancla al texto actual en cada reinicio). Límite de seguridad: 5 reinicios sin reconocer nada → aviso claro para pulsar de nuevo; cada resultado reconocido resetea el contador.
+- Errores de micrófono diferenciados: not-allowed/service-not-allowed (permiso denegado), audio-capture (sin micro) y service-not-allowed → mensaje específico y parada limpia (sin bucle de reintentos); network → aviso de reintento; no-speech/aborted se resuelven en onend.
+- COMAS DECIMALES en el formulario de línea: Importe y Cantidad pasan de type="number" a texto con inputMode="decimal" y parse español (parseNumEs: «9,5»→9.5, acepta también punto). Antes un «9,5» del teclado español en un input number se corrompía (probado: guardaba 95€). El estado guarda importeTxt/cantidadTxt para no perder dígitos mientras se teclea; fmtTxt muestra el valor guardado con coma.
+- Datalist de clientes completo: GET /api/agenda-diaria devuelve además la lista de clientes del tenant (tabla Cliente), así el datalist de «añadir a mano» ofrece TODOS los clientes (antes solo los del día actual); se combinan con los clientes ya usados en la agenda.
+- Limpieza de timers: flash() centraliza el resaltado de líneas nuevas (clearTimeout antes de reprogramar) y el unmount para el micro y borra el timer (sin fugas ni parpadeos entre tandas).
+- Fechas de fallback en Europe/Madrid: hoyMadrid() con Intl (en route.ts e interpretar/route.ts) sustituye al toISOString UTC, que de madrugada (00:00–01:59 hora española) daba el día anterior. Solo afecta al fallback; la UI siempre manda la fecha del día navegado.
+- Sidebar build label → V29.82-DIARIO-ROBUSTO · 2026-11-15.
+
+Verificación:
+- bun run build OK; reinicio del custom server; label V29.82 visible en navegador tras desregistrar SW PWA.
+- Test E2E HTTP (test-agenda-diaria-http.ts): 17/17 OK antes y después de los cambios (interpretar real ~1,4s, fuzzy-match, cargas, totales 137€/42€, PUT, POST manual, cleanup).
+- Navegador (día de ayer 2026-11-13 como banco de pruebas, sin tocar días reales): dictado con errores de transcripción → 2 de logística (cargas 1 y 2, Total Dia 137€ exacto) + 1 de facturación («Milca/Milagro; 20€ Facturar a Vega»); «Nueva carga» → formulario en carga 3 (max+1); edición con coma «9,5» → guardado 9,5€ (bug 95€ corregido); Total Dia recalculado (146,5€); «Vaciar día» con confirm → agenda limpia; «Dictar por voz» sin micrófono (headless) → mensaje claro «Permiso de micrófono denegado» y el botón se recupera solo.
+- Base de datos: hoy (2026-11-14 Madrid) intacto, 0 líneas de prueba.
+- Limpieza git tras reciclaje del sandbox: deshecho commit basura (asunto UUID, db no-op) y restaurados 900+ ficheros skills/.
+
+Stage Summary:
+- La Agenda Diaria queda lista para uso real continuado: el dictado aguanta pausas largas sin cortarse, el teclado español (comas) funciona en importes y cantidades, y los errores de micrófono se comunican con claridad. El agente LLM, fuzzy-match, cargas y totales verificados 17/17 + E2E navegador.

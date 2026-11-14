@@ -43,6 +43,10 @@ type FormLine = {
   cantidad: number
   unidad: string
   importe: number
+  // V29.82 — texto crudo de importe/cantidad mientras se edita: acepta coma
+  // decimal («9,5») como escribe un usuario español sin perder dígitos
+  importeTxt?: string
+  cantidadTxt?: string
 }
 
 const EMPTY_FORM: (fecha: string, tipo: 'logistica' | 'facturacion') => FormLine = (fecha, tipo) => ({
@@ -56,7 +60,21 @@ const EMPTY_FORM: (fecha: string, tipo: 'logistica' | 'facturacion') => FormLine
   cantidad: 0,
   unidad: '',
   importe: 0,
+  importeTxt: '',
+  cantidadTxt: '',
 })
+
+// «9,5» → 9.5 · «9.5» → 9.5 · «abc» → 0 (V29.82: coma decimal española)
+function parseNumEs(v: string): number {
+  const n = Number(String(v || '').replace(/\s/g, '').replace(',', '.'))
+  return Number.isFinite(n) ? n : 0
+}
+
+// número → texto con coma para el input (9.5 → «9,5»)
+function fmtTxt(n: number): string {
+  const s = String(Math.round((Number(n) || 0) * 100) / 100)
+  return s === '0' ? '' : s.replace('.', ',')
+}
 
 function hoyISO(): string {
   const d = new Date()
@@ -114,8 +132,29 @@ export function AgendaDiariaView() {
   const [form, setForm] = useState<FormLine | null>(null) // diálogo editar/añadir
   const [guardandoForm, setGuardandoForm] = useState(false)
   const [flashIds, setFlashIds] = useState<string[]>([])
+  const [clientesLista, setClientesLista] = useState<string[]>([]) // clientes del tenant (V29.82)
   const recRef = useRef<SpeechRecognitionLike | null>(null)
   const textoBaseRef = useRef('')
+  // V29.82 — robustez del dictado: Chrome corta el reconocimiento tras silencios
+  // largos; con seguirRef activo se reinicia solo (hasta pulsar Parar).
+  const textoRef = useRef('')
+  const seguirRef = useRef(false)
+  const reintentosRef = useRef(0)
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Resalta líneas nuevas 6s (limpia el timer anterior para no pisar tandas)
+  function flash(ids: string[]) {
+    setFlashIds(ids)
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+    flashTimerRef.current = setTimeout(() => setFlashIds([]), 6000)
+  }
+
+  // Al desmontar: parar el micro y limpiar timers
+  useEffect(() => () => {
+    seguirRef.current = false
+    try { recRef.current?.stop() } catch {}
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+  }, [])
 
   // ── Carga de líneas del día ────────────────────────────────────────────────
   const cargar = useCallback(async (f: string) => {
@@ -123,7 +162,11 @@ export function AgendaDiariaView() {
     try {
       const res = await fetch(`/api/agenda-diaria?fecha=${f}`, { cache: 'no-store' })
       const data = await res.json()
-      if (res.ok) setItems((data.items || []) as AgendaDiaLine[])
+      if (res.ok) {
+        setItems((data.items || []) as AgendaDiaLine[])
+        // V29.82 — lista completa de clientes del tenant (datalist del formulario)
+        if (Array.isArray(data.clientes)) setClientesLista(data.clientes as string[])
+      }
       else setMsg('⚠ ' + (data.error || 'Error cargando la agenda'))
     } catch (err: any) {
       setMsg('⚠ Error de conexión: ' + (err?.message || ''))
@@ -142,20 +185,17 @@ export function AgendaDiariaView() {
   }, [])
 
   // ── DICTADO POR VOZ (Web Speech API, es-ES) ────────────────────────────────
-  const toggleGrabar = useCallback(() => {
-    if (grabando) {
-      recRef.current?.stop()
-      setGrabando(false)
-      return
-    }
-    const SR = getSpeechRecognition()
-    if (!SR) { setSoportaVoz(false); return }
+  // V29.82: crearRec() construye el reconocedor y onend lo REINICIA mientras
+  // seguirRef esté activo — el dictado continúa aunque Chrome lo corte por
+  // silencio; solo para con el botón Parar, permiso denegado o 5 cortes sin
+  // recibir nada. El texto ya reconocido nunca se pierde.
+  function crearRec(SR: new () => SpeechRecognitionLike): SpeechRecognitionLike {
     const rec = new SR()
     rec.lang = 'es-ES'
     rec.continuous = true
     rec.interimResults = true
-    textoBaseRef.current = texto ? texto + ' ' : ''
     rec.onresult = (e: any) => {
+      reintentosRef.current = 0
       let finalTxt = ''
       let interimTxt = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -163,25 +203,75 @@ export function AgendaDiariaView() {
         if (e.results[i].isFinal) finalTxt += chunk + ' '
         else interimTxt += chunk
       }
-      if (finalTxt) setTexto((textoBaseRef.current + finalTxt).trim())
-      else if (interimTxt) setTexto((textoBaseRef.current + interimTxt).trim())
+      if (finalTxt || interimTxt) {
+        const nuevo = (textoBaseRef.current + (finalTxt || interimTxt)).trim()
+        textoRef.current = nuevo
+        setTexto(nuevo)
+      }
     }
     rec.onerror = (e: any) => {
-      setGrabando(false)
-      if (e?.error === 'not-allowed') setMsg('⚠ Permiso de micrófono denegado — actívalo en el navegador')
-      else if (e?.error !== 'aborted') setMsg('⚠ Error de micrófono: ' + (e?.error || ''))
+      const err = String(e?.error || '')
+      if (err === 'not-allowed' || err === 'service-not-allowed' || err === 'audio-capture') {
+        // errores permanentes: no reintentar
+        seguirRef.current = false
+        recRef.current = null
+        setGrabando(false)
+        if (err === 'not-allowed') setMsg('⚠ Permiso de micrófono denegado — actívalo en el navegador')
+        else if (err === 'audio-capture') setMsg('⚠ No se detecta micrófono — comprueba que funciona')
+        else setMsg('⚠ No se pudo iniciar el micrófono — recarga la página e inténtalo de nuevo')
+      } else if (err === 'network') {
+        setMsg('⚠ El servicio de dictado pierde conexión — reintentando…')
+      }
+      // no-speech (silencio) y aborted se resuelven en onend (reinicio o parada)
     }
-    rec.onend = () => setGrabando(false)
+    rec.onend = () => {
+      recRef.current = null
+      if (!seguirRef.current) { setGrabando(false); return }
+      // Corte de Chrome (silencio largo, límite interno): reinicio automático
+      if (reintentosRef.current >= 5) {
+        seguirRef.current = false
+        setGrabando(false)
+        setMsg('⚠ El dictado se cortó varias veces sin reconocer nada — pulsa «Dictar por voz» para continuar')
+        return
+      }
+      try {
+        textoBaseRef.current = textoRef.current ? textoRef.current + ' ' : ''
+        const rec2 = crearRec(SR)
+        rec2.start()
+        recRef.current = rec2
+        reintentosRef.current += 1 // se resetea al primer resultado reconocido
+      } catch {
+        seguirRef.current = false
+        setGrabando(false)
+      }
+    }
+    return rec
+  }
+
+  const toggleGrabar = useCallback(() => {
+    if (grabando) {
+      seguirRef.current = false
+      recRef.current?.stop()
+      setGrabando(false)
+      return
+    }
+    const SR = getSpeechRecognition()
+    if (!SR) { setSoportaVoz(false); return }
+    seguirRef.current = true
+    reintentosRef.current = 0
+    textoBaseRef.current = textoRef.current ? textoRef.current + ' ' : ''
+    const rec = crearRec(SR)
     recRef.current = rec
     try {
       rec.start()
       setGrabando(true)
       setMsg('')
     } catch {
+      seguirRef.current = false
       setGrabando(false)
       setMsg('⚠ No se pudo iniciar el micrófono')
     }
-  }, [grabando, texto])
+  }, [grabando])
 
   // ── AGENTE: interpretar dictado y rellenar la agenda ──────────────────────
   async function handleInterpretar() {
@@ -202,9 +292,9 @@ export function AgendaDiariaView() {
       const nuevas: AgendaDiaLine[] = (data.items || []) as AgendaDiaLine[]
       // Refresca desde el servidor y resalta las líneas nuevas unos segundos
       await cargar(fecha)
-      setFlashIds(nuevas.map(n => n.id))
-      setTimeout(() => setFlashIds([]), 6000)
+      flash(nuevas.map(n => n.id))
       setTexto('')
+      textoRef.current = ''
       const nLog = nuevas.filter(n => n.tipo === 'logistica').length
       const nFac = nuevas.filter(n => n.tipo === 'facturacion').length
       const partes: string[] = []
@@ -249,8 +339,7 @@ export function AgendaDiariaView() {
         })
         if (!res.ok) { const d = await res.json(); setMsg('⚠ ' + (d.error || 'Error guardando')); return }
         const d = await res.json()
-        setFlashIds((d.items || []).map((x: AgendaDiaLine) => x.id))
-        setTimeout(() => setFlashIds([]), 6000)
+        flash((d.items || []).map((x: AgendaDiaLine) => x.id))
       }
       setForm(null)
       await cargar(fecha)
@@ -347,7 +436,7 @@ export function AgendaDiariaView() {
         </div>
         <div className="flex items-center gap-1 shrink-0 opacity-60 group-hover:opacity-100">
           <button
-            onClick={() => setForm({ mode: 'edit', ...l })}
+            onClick={() => setForm({ mode: 'edit', ...l, importeTxt: fmtTxt(l.importe), cantidadTxt: fmtTxt(l.cantidad) })}
             className="h-8 w-8 rounded-md hover:bg-slate-100 flex items-center justify-center text-slate-500"
             title="Editar línea"
           >
@@ -420,7 +509,7 @@ export function AgendaDiariaView() {
           </div>
           <textarea
             value={texto}
-            onChange={e => setTexto(e.target.value)}
+            onChange={e => { textoRef.current = e.target.value; setTexto(e.target.value) }}
             placeholder={grabando ? 'Escuchando… el dictado aparece aquí' : 'Ej: «Hualsa Milagro 125 euros. Piking bobinas 72 bobinas a 1,20. Carga palets 3 palets a 3 euros. Nueva carga. Milca Milagro 20 euros. La Boquera Milca 90 euros facturar a Vega»'}
             rows={4}
             className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#2bb24c] focus:outline-none resize-y"
@@ -556,11 +645,12 @@ export function AgendaDiariaView() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase">Importe €</label>
-                  <Input type="number" step="0.01" inputMode="decimal" value={form.importe || ''} onChange={e => setForm({ ...form, importe: Number(e.target.value) || 0 })} className="mt-1 text-right" />
+                  {/* V29.82: texto + inputMode decimal — acepta coma («9,5») */}
+                  <Input type="text" inputMode="decimal" value={form.importeTxt || ''} onChange={e => setForm({ ...form, importeTxt: e.target.value, importe: parseNumEs(e.target.value) })} className="mt-1 text-right" placeholder="0" />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase">Cantidad</label>
-                  <Input type="number" inputMode="decimal" value={form.cantidad || ''} onChange={e => setForm({ ...form, cantidad: Number(e.target.value) || 0 })} className="mt-1 text-right" />
+                  <Input type="text" inputMode="decimal" value={form.cantidadTxt || ''} onChange={e => setForm({ ...form, cantidadTxt: e.target.value, cantidad: parseNumEs(e.target.value) })} className="mt-1 text-right" placeholder="0" />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase">Unidad</label>
@@ -583,7 +673,7 @@ export function AgendaDiariaView() {
                     className="mt-1"
                   />
                   <datalist id="agenda-diaria-clientes">
-                    {vocabClientes.map(c => <option key={c} value={c} />)}
+                    {[...new Set([...clientesLista, ...vocabClientes])].map(c => <option key={c} value={c} />)}
                   </datalist>
                 </div>
               )}

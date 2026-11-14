@@ -18,6 +18,13 @@ function normStr(s: string): string {
   return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
+// V29.82 — hoy en España (el fallback UTC daba el día anterior de madrugada)
+function hoyMadrid(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
+}
+
 function fuzzyMatch(txt: string, vocab: string[]): string {
   const t = normStr(txt)
   if (!t) return ''
@@ -49,7 +56,7 @@ export async function POST(req: Request) {
     const user = await getSessionUser()
     const body = await req.json()
     const texto = String(body.texto || '').trim()
-    const fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha)) ? String(body.fecha) : new Date().toISOString().slice(0, 10)
+    const fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha)) ? String(body.fecha) : hoyMadrid()
 
     if (!texto) return NextResponse.json({ error: 'No hay texto para interpretar' }, { status: 400 })
 
