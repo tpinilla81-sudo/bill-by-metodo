@@ -2330,3 +2330,19 @@ Stage Summary:
 - Nueva sección AGENDA DIARIA: dictas por voz lo que va pasando ("hualsa milagros 125 euros", "nueva carga", "para Florette milca milagro 20 euros") y el agente va rellenando el cuaderno del día con el formato de siempre; luego editas/tocas lo que quieras.
 - El dictado necesita Chrome/Edge/Safari con micrófono (HTTPS). Sin voz funciona igual escribiendo el texto.
 - La agenda diaria es independiente de ENTRADAS/REGISTROS/Facturas: es el cuaderno operativo diario (con subtotales por carga y facturación por cliente).
+
+## V29.81 · 2026-11-15 · QUITAR AGENDA IA — queda solo AGENDA DIARIA
+Request:
+- "Agenda IA quítala" (se queda únicamente con la Agenda Diaria de V29.80).
+
+Cambios:
+- Eliminada la pestaña AGENDA IA (V29.79): nav item del sidebar, permiso 'agenda' (SCREEN_PERMISSIONS de page.tsx y sidebar.tsx), View 'agenda' y render de AgendaView en page.tsx.
+- Ficheros borrados: src/components/hualsa/agenda-view.tsx y src/app/api/agenda/interpretar (endpoint LLM de V29.79).
+- Configuración → permisos: quitada la opción "Agenda IA" (queda "Agenda Diaria").
+- Sin cambios de esquema (V29.79 no añadió modelo; su draft era localStorage). El batch de POST /api/registros se mantiene (lo usa el flujo de ENTRADAS). Usuarios con 'agenda' en su JSON de permisos: clave ignorada, sin efecto.
+- Verificación: next build + reinicio del custom server (servía bundle V29.80 cacheado) → en navegador AGENDA IA desaparecida (0 botones), AGENDA DIARIA operativa (Dictar por voz, pestañas Logística/Facturación, Nueva carga), sin errores de página. Lint sin problemas nuevos (55 errores preexistentes intactos).
+- Limpieza git: deshecho commit basura del sandbox (db/custom.db no-op) y restaurados los 900+ ficheros skills/ que el reciclaje volvió a marcar como borrados.
+- Sidebar build label → V29.81-QUITAR-AGENDA-IA · 2026-11-15.
+
+Stage Summary:
+- La app queda con una sola agenda: AGENDA DIARIA (el cuaderno del día con dictado por voz). AGENDA IA eliminada por completo: UI, permiso y endpoint.
