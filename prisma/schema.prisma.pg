@@ -238,3 +238,14 @@ model Config {
 
   @@unique([tenantId])
 }
+
+// V29.89 — configuración global de la app guardada EN la base de datos (p.ej.
+// el JSON de configuración del agente IA): el hosting no necesita variables de
+// entorno extra y el admin la define desde la propia aplicación.
+model AppConfig {
+  id        String   @id @default(cuid())
+  clave     String   @unique
+  valor     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

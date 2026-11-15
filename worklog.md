@@ -2526,3 +2526,29 @@ Pendiente del usuario (hosting): en Vercel → Settings → Environment Variable
 
 Stage Summary:
 - La configuración del agente en hosting es ahora: pegar el JSON completo en una variable y comprobarlo desde el móvil con un GET; el código tolera los errores de pegado y diagnostica cada caso sin exponer secretos.
+
+---
+
+### V29.89 · 2026-11-15 · CONFIG IA EN LA BASE DE DATOS — sin depender del panel del hosting
+
+Request:
+- "No tengo acceso al vercel de esta app tienes que hacerlo tú con los tokens" → el usuario no puede definir variables de entorno en Vercel; se elimina esa dependencia por completo.
+
+Solución:
+- NUEVA tabla AppConfig (clave/valor) en ambos esquemas (sqlite y pg): vercel.json ya ejecuta `prisma db push` en el build → la tabla se crea sola en producción.
+- NUEVO endpoint POST/DELETE /api/config-ia (solo admin/superadmin, requireAdmin): guarda el JSON de configuración del SDK en la BD, validándolo antes y devolviendo la respuesta SIN los valores.
+- leerConfigIa() en el endpoint de interpretar, orden de prioridad: 1) env Z_AI_CONFIG, 2) BD AppConfig, 3) variables simples Z_AI_BASE_URL+Z_AI_API_KEY(+Z_AI_TOKEN), 4) ficheros estándar del SDK. Un contenido roto en la BD se diagnostica; una tabla ausente (deploy antiguo) no rompe el resto de fuentes.
+- El GET de estado ahora reporta "base de datos de la app (AppConfig) — OK" como fuente.
+
+Descubrimiento del paso intermedio (validado antes de adoptar la solución final):
+- El config del SDK lleva 7 claves y el gateway exige header X-Token: pasar solo baseUrl+apiKey al constructor da 401 "missing X-Token" → el constructor recibe SIEMPRE el JSON completo.
+
+Verificación:
+- scripts/test-config-db.ts 16/16: guardar config real → estado = BD → dictado REAL 200 (VIAJE DAROCA 585,78€) con el config leído de la BD (sin env vars) → DELETE vuelve al fichero; validaciones 400 de JSON inválido/incompleto; la respuesta nunca contiene los valores secretos.
+- Suites baseline 17/17 + catálogo 16/16 + build OK.
+- Label V29.89-CONFIG-IA-DB.
+
+Pendiente del usuario: nada — tras el deploy, la configuración se guarda en la BD desde un script de aprovisionamiento del sandbox (POST /api/config-ia como admin) y se verifica con el GET de estado en producción.
+
+Stage Summary:
+- El agente IA se configura desde la propia app contra su base de datos: fin de la dependencia del panel de Vercel para definir secretos.
