@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server'
 import { requireTenantId } from '@/lib/tenant-context'
 import { getSessionUser } from '@/lib/auth'
 import ZAI from 'z-ai-web-dev-sdk'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 
 // V29.80 — AGENDA DIARIA: el agente que rellena la agenda desde el dictado.
 // POST /api/agenda-diaria/interpretar  Body: { texto, fecha }
@@ -24,6 +27,13 @@ import ZAI from 'z-ai-web-dev-sdk'
 // estándar del SDK (proyecto/home//etc) como en el entorno local.
 // V29.87 — diagnóstico diferenciado: el 503 distingue si Z_AI_CONFIG no está
 // definida, si su contenido no es JSON válido o si le falta baseUrl/apiKey.
+// V29.88 — configuración MÁS FÁCIL en el hosting: además de Z_AI_CONFIG (JSON
+// COMPLETO del SDK, todas las claves) se aceptan dos variables simples
+// Z_AI_BASE_URL + Z_AI_API_KEY (con Z_AI_TOKEN opcional si el gateway exige
+// X-Token), menos propensas a errores al pegarlas desde el móvil; se toleran
+// comillas tipográficas y backticks al pegar el JSON, y hay un GET que devuelve
+// el estado de la configuración (sin secretos) para verificarlo en el navegador
+// tras el redeploy.
 
 function normStr(s: string): string {
   return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -65,8 +75,15 @@ function fuzzyMatch(txt: string, vocab: string[]): string {
 // Errores diferenciados (prefijos Z_AI_CONFIG_*) para diagnosticar sin revelar
 // nunca el contenido de la variable (contiene la apiKey).
 async function crearZai() {
-  const raw = String(process.env.Z_AI_CONFIG || '').trim()
+  // 1) Z_AI_CONFIG como JSON (formato del fichero .z-ai-config)
+  let raw = String(process.env.Z_AI_CONFIG || '').trim()
   if (raw) {
+    // V29.88 — tolera errores típicos al pegar el JSON en Vercel desde el móvil
+    raw = raw.replace(/[“”„‟]/g, '"')
+    if ((raw.startsWith('`') && raw.endsWith('`')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+      raw = raw.slice(1, -1).trim()
+    }
+    raw = raw.replace(/\}\s*[;,]+\s*$/, '}').trim()
     let cfg: any = null
     try {
       cfg = JSON.parse(raw)
@@ -76,9 +93,60 @@ async function crearZai() {
     if (!cfg || !cfg.baseUrl || !cfg.apiKey) {
       throw new Error('Z_AI_CONFIG_INCOMPLETE')
     }
+    // V29.88 — pasar el JSON COMPLETO al constructor: el config del SDK puede
+    // llevar más claves necesarias (p.ej. token → header X-Token del gateway).
     return new ZAI(cfg)
   }
+  // 2) V29.88 — dos variables simples (opción recomendada en Vercel)
+  const bu = String(process.env.Z_AI_BASE_URL || '').trim()
+  const ak = String(process.env.Z_AI_API_KEY || '').trim()
+  if (bu && ak) {
+    const token = String(process.env.Z_AI_TOKEN || '').trim()
+    return new ZAI(token ? { baseUrl: bu, apiKey: ak, token } : { baseUrl: bu, apiKey: ak })
+  }
+  if (bu || ak) throw new Error('Z_AI_PARTIAL')
+  // 3) ficheros estándar del SDK (proyecto / home / /etc) — solo entorno local
   return ZAI.create()
+}
+
+// V29.88 — GET /api/agenda-diaria/interpretar: estado de la configuración del
+// agente IA para verificarlo desde el móvil tras el redeploy SIN dictar nada.
+// Nunca devuelve la apiKey ni el contenido de las variables, solo el origen.
+export async function GET(req: Request) {
+  const tid = await requireTenantId(req)
+  if (typeof tid !== 'string') return tid
+  let fuente = 'sin configuración del agente IA'
+  let ok = false
+  const raw = String(process.env.Z_AI_CONFIG || '').trim()
+  const bu = String(process.env.Z_AI_BASE_URL || '').trim()
+  const ak = String(process.env.Z_AI_API_KEY || '').trim()
+  if (raw) {
+    try {
+      const cfg = JSON.parse(raw.replace(/[“”„‟]/g, '"'))
+      if (cfg && cfg.baseUrl && cfg.apiKey) { ok = true; fuente = 'Z_AI_CONFIG (JSON) — OK' }
+      else fuente = 'Z_AI_CONFIG definida pero le falta "baseUrl" y/o "apiKey"'
+    } catch { fuente = 'Z_AI_CONFIG definida pero NO es JSON válido' }
+  } else if (bu && ak) {
+    ok = true
+    fuente = process.env.Z_AI_TOKEN
+      ? 'Z_AI_BASE_URL + Z_AI_API_KEY + Z_AI_TOKEN — OK'
+      : 'Z_AI_BASE_URL + Z_AI_API_KEY — OK (si el gateway exige X-Token, define también Z_AI_TOKEN)'
+  } else if (bu || ak) {
+    fuente = 'Solo una de las dos está definida: Z_AI_BASE_URL y Z_AI_API_KEY deben ir SIEMPRE juntas'
+  } else {
+    const rutas = [
+      path.join(process.cwd(), '.z-ai-config'),
+      path.join(os.homedir(), '.z-ai-config'),
+      '/etc/.z-ai-config',
+    ]
+    const existeFichero = rutas.some(p => { try { return fs.existsSync(p) } catch { return false } })
+    if (existeFichero) { ok = true; fuente = 'fichero .z-ai-config (solo sirve en este servidor local, NO en el hosting)' }
+  }
+  return NextResponse.json({
+    agenteConfigurado: ok,
+    fuente,
+    ...(ok ? {} : { arreglo: 'Vercel → Settings → Environment Variables → define Z_AI_BASE_URL y Z_AI_API_KEY (opción recomendada), o Z_AI_CONFIG con el JSON { "baseUrl", "apiKey" }, y luego Redeploy.' }),
+  })
 }
 
 export async function POST(req: Request) {
@@ -284,14 +352,16 @@ Dictado a interpretar (puede tener errores de transcripción de voz — interpre
   } catch (err: any) {
     console.error('Agenda diaria interpretar error:', err)
     const m = String(err?.message || '')
-    // V29.87 — mensaje claro y diferenciado según el problema de configuración
-    if (/Z_AI_CONFIG_BAD_JSON|Z_AI_CONFIG_INCOMPLETE|Configuration file not found|\.z-ai-config/i.test(m)) {
+    // V29.87/88 — mensaje claro y diferenciado según el problema de configuración
+    if (/Z_AI_CONFIG_BAD_JSON|Z_AI_CONFIG_INCOMPLETE|Z_AI_PARTIAL|Configuration file not found|\.z-ai-config/i.test(m)) {
       const detalle = m.includes('Z_AI_CONFIG_BAD_JSON')
-        ? 'la variable de entorno Z_AI_CONFIG está definida pero su contenido NO es JSON válido'
+        ? 'la variable de entorno Z_AI_CONFIG está definida pero su contenido NO es JSON válido (debe ser { "baseUrl": "...", "apiKey": "..." })'
         : m.includes('Z_AI_CONFIG_INCOMPLETE')
           ? 'la variable de entorno Z_AI_CONFIG está definida pero le falta "baseUrl" y/o "apiKey"'
-          : 'no hay configuración del agente IA: define la variable de entorno Z_AI_CONFIG en el hosting (Vercel → Settings → Environment Variables, igual que DATABASE_URL) con el JSON { "baseUrl", "apiKey" } del SDK'
-      return NextResponse.json({ error: 'El agente IA no está disponible en este servidor: ' + detalle + '. Tras definirla o corregirla, haz redeploy.' }, { status: 503 })
+          : m.includes('Z_AI_PARTIAL')
+            ? 'están definidas Z_AI_BASE_URL y Z_AI_API_KEY pero falta una de las dos (siempre las dos juntas)'
+            : 'no hay configuración del agente IA: en el hosting (Vercel → Settings → Environment Variables, igual que DATABASE_URL) define Z_AI_BASE_URL y Z_AI_API_KEY (opción recomendada), o Z_AI_CONFIG con el JSON { "baseUrl", "apiKey" }'
+      return NextResponse.json({ error: 'El agente IA no está disponible en este servidor: ' + detalle + '. Tras definirlas o corregirlas, haz Redeploy.' }, { status: 503 })
     }
     return NextResponse.json({ error: 'Error interpretando con IA: ' + (m || 'desconocido') }, { status: 500 })
   }

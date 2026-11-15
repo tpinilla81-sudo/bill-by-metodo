@@ -2494,3 +2494,35 @@ Pendiente del usuario (hosting): definir Z_AI_CONFIG en Vercel (mismo lugar que 
 
 Stage Summary:
 - El error del agente en producción ahora se autodiagnostica: falta la variable, JSON roto o incompleta, con instrucciones exactas en cada caso.
+
+---
+
+### V29.88 · 2026-11-15 · CONFIG IA FÁCIL — variables simples, JSON tolerante y GET de estado
+
+Request:
+- Nueva captura "Error" en producción: sigue el mensaje de ausencia de configuración (caso 1 de V29.87) → Z_AI_CONFIG sigue sin estar definida en Vercel. Se facilita al máximo la configuración y la verificación desde el móvil.
+
+Diagnóstico clave (descubierto al testear las variables simples):
+- El config del SDK NO es solo baseUrl+apiKey: tiene 7 claves (baseUrl, apiKey, token, chatId, diskRetire, stage, userId) y el gateway exige el header X-Token → si al constructor solo se le pasan baseUrl+apiKey, la llamada real falla con 401 "missing X-Token header".
+- Por tanto la opción fiable en hosting es Z_AI_CONFIG con el JSON COMPLETO del SDK; las variables simples requieren además Z_AI_TOKEN.
+
+Cambios:
+- crearZai() pasa el JSON COMPLETO de Z_AI_CONFIG al constructor (new ZAI(cfg)), no solo baseUrl+apiKey.
+- Nueva ruta de variables simples: Z_AI_BASE_URL + Z_AI_API_KEY (+ Z_AI_TOKEN opcional si el gateway exige X-Token). Si solo se define una de las dos → Z_AI_PARTIAL con 503 explicativo.
+- Z_AI_CONFIG tolera errores típicos al pegar desde el móvil: comillas tipográficas “ ” → rectas, backticks envolventes, ; o , final tras el JSON.
+- NUEVO GET /api/agenda-diaria/interpretar: devuelve { agenteConfigurado, fuente, arreglo? } SIN secretos — para verificar la configuración en el navegador del móvil tras el redeploy, sin dictar nada.
+- Mensajes 503 actualizados: caso parcial y opciones duales (variables simples o JSON).
+
+Verificación:
+- bun run build OK. Cuatro arranques del server:
+  - Caso A: Z_AI_BASE_URL + Z_AI_API_KEY + Z_AI_TOKEN → GET "OK" + dictado 200, VIAJE DAROCA 585,78€ (test-env-config ok, 9/9) ✓
+  - Caso B: solo Z_AI_BASE_URL → GET agenteConfigurado=false "Solo una de las dos" + POST 503 "falta una de las dos" (9/9) ✓
+  - Caso C: Z_AI_CONFIG con comillas tipográficas → sanitizada y dictado 200 (9/9) ✓
+  - Server normal (ficheros locales) → suites completas 17/17 + catálogo 16/16 + test-zai-config 4/4 ✓
+- GET de estado no contiene ninguno de los valores reales del config (test compara contra ellos).
+- Label V29.88-CONFIG-IA-FACIL.
+
+Pendiente del usuario (hosting): en Vercel → Settings → Environment Variables definir Z_AI_CONFIG con el JSON COMPLETO del SDK (todas las claves del .z-ai-config; si solo usa baseUrl+apiKey, añadir también Z_AI_TOKEN) y pulsar Redeploy. Verificar abriendo /api/agenda-diaria/interpretar en el navegador (GET) → debe decir agenteConfigurado: true.
+
+Stage Summary:
+- La configuración del agente en hosting es ahora: pegar el JSON completo en una variable y comprobarlo desde el móvil con un GET; el código tolera los errores de pegado y diagnostica cada caso sin exponer secretos.
