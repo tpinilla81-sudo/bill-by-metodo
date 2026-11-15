@@ -2552,3 +2552,28 @@ Pendiente del usuario: nada — tras el deploy, la configuración se guarda en l
 
 Stage Summary:
 - El agente IA se configura desde la propia app contra su base de datos: fin de la dependencia del panel de Vercel para definir secretos.
+
+---
+
+### V29.90 · 2026-11-15 · CONFIG IA (UI) + hallazgo clave: las credenciales del sandbox NO sirven para producción
+
+Request:
+- Continuación de "hazlo tú con los tokens": el aprovisionamiento en producción guardó la config en la BD correctamente (agenteConfigurado=true, fuente = AppConfig) pero el dictado real falló con "fetch failed".
+
+Hallazgo (la limitación real):
+- internal-api.z.ai resuelve a IPs PRIVADAS 172.25.x.x (ALB interno de la red del entorno de desarrollo z.ai): desde los servidores de Vercel es inalcanzable → las credenciales del sandbox SOLO valen dentro de este entorno.
+- Probadas las mismas credenciales contra la API pública https://api.z.ai/api/paas/v4 → 401 (身份验证失败): no son intercambiables.
+- El SDK es un cliente OpenAI-compatible (POST baseUrl/chat/completions, Authorization: Bearer apiKey, X-Token opcional) → funciona con la plataforma pública de Z.ai sin cambiar nada de código.
+
+Cambios:
+- NUEVA vista CONFIG IA (src/components/hualsa/config-ia-view.tsx), visible solo para admin/superadmin en el sidebar (icono Bot, adminOnly): muestra el estado (agenteConfigurado + fuente), permite pegar el JSON de configuración (con plantilla de la API pública de Z.ai), guardarlo en la BD (POST /api/config-ia) y borrarlo (DELETE).
+- page.tsx: tipo View + 'configia', render en vistas scrollables con gating admin/superadmin.
+
+Verificación:
+- bun run build OK (fix: export nombrado). test-config-db 16/16 tras el cambio.
+- Label V29.90-CONFIG-IA-UI.
+
+Pendiente del usuario (única vía real para producción): crear una clave de API pública en la plataforma de Z.ai (o cualquier proveedor OpenAI-compatible) y pegarla en la nueva sección CONFIG IA de la app → se guarda en la BD y el agente funciona en producción sin tocar Vercel. La config del sandbox guardada antes en la BD de producción se BORRA (sería engañosa: "configurado" pero inalcanzable desde Vercel).
+
+Stage Summary:
+- Diagnóstico cerrado: la app ya está preparada para configurar el agente desde su propia UI contra la BD; falta únicamente que el usuario cree una clave pública y la pegue en CONFIG IA.

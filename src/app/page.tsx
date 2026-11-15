@@ -12,13 +12,14 @@ import { StockAlmacenView } from '@/components/hualsa/stock-almacen-view'
 import { AgendaDiariaView } from '@/components/hualsa/agenda-diaria-view'
 import { BackupView } from '@/components/hualsa/backup-view'
 import { ConfiguracionView } from '@/components/hualsa/configuracion-view'
+import { ConfigIaView } from '@/components/hualsa/config-ia-view'
 import { AdminView } from '@/components/hualsa/admin-view'
 import { PlansView } from '@/components/hualsa/plans-view'
 import { ConfigProvider, useConfig } from '@/lib/config'
 import { AuthProvider, useAuth } from '@/lib/auth-context'
 import { canAccessConfig } from '@/lib/permissions'
 
-export type View = 'entrada' | 'agendaDiaria' | 'registros' | 'stock' | 'clientes' | 'catalogo' | 'prefactura' | 'facturas' | 'backup' | 'config' | 'admin' | 'suscripcion'
+export type View = 'entrada' | 'agendaDiaria' | 'registros' | 'stock' | 'clientes' | 'catalogo' | 'prefactura' | 'facturas' | 'backup' | 'config' | 'admin' | 'suscripcion' | 'configia'
 
 // Screen permission keys (including sub-permissions)
 const SCREEN_PERMISSIONS = ['entrada', 'entrada.pasarRegistros', 'entrada.grilla', 'agendaDiaria', 'registros', 'stock', 'clientes', 'catalogo', 'prefactura', 'facturas', 'facturas.editarNumero', 'backup', 'configuracion', 'configuracion.empresa', 'configuracion.usuarios', 'configuracion.campos'] as const
@@ -215,8 +216,8 @@ function AppContent() {
             {activeView === 'facturas' && hasPermission(user.role, user.permissions, 'facturas') && <div className="h-full flex flex-col"><FacturasView /></div>}
           </div>
         )}
-        {/* Scrollable views: stock, config, admin, backup, suscripcion */}
-        {['stock', 'backup','suscripcion','config','admin'].includes(activeView) && (
+        {/* Scrollable views: stock, config, admin, backup, suscripcion, configia */}
+        {['stock', 'backup','suscripcion','config','admin','configia'].includes(activeView) && (
           <div key={`${activeView}-${effectiveTenantId}`} className="flex-1 min-h-0 overflow-y-auto">
             <div className="p-3 md:p-6 pt-16 md:pt-6 pb-8">
               {activeView === 'stock' && hasPermission(user.role, user.permissions, 'stock') && <StockAlmacenView />}
@@ -224,6 +225,7 @@ function AppContent() {
               {activeView === 'suscripcion' && (user.role === 'admin' || user.role === 'superadmin') && <PlansView tenantId={effectiveTenantId || user.tenantId} />}
               {activeView === 'config' && canAccessConfig(user.role, user.permissions) && <ConfiguracionView tenant={tenant} />}
               {activeView === 'admin' && user.role === 'superadmin' && <AdminView />}
+              {activeView === 'configia' && (user.role === 'admin' || user.role === 'superadmin') && <ConfigIaView />}
               {/* Debug: si activeView es config pero no se renderizó, mostrar mensaje */}
               {activeView === 'config' && !canAccessConfig(user.role, user.permissions) && (
                 <div className="p-6 text-center text-amber-700 bg-amber-50 rounded-lg border border-amber-200">

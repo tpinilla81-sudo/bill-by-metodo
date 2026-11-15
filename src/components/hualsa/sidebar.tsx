@@ -1,6 +1,6 @@
 'use client'
 
-import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown, CreditCard, Building2, ChevronDown, ClipboardList, RefreshCw, Warehouse, CalendarDays } from 'lucide-react'
+import { FileInput, Table2, Users, BookOpen, Receipt, Shield, Menu, X, Settings, LogOut, Crown, CreditCard, Building2, ChevronDown, ClipboardList, RefreshCw, Warehouse, CalendarDays, Bot } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useConfig } from '@/lib/config'
@@ -97,6 +97,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
     { key: 'prefactura', label: config?.sectionPreFactura || 'PRE-FACTURA', icon: <ClipboardList className="h-4 w-4" />, color: 'text-orange-400', permissionKey: 'prefactura' },
     { key: 'facturas', label: config?.sectionFacturas || 'FACTURAS', icon: <Receipt className="h-4 w-4" />, color: 'text-rose-400', permissionKey: 'facturas' },
     { key: 'backup', label: config?.sectionBackup || 'SEGURIDAD', icon: <Shield className="h-4 w-4" />, color: 'text-cyan-400', permissionKey: 'backup' },
+    { key: 'configia', label: 'CONFIG IA', icon: <Bot className="h-4 w-4" />, color: 'text-fuchsia-400', adminOnly: true },
     { key: 'suscripcion', label: 'SUSCRIPCIÓN', icon: <CreditCard className="h-4 w-4" />, color: 'text-emerald-400', adminOnly: true, superadminOnly: false },
     { key: 'config', label: 'CONFIGURACIÓN', icon: <Settings className="h-4 w-4" />, color: 'text-gray-400', permissionKey: 'configuracion' },
     { key: 'admin', label: 'ADMIN', icon: <Crown className="h-4 w-4" />, color: 'text-amber-300', superadminOnly: true },
@@ -264,7 +265,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
             {reloading ? 'Actualizando…' : 'Actualizar app'}
           </button>
           {displayName}
-          <div className="mt-1 text-[9px] text-green-700 font-mono">build: V29.89-CONFIG-IA-DB · 2026-11-15</div>
+          <div className="mt-1 text-[9px] text-green-700 font-mono">build: V29.90-CONFIG-IA-UI · 2026-11-15</div>
         </div>
       </aside>
     </>
