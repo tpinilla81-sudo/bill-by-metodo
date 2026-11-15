@@ -34,6 +34,10 @@ import path from 'path'
 // comillas tipográficas y backticks al pegar el JSON, y hay un GET que devuelve
 // el estado de la configuración (sin secretos) para verificarlo en el navegador
 // tras el redeploy.
+// V29.91 — soporte de "model" en la config: la API pública de Z.ai
+// (api.z.ai/api/paas/v4) y OpenRouter EXIGEN el campo "model" en cada llamada
+// y el SDK no lo envía nunca; si la configuración incluye "model", se añade a
+// la petición. Sin él (gateway interno del entorno local) todo sigue igual.
 
 function normStr(s: string): string {
   return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -128,11 +132,11 @@ async function leerConfigIa(): Promise<{ cfg: any; fuente: string } | null> {
   return null
 }
 
-async function crearZai() {
+async function crearZai(): Promise<{ zai: ZAI; cfg: any | null }> {
   const r = await leerConfigIa()
-  if (r) return new ZAI(r.cfg)
+  if (r) return { zai: new ZAI(r.cfg), cfg: r.cfg }
   // 4) ficheros estándar del SDK (proyecto / home / /etc) — solo entorno local
-  return ZAI.create()
+  return { zai: await ZAI.create(), cfg: null }
 }
 
 // V29.88/89 — GET /api/agenda-diaria/interpretar: estado de la configuración del
@@ -164,9 +168,15 @@ export async function GET(req: Request) {
     if (existeFichero) { ok = true; fuente = 'fichero .z-ai-config (solo sirve en este servidor local, NO en el hosting)' }
     else fuente = 'sin configuración del agente IA'
   }
+  // V29.91 — el nombre del modelo NO es secreto y ayuda a verificar la config
+  let modelo = ''
+  if (ok) {
+    try { modelo = String((await leerConfigIa())?.cfg?.model || '').trim() } catch { /* no romper el estado */ }
+  }
   return NextResponse.json({
     agenteConfigurado: ok,
     fuente,
+    ...(modelo ? { modelo } : {}),
     ...(ok ? {} : { arreglo: 'Guarda el JSON de configuración del SDK en la propia app (POST /api/config-ia como admin, o sección CONFIG IA) — no necesitas tocar el hosting. Alternativa: variables de entorno Z_AI_BASE_URL + Z_AI_API_KEY + Z_AI_TOKEN en el hosting y Redeploy.' }),
   })
 }
@@ -269,8 +279,10 @@ ${conceptosFac.slice(0, 60).map(c => `- ${c}`).join('\n') || '(ninguno aún)'}
 
 Dictado a interpretar (puede tener errores de transcripción de voz — interpreta por contexto):`
 
-    const zai = await crearZai()
+    const { zai, cfg } = await crearZai()
     const completion = await zai.chat.completions.create({
+      // V29.91 — la API pública exige "model"; el gateway interno usa su default
+      ...(cfg?.model ? { model: String(cfg.model).trim() } : {}),
       messages: [
         { role: 'assistant', content: system },
         { role: 'user', content: texto },

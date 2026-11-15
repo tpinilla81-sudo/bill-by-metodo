@@ -4,7 +4,10 @@
 // configuración del agente IA EN LA BASE DE DATOS de la app (POST /api/config-ia).
 // Así el agente se configura desde el móvil sin acceso al panel del hosting.
 // Nunca se muestra el valor guardado (contiene la apiKey): solo el estado
-// (agenteConfigurado + fuente) que devuelve el GET del endpoint de interpretar.
+// (agenteConfigurado + fuente + modelo) que devuelve el GET del endpoint de
+// interpretar.
+// V29.91 — plantilla con "model" (la API pública de Z.ai y OpenRouter lo exigen)
+// y mini-guía para conseguir la clave desde el móvil.
 import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -12,7 +15,7 @@ import { Loader2, Bot, ShieldCheck, ShieldAlert, Trash2, Save } from 'lucide-rea
 
 export function ConfigIaView() {
   const [cargando, setCargando] = useState(true)
-  const [estado, setEstado] = useState<{ agenteConfigurado: boolean; fuente: string; arreglo?: string } | null>(null)
+  const [estado, setEstado] = useState<{ agenteConfigurado: boolean; fuente: string; modelo?: string; arreglo?: string } | null>(null)
   const [valor, setValor] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null)
@@ -98,6 +101,7 @@ export function ConfigIaView() {
                   {estado?.agenteConfigurado ? 'Agente IA configurado y operativo' : 'El agente IA NO está configurado en este servidor'}
                 </p>
                 {estado?.fuente && <p className="text-xs text-gray-500 break-words">Fuente: {estado.fuente}</p>}
+                {estado?.agenteConfigurado && estado?.modelo && <p className="text-xs text-gray-500">Modelo: {estado.modelo}</p>}
                 {!estado?.agenteConfigurado && estado?.arreglo && <p className="text-xs text-gray-600 mt-1 break-words">{estado.arreglo}</p>}
               </div>
             </div>
@@ -109,18 +113,32 @@ export function ConfigIaView() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <p className="text-sm text-gray-700">
-            Pega el <b>JSON de configuración del SDK</b> de tu proveedor de IA y se guardará en la base de datos
+            Pega el <b>JSON de configuración</b> de tu proveedor de IA y se guardará en la base de datos
             de la app (no hace falta tocar el hosting). Formato con clave de la plataforma pública de Z.ai:
           </p>
           <pre className="text-xs bg-gray-900 text-green-300 rounded-lg p-3 overflow-x-auto">{`{
   "baseUrl": "https://api.z.ai/api/paas/v4",
-  "apiKey": "TU_CLAVE_DE_API"
+  "apiKey": "TU_CLAVE_DE_API",
+  "model": "glm-4.5-flash"
 }`}</pre>
+          <div className="text-xs text-gray-600 space-y-1">
+            <p>¿De dónde sale la clave? Pasos:</p>
+            <ol className="list-decimal ml-4 space-y-0.5">
+              <li>Entra en <b>z.ai</b> y crea una cuenta (pestaña API).</li>
+              <li>En <b>API Keys</b>, crea una clave y cópiala.</li>
+              <li>Pégala arriba en <b>apiKey</b> y pulsa Guardar.</li>
+            </ol>
+            <p>
+              <b>model</b>: la API pública exige elegir modelo. <b>glm-4.5-flash</b> es GRATIS y va bien
+              para el dictado; también valen glm-4.5-air (barato) o glm-4.6 (más potente).
+              Si usas OpenRouter: baseUrl https://openrouter.ai/api/v1 y su modelo (p. ej. z-ai/glm-4.5-air).
+            </p>
+          </div>
           <textarea
             value={valor}
             onChange={(e) => setValor(e.target.value)}
             rows={6}
-            placeholder='{"baseUrl": "https://api.z.ai/api/paas/v4", "apiKey": "..."}'
+            placeholder='{"baseUrl": "https://api.z.ai/api/paas/v4", "apiKey": "...", "model": "glm-4.5-flash"}'
             className="w-full text-xs font-mono rounded-lg border border-gray-300 p-3 focus:border-[#005bb5] focus:outline-none resize-y"
           />
           <div className="flex flex-wrap gap-2">
@@ -138,6 +156,7 @@ export function ConfigIaView() {
           <p className="text-xs text-gray-500">
             Notas: el JSON se valida antes de guardarse (comillas tipográficas y backticks se corrigen solos).
             La clave nunca se vuelve a mostrar; para cambiarla, guarda una nueva.
+            Tras guardar, el estado de arriba debe pasar a verde con Fuente «base de datos de la app (AppConfig)».
           </p>
         </CardContent>
       </Card>

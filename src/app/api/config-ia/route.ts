@@ -34,6 +34,15 @@ export async function POST(req: Request) {
   if (!cfg || !cfg.baseUrl || !cfg.apiKey) {
     return NextResponse.json({ error: 'Al JSON le falta "baseUrl" y/o "apiKey"' }, { status: 400 })
   }
+  // V29.91 — "model" opcional (la API pública de Z.ai y OpenRouter lo exigen);
+  // se normaliza y se descarta si viene vacío. Otras claves extra se conservan.
+  if (cfg.model !== undefined) {
+    const m = String(cfg.model || '').trim()
+    if (m) cfg.model = m
+    else delete cfg.model
+  }
+  if (cfg.baseUrl) cfg.baseUrl = String(cfg.baseUrl).trim()
+  if (cfg.apiKey) cfg.apiKey = String(cfg.apiKey).trim()
 
   const valorLimpio = JSON.stringify(cfg) // normalizado, sin secretos en el log
   const row = await db.appConfig.upsert({

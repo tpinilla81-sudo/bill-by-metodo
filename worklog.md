@@ -2578,3 +2578,26 @@ Pendiente del usuario (única vía real para producción): crear una clave de AP
 Stage Summary:
 - Diagnóstico cerrado: la app ya está preparada para configurar el agente desde su propia UI contra la BD; falta únicamente que el usuario cree una clave pública y la pegue en CONFIG IA.
 - Reintento de deploy: el build de f9adf29 no aterrizó en Vercel (BUILD_ID de producción seguía en el de V29.89 tras 10 min); se re-lanza con este commit. Además prod-config-ia.ts gana modo 'clear' (borra la config de la BD de producción).
+
+### V29.91 · 2026-11-15 · SOPORTE "model" en la config del agente (vía para claves públicas)
+
+Request:
+- "Ya hay un agente funcionando?" → verificado en producción: NO (agenteConfigurado=false, estado honesto tras el borrado de la config del sandbox). "Guíame para estos pasos" → antes de guiar, se detectó un bloqueo técnico.
+
+Hallazgo (bloqueo que habría hecho fallar la clave pública):
+- El SDK envía el cuerpo tal cual y NUNCA incluye el campo "model" (ni siquiera aparece la palabra en dist/index.js).
+- El gateway interno del sandbox usa un modelo por defecto del servidor, pero la API pública de Z.ai (api.z.ai/api/paas/v4) y OpenRouter EXIGEN "model" en cada llamada → una clave pública pegada sin este soporte habría fallado con "model is required".
+- Modelos verificados en docs.z.ai: glm-4.5-flash (GRATIS), glm-4.5-air (barato), glm-4.6 (potente); todos aceptan thinking disabled.
+
+Cambios:
+- interpretar/route.ts: crearZai() devuelve { zai, cfg }; si la config tiene "model" se añade a la petición (sin él todo igual — compatible con el gateway interno). GET de estado devuelve "modelo" (no es secreto) para verificarlo desde la UI.
+- config-ia/route.ts: normaliza "model" (trim, se descarta si viene vacío); baseUrl/apiKey también trim. Otras claves extra se conservan.
+- config-ia-view.tsx: plantilla con "model": "glm-4.5-flash", mini-guía de 3 pasos para conseguir la clave desde el móvil y nota sobre alternativas (OpenRouter: baseUrl https://openrouter.ai/api/v1).
+
+Verificación:
+- tsc --noEmit: sin errores NUEVOS en src (TS2673 de new ZAI ya preexistía; next.config tiene ignoreBuildErrors=true).
+- test-config-db 16/16 (vía sin model intacta). Prueba con model: POST 200, BD guarda el model, GET estado devuelve "modelo":"glm-4.5-flash", dictado 200 (gateway interno lo tolera). Tras cleanup la BD vuelve a null (fichero).
+- Nota técnica: hubo que borrar .next y reiniciar next dev — con caché vieja el GET servía la versión sin "modelo".
+- Label V29.91-MODEL-CONFIG.
+
+Pendiente del usuario: crear cuenta/clave en la plataforma pública de Z.ai (glm-4.5-flash es gratis) y pegar el JSON de 3 líneas en CONFIG IA → Guardar → estado verde "base de datos de la app (AppConfig) — OK" + Modelo glm-4.5-flash.
