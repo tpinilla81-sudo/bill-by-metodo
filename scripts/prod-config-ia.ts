@@ -1,9 +1,10 @@
-// V29.89 — aprovisiona la configuración del agente IA en PRODUCCIÓN guardándola
-// en la base de datos de la propia app (POST /api/config-ia, solo admin) y la
-// verifica con el GET de estado + 1 dictado real con cleanup.
-//   bun scripts/prod-config-ia.ts [baseUrl]
+// V29.89/90 — aprovisiona (o borra) la configuración del agente IA en
+// PRODUCCIÓN contra la base de datos de la propia app (endpoint /api/config-ia,
+// solo admin) y la verifica con el GET de estado + 1 dictado real con cleanup.
+//   bun scripts/prod-config-ia.ts [baseUrl] [save|clear]
 // Las claves viajan por HTTPS y NUNCA se muestran por pantalla.
 const BASE = String(process.argv[2] || 'https://bill-by-metodo.vercel.app').replace(/\/$/, '')
+const MODE = String(process.argv[3] || 'save') // 'save' | 'clear'
 const EMAIL = process.env.PROD_EMAIL || 'admin@bill.es'
 const PASS = process.env.PROD_PASS || 'admin123'
 const FECHA_TEST = '2026-01-06'
@@ -48,7 +49,16 @@ async function main() {
   check(!!tenantId, 'tenant Hualsa localizado en producción', tenantId ? 'sí' : 'NO')
   if (!tenantId) { console.log('HAY FALLOS ✗ (tenant)'); process.exit(1) }
 
-  // guardar el config REAL de esta máquina en la BD de producción
+  // guardar el config REAL de esta máquina en la BD de producción (modo save)
+  if (MODE === 'clear') {
+    const del = await api('DELETE', '/api/config-ia')
+    check(del.status === 200, 'config borrada de la BD de producción', `status ${del.status}`)
+    const stc = await api('GET', '/api/agenda-diaria/interpretar')
+    check(stc.json?.agenteConfigurado === false, 'estado honesto: agenteConfigurado=false', stc.json?.fuente)
+    console.log(ok ? 'BORRADO OK ✓ — a la espera de una clave pública en CONFIG IA' : 'HAY FALLOS ✗')
+    if (!ok) process.exit(1)
+    return
+  }
   const fsMod = await import('fs')
   const cfgReal = fsMod.readFileSync('/etc/.z-ai-config', 'utf8')
   const save = await api('POST', '/api/config-ia', { valor: cfgReal })

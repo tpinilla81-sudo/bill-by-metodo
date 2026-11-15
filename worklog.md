@@ -2577,3 +2577,4 @@ Pendiente del usuario (única vía real para producción): crear una clave de AP
 
 Stage Summary:
 - Diagnóstico cerrado: la app ya está preparada para configurar el agente desde su propia UI contra la BD; falta únicamente que el usuario cree una clave pública y la pegue en CONFIG IA.
+- Reintento de deploy: el build de f9adf29 no aterrizó en Vercel (BUILD_ID de producción seguía en el de V29.89 tras 10 min); se re-lanza con este commit. Además prod-config-ia.ts gana modo 'clear' (borra la config de la BD de producción).
