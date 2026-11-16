@@ -2623,3 +2623,19 @@ Verificación:
 
 Stage Summary:
 - La Agenda Diaria es un calco visual de Opus One manteniendo el 100% del modelo de negocio (Logística/Facturación/dictado). Pendiente de validar en producción tras el deploy.
+
+### V29.93 · 2026-11-17 · BOTÓN REGENERAR también para el usuario FACTURACIÓN
+
+Request:
+- "Que en el usuario facturación le salga en la factura botón regenerar" → el rol 'facturacion' debe ver (y poder usar) el botón "Regenerar (Simple)" en la factura, que hasta ahora solo salía a admin/superadmin (V29.78).
+
+Cambios:
+- facturas-view.tsx: la condición del botón Regenerar (Simple) pasa a incluir user?.role === 'facturacion' (junto a admin/superadmin). Se mantienen las demás reglas: solo facturas no-SMURFIT, permitido aunque esté impresa, confirm previo.
+- Sin cambios en la API /api/facturas/[id]/regenerar: ya solo valida tenant (el filtro de rol era exclusivamente de UI). La lógica de regenerado (1 línea por registro, recalcular base/IVA/total, mantener número/fecha/cliente/pedido) queda intacta.
+
+Verificación:
+- bun run build OK. Sin errores nuevos en src.
+- Label V29.93.
+
+Stage Summary:
+- El usuario con rol facturación ya tiene el botón Regenerar (Simple) en el detalle de la factura (excepto SMURFIT). Pendiente de validar en producción.

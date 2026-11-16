@@ -947,8 +947,9 @@ Se reemplazarán las líneas actuales por una línea por cada registro original,
               </Button>
             )}
             {/* V29.78: regenerar líneas en modo Simple (solo facturas no-SMURFIT).
-                Se permite aunque esté impresa — el usuario gestiona cuándo borrarla. */}
-            {selected && (user?.role === 'admin' || user?.role === 'superadmin') && !/SMURFIT/i.test(selected.clienteNombre || '') && (
+                Se permite aunque esté impresa — el usuario gestiona cuándo borrarla.
+                V29.93: también visible para el usuario con rol 'facturacion'. */}
+            {selected && (user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'facturacion') && !/SMURFIT/i.test(selected.clienteNombre || '') && (
               <Button variant="outline" onClick={() => regenerarLineas(selected)} disabled={regenerando} className="text-blue-700 border-blue-300 hover:bg-blue-50" title="Reconstruir las líneas con 1 línea por registro (modo Simple)">
                 <RefreshCw className={`h-4 w-4 mr-1 ${regenerando ? 'animate-spin' : ''}`} /> {regenerando ? 'Regenerando…' : 'Regenerar (Simple)'}
               </Button>
