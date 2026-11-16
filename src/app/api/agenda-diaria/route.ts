@@ -11,6 +11,8 @@ import { getSessionUser } from '@/lib/auth'
 // rellena la agenda; estas rutas son el CRUD de soporte.
 // V29.82 — el GET devuelve también la lista de clientes del tenant (para el
 // datalist de «añadir a mano») y el fallback de fecha usa Europe/Madrid.
+// V29.92 — estilo Opus One: cada línea puede llevar PRIORIDAD A/B/C (A1, A2,
+// B1, B2, C1...) y existe NOTA LIBRE del día (ver /api/agenda-diaria/notas).
 
 // Hoy en España (el fallback UTC daba el día anterior de madrugada)
 function hoyMadrid(): string {
@@ -21,6 +23,13 @@ function hoyMadrid(): string {
 
 function normFecha(f: any): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(f || '')) ? String(f) : hoyMadrid()
+}
+
+// V29.92 — prioridad estilo Opus One: letra A-C + número (A1, B2, C3...).
+// Tolera «a 1», «A-1», minúsculas. Cualquier otra cosa → '' (sin prioridad).
+function normPrioridad(v: any): string {
+  const m = String(v || '').trim().toUpperCase().match(/^([ABC])\s*-?\s*(\d{1,2})$/)
+  return m ? `${m[1]}${m[2]}` : ''
 }
 
 // GET /api/agenda-diaria?fecha=YYYY-MM-DD → líneas del día (ambos tipos)
@@ -120,6 +129,7 @@ export async function POST(req: Request) {
           unidad: String(l.unidad || '').trim().slice(0, 12),
           importe: Number.isFinite(importe) ? importe : 0,
           orden,
+          prioridad: normPrioridad(l.prioridad),
           creadoPor,
           viaVoz: !!l.viaVoz,
         },

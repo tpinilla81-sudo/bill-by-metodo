@@ -2601,3 +2601,25 @@ Verificación:
 - Label V29.91-MODEL-CONFIG.
 
 Pendiente del usuario: crear cuenta/clave en la plataforma pública de Z.ai (glm-4.5-flash es gratis) y pegar el JSON de 3 líneas en CONFIG IA → Guardar → estado verde "base de datos de la app (AppConfig) — OK" + Modelo glm-4.5-flash.
+
+### V29.92 · 2026-11-16 · AGENDA DIARIA estilo OPUS ONE (papel clásico + prioridades ABC + notas del día)
+
+Request:
+- "SI CONOCES LA APP OPUS ONE, LA SECCION AGENDA DIARIA TIENE QUE SER UN CALCO" → tras preguntas de alcance: SOLO estético (mantener Logística/Facturación), 1 columna móvil, strip de calendario actual, estética PAPEL CLÁSICO (crema/serif/burdeos), notas del día SÍ, prioridades A/B/C SÍ.
+
+Cambios:
+- Estética Opus One (agenda-diaria-view.tsx reescrita): hoja crema #f6f1e2 con sombra, tarjetas papel #fffdf7 con bordes #e3d8bc, tipografía serif Georgia, tinta #3d3225, tinta suave #8a7a55, acento burdeos #7a1f2b (facturación en azul #1d4ed8), cabeceras de sección versalitas con doble filete, totales con doble línea, líneas separadas por filete punteado. Sin pestañas: apilado calendario → dictado → Logística → Facturación → Notas. Micrófono sigue verde (marca); "Añadir a la agenda" en burdeos.
+- PRIORIDADES A/B/C estilo Opus One: campo prioridad en AgendaDia (schema + schema.prisma.pg), normalizador normPrioridad (acepta "b 2", "a-1", minúsculas; inválidas → ''). Badge por línea (A burdeos, B ocre, C pizarra) y orden DENTRO de cada carga/cliente por prioridad (A1 < A2 < … < sin prioridad, luego orden). Selector en el diálogo (A1…C3 + sin prioridad).
+- Prioridad por DICTADO: regla 12 del prompt ("prioridad A1", "A dos" → la que se diga; "urgente/muy importante" → A1; "importante" → B1; nada → ''). El POST /interpretar la normaliza y guarda.
+- NOTAS DEL DÍA: modelo AgendaNota (unique tenantId+fecha) en ambos esquemas, endpoint NUEVO /api/agenda-diaria/notas (GET ?fecha → texto; PUT upsert, máx 5000 chars). UI: tarjeta papel con textarea sobre líneas punteadas, AUTOSAVE con debounce 900ms + guardado al perder el foco, indicador Guardando…/✓ Guardado. Si cambias de día antes del debounce, la nota se guarda en el día correcto (fecha capturada al teclear).
+- POST/PUT de /api/agenda-diaria aceptan prioridad.
+
+Verificación:
+- bun run build OK. Test nuevo scripts/test-agenda-opusone.ts 20/20 (normalización A1/B2/inválida, PUT prioridad, GET, notas roundtrip + upsert + fecha inválida 400 + truncado 5000). test-agenda-diaria-http TODO OK (dictado intacto: fuzzy-match, cargas, importes).
+- Prioridad por dictado verificado en local: "prioridad A1 viaje daroca" → A1 + precio catálogo 585,78€; "urgente descarga rialto 4 palets" → A1 + 4×3=12€.
+- Visual con navegador headless: hoja crema + serif + burdeos, badges, orden por prioridad, notas, vaciar día. Cleanup de datos de prueba.
+- prisma db push (SQLite) aplicado; el deploy de producción aplica schema.prisma.pg automáticamente (vercel-build).
+- Label V29.92-OPUS-ONE.
+
+Stage Summary:
+- La Agenda Diaria es un calco visual de Opus One manteniendo el 100% del modelo de negocio (Logística/Facturación/dictado). Pendiente de validar en producción tras el deploy.

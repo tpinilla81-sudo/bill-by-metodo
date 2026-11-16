@@ -100,6 +100,7 @@ model Tenant {
   facturas      Factura[]
   backups       Backup[]
   agendaDia     AgendaDia[]
+  agendaNotas   AgendaNota[]
 }
 
 model User {
@@ -169,6 +170,7 @@ model AgendaDia {
   unidad    String    @default("")  // b, p, u, rollos... (abreviatura dictada)
   importe   Float     @default(0)   // importe en € de la línea
   orden     Int       @default(0)   // orden dentro del grupo
+  prioridad String    @default("")   // V29.92 estilo Opus One: A1, A2, B1, B2, C1... (vacío = sin prioridad)
   creadoPor String    @default("")  // userId que lo creó ("voz" si vino por dictado)
   viaVoz    Boolean   @default(false)
   deletedAt DateTime?               // soft delete — null = activo
@@ -178,6 +180,21 @@ model AgendaDia {
   tenant    Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, fecha])
+}
+
+// V29.92 — NOTAS DEL DÍA (estilo Opus One "Daily Notes"): una nota libre por
+// día y tenant, aparte de las líneas de la agenda. Se guarda sola (autosave).
+model AgendaNota {
+  id        String   @id @default(cuid())
+  tenantId  String
+  fecha     String                 // YYYY-MM-DD del día
+  texto     String   @default("")  // nota libre del día (hasta 5000 caracteres)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, fecha])
 }
 
 model Backup {

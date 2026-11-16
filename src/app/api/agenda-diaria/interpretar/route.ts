@@ -38,6 +38,8 @@ import path from 'path'
 // (api.z.ai/api/paas/v4) y OpenRouter EXIGEN el campo "model" en cada llamada
 // y el SDK no lo envía nunca; si la configuración incluye "model", se añade a
 // la petición. Sin él (gateway interno del entorno local) todo sigue igual.
+// V29.92 — estilo Opus One: el dictado puede traer PRIORIDAD (A1, A2, B1...
+// "prioridad A1", "es urgente"); el LLM la extrae y el código la normaliza.
 
 function normStr(s: string): string {
   return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -48,6 +50,12 @@ function hoyMadrid(): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date())
+}
+
+// V29.92 — prioridad estilo Opus One: letra A-C + número. Cualquier otra cosa → ''.
+function normPrioridad(v: any): string {
+  const m = String(v || '').trim().toUpperCase().match(/^([ABC])\s*-?\s*(\d{1,2})$/)
+  return m ? `${m[1]}${m[2]}` : ''
 }
 
 function fuzzyMatch(txt: string, vocab: string[]): string {
@@ -247,7 +255,7 @@ CONCEPTO DE AGENDA: es un cuaderno diario con dos apartados:
 
 Responde SOLO con un array JSON válido. Sin markdown, sin explicaciones, sin \`\`\`.
 Cada elemento:
-{"tipo":"logistica" o "facturacion","carga":<número o null>,"cliente":"<cliente de facturación EXACTO de las listas, o ''>","concepto":"<texto de la línea>","nota":"<nota breve opcional>","cantidad":<número o 0>,"unidad":"<b|p|u|rollos|... o ''>","importe":<número>}
+{"tipo":"logistica" o "facturacion","carga":<número o null>,"cliente":"<cliente de facturación EXACTO de las listas, o ''>","concepto":"<texto de la línea>","nota":"<nota breve opcional>","cantidad":<número o 0>,"unidad":"<b|p|u|rollos|... o ''>","importe":<número>,"prioridad":"<A1|A2|A3|B1|B2|B3|C1|C2|C3 o ''>"}
 
 REGLAS:
 1. tipo "logistica": servicios con precio del día (Hualsa/Milagro, Piking Bobinas, Carga Palets, Doypack, Movimiento Palets, viajes...). La carga empieza en 1. Si dice "nueva carga", "otra carga" o "carga 2/3...", las líneas siguientes van en la carga indicada (o +1). Si no se menciona carga, usa null (se añaden a la carga en curso).
@@ -261,6 +269,7 @@ REGLAS:
 9. CATÁLOGO (FUENTE DE VERDAD): antes de crear cada línea, COMPÁRALA con el CATÁLOGO DE SERVICIOS de abajo comparando los NOMBRES (servicio/destino), NO los precios. Si corresponde a un concepto del catálogo (aunque el dictado traiga errores de voz o diga el nombre a medias), concepto = el nombre EXACTO del catálogo, tal cual, sin reformarlo. NO elijas una entrada del catálogo solo porque el importe coincida; si ningún nombre encaja, es un concepto nuevo (regla 5).
 10. PRECIOS DEL CATÁLOGO: si el servicio está en el catálogo y el usuario NO dice importe, usa el precio del catálogo: si es precio por unidad (palets, bobinas...), importe = cantidad dictada × precio ("descarga rialto 5 palets" con precio 3 → 15, cantidad 5, unidad "p"); si es precio fijo (viajes, alquiler...), úsalo tal cual ("viaje daroca" → su precio exacto). Si el usuario SÍ dice importe, manda el dictado aunque difiera del catálogo.
 11. CLIENTE DEL CATÁLOGO: si la entrada del catálogo tiene cliente asociado y es una línea de facturación y el dictado NO dice "facturar a X", usa ese cliente.
+12. PRIORIDAD (estilo Opus One): si el dictado menciona una prioridad explícita para una línea ("prioridad A1", "A dos", "es una B1"), pónsela (A1-A3, B1-B3, C1-C3). "urgente" o "muy importante" → A1; "importante" → B1. Si no se menciona nada, prioridad "".
 
 LISTA DE CLIENTES:
 ${clientesVocab.slice(0, 60).map(c => `- ${c}`).join('\n') || '(sin clientes)'}
@@ -371,6 +380,7 @@ Dictado a interpretar (puede tener errores de transcripción de voz — interpre
           unidad: String(it.unidad || '').trim().slice(0, 12),
           importe: importe,
           orden: ++maxOrden,
+          prioridad: normPrioridad(it.prioridad),
           creadoPor: user?.id || 'voz',
           viaVoz: true,
         },

@@ -11,11 +11,15 @@
 // Cada línea es editable y borrable; también se pueden añadir a mano.
 // V29.85 — el diario es SOLO la agenda que rellena el agente: no se vincula con
 // Registros ni Facturas (no los lee ni los escribe).
+// V29.92 — REDISEÑO estilo OPUS ONE (planner de papel): hoja crema con
+// tipografía serif, tarjetas papel, tinta burdeos, una sola columna apilada
+// (calendario → dictado → Logística → Facturación → Notas del día), PRIORIDADES
+// A/B/C en cada línea (badge + orden dentro del grupo, también extraídas del
+// dictado) y NOTAS DEL DÍA libres con autosave (GET/PUT /api/agenda-diaria/notas).
 
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Mic, MicOff, Sparkles, Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
 
@@ -31,6 +35,7 @@ type AgendaDiaLine = {
   unidad: string
   importe: number
   orden: number
+  prioridad?: string // V29.92 estilo Opus One: A1, A2, B1... ('' = sin prioridad)
 }
 
 type FormLine = {
@@ -45,6 +50,7 @@ type FormLine = {
   cantidad: number
   unidad: string
   importe: number
+  prioridad: string
   // V29.82 — texto crudo de importe/cantidad mientras se edita: acepta coma
   // decimal («9,5») como escribe un usuario español sin perder dígitos
   importeTxt?: string
@@ -62,6 +68,7 @@ const EMPTY_FORM: (fecha: string, tipo: 'logistica' | 'facturacion') => FormLine
   cantidad: 0,
   unidad: '',
   importe: 0,
+  prioridad: '',
   importeTxt: '',
   cantidadTxt: '',
 })
@@ -103,6 +110,23 @@ function fmtNum(n: number): string {
   return ent + decStr
 }
 
+// ── V29.92 — PRIORIDADES estilo Opus One ────────────────────────────────────
+// Rango de orden: A1=1, A2=2… B1=101… C1=201…; sin prioridad → 999 (al final).
+function prioridadRank(p: string): number {
+  if (!p) return 999
+  const letra = p.toUpperCase().charCodeAt(0) // A=65, B=66, C=67
+  if (letra < 65 || letra > 67) return 999
+  const num = parseInt(p.slice(1), 10) || 0
+  return (letra - 65) * 100 + num
+}
+
+function compararLineas(a: AgendaDiaLine, b: AgendaDiaLine): number {
+  const pa = prioridadRank(a.prioridad || '')
+  const pb = prioridadRank(b.prioridad || '')
+  if (pa !== pb) return pa - pb
+  return (a.orden || 0) - (b.orden || 0)
+}
+
 // Tipos mínimos de la Web Speech API (no están en el DOM lib de TS)
 type SpeechRecognitionLike = {
   lang: string
@@ -121,10 +145,17 @@ function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
   return w.SpeechRecognition || w.webkitSpeechRecognition || null
 }
 
+// ── V29.92 — clases del tema PAPEL (Opus One) ───────────────────────────────
+const SERIF = "[font-family:Georgia,'Times_New_Roman',serif]"
+const HOJA = 'bg-[#f6f1e2] border border-[#e3d8bc] rounded-2xl shadow-[0_2px_10px_rgba(90,70,20,0.10)]'
+const PAPEL = 'bg-[#fffdf7] border border-[#e3d8bc] rounded-xl shadow-[0_1px_4px_rgba(90,70,20,0.08)]'
+const TINTA = 'text-[#3d3225]'
+const TINTA_SUAVE = 'text-[#8a7a55]'
+const BURDEOS = '#7a1f2b'
+
 export function AgendaDiariaView() {
   const [fecha, setFecha] = useState(hoyISO())
   const [items, setItems] = useState<AgendaDiaLine[]>([])
-  const [tab, setTab] = useState<'logistica' | 'facturacion'>('logistica')
   const [texto, setTexto] = useState('')
   const [interpretando, setInterpretando] = useState(false)
   const [cargando, setCargando] = useState(false)
@@ -136,6 +167,9 @@ export function AgendaDiariaView() {
   const [flashIds, setFlashIds] = useState<string[]>([])
   const [clientesLista, setClientesLista] = useState<string[]>([]) // clientes del tenant (V29.82)
   const [conceptosLista, setConceptosLista] = useState<string[]>([]) // conceptos del catálogo (V29.83)
+  // V29.92 — notas del día (Opus One "Daily Notes") con autosave
+  const [nota, setNota] = useState('')
+  const [notaEstado, setNotaEstado] = useState<'' | 'guardando' | 'guardada' | 'error'>('')
   const recRef = useRef<SpeechRecognitionLike | null>(null)
   const textoBaseRef = useRef('')
   // V29.82 — robustez del dictado: Chrome corta el reconocimiento tras silencios
@@ -144,6 +178,8 @@ export function AgendaDiariaView() {
   const seguirRef = useRef(false)
   const reintentosRef = useRef(0)
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const notaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const notaGuardadaRef = useRef('') // último texto de nota GUARDADO en el servidor
 
   // Resalta líneas nuevas 6s (limpia el timer anterior para no pisar tandas)
   function flash(ids: string[]) {
@@ -152,11 +188,12 @@ export function AgendaDiariaView() {
     flashTimerRef.current = setTimeout(() => setFlashIds([]), 6000)
   }
 
-  // Al desmontar: parar el micro y limpiar timers
+  // Al desmontar: parar el micro, limpiar timers y descartar nota pendiente
   useEffect(() => () => {
     seguirRef.current = false
     try { recRef.current?.stop() } catch {}
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+    if (notaTimerRef.current) clearTimeout(notaTimerRef.current)
   }, [])
 
   // ── Carga de líneas del día ────────────────────────────────────────────────
@@ -188,6 +225,51 @@ export function AgendaDiariaView() {
   useEffect(() => {
     setSoportaVoz(!!getSpeechRecognition())
   }, [])
+
+  // ── V29.92 — NOTAS DEL DÍA: cargar al cambiar de fecha ────────────────────
+  useEffect(() => {
+    let cancel = false
+    setNotaEstado('')
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/agenda-diaria/notas?fecha=${fecha}`, { cache: 'no-store' })
+        const d = await res.json()
+        if (!cancel && res.ok) {
+          setNota(String(d.texto || ''))
+          notaGuardadaRef.current = String(d.texto || '')
+        }
+      } catch { /* sin nota no pasa nada */ }
+    })()
+    return () => { cancel = true }
+  }, [fecha])
+
+  async function guardarNota(v: string, f: string) {
+    if (v === notaGuardadaRef.current) { setNotaEstado(''); return }
+    setNotaEstado('guardando')
+    try {
+      const res = await fetch('/api/agenda-diaria/notas', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha: f, texto: v }),
+      })
+      if (res.ok) {
+        notaGuardadaRef.current = v
+        setNotaEstado('guardada')
+        setTimeout(() => setNotaEstado(s => (s === 'guardada' ? '' : s)), 2500)
+      } else {
+        setNotaEstado('error')
+      }
+    } catch {
+      setNotaEstado('error')
+    }
+  }
+
+  function cambiarNota(v: string) {
+    setNota(v)
+    const f = fecha // se captura AHÍ: si cambias de día antes del debounce, la nota se guarda en el día correcto
+    if (notaTimerRef.current) clearTimeout(notaTimerRef.current)
+    notaTimerRef.current = setTimeout(() => guardarNota(v, f), 900)
+  }
 
   // ── DICTADO POR VOZ (Web Speech API, es-ES) ────────────────────────────────
   // V29.82: crearRec() construye el reconocedor y onend lo REINICIA mientras
@@ -306,9 +388,6 @@ export function AgendaDiariaView() {
       if (nLog > 0) partes.push(`${nLog} de logística`)
       if (nFac > 0) partes.push(`${nFac} de facturación`)
       setMsg(`✓ Añadidas a la agenda: ${partes.join(' y ')}`)
-      // Cambia de pestaña si solo se añadieron líneas del otro apartado
-      if (nLog > 0 && nFac === 0) setTab('logistica')
-      if (nFac > 0 && nLog === 0) setTab('facturacion')
     } catch (err: any) {
       setMsg('⚠ Error de conexión: ' + (err?.message || ''))
     } finally {
@@ -329,6 +408,7 @@ export function AgendaDiariaView() {
           body: JSON.stringify({
             tipo: form.tipo, carga: form.carga, cliente: form.cliente, concepto: form.concepto,
             nota: form.nota, cantidad: form.cantidad, unidad: form.unidad, importe: form.importe,
+            prioridad: form.prioridad,
           }),
         })
         if (!res.ok) { const d = await res.json(); setMsg('⚠ ' + (d.error || 'Error guardando')); return }
@@ -339,7 +419,7 @@ export function AgendaDiariaView() {
           body: JSON.stringify({
             fecha: form.fecha, tipo: form.tipo, carga: form.carga, cliente: form.cliente,
             concepto: form.concepto, nota: form.nota, cantidad: form.cantidad,
-            unidad: form.unidad, importe: form.importe,
+            unidad: form.unidad, importe: form.importe, prioridad: form.prioridad,
           }),
         })
         if (!res.ok) { const d = await res.json(); setMsg('⚠ ' + (d.error || 'Error guardando')); return }
@@ -394,9 +474,10 @@ export function AgendaDiariaView() {
   }
 
   // ── Agrupación ────────────────────────────────────────────────────────────
-  const logisticas = items.filter(i => i.tipo === 'logistica')
-  const facturaciones = items.filter(i => i.tipo === 'facturacion')
+  const logisticas = items.filter(i => i.tipo === 'logistica').sort(compararLineas)
+  const facturaciones = items.filter(i => i.tipo === 'facturacion').sort(compararLineas)
   const cargasNums = [...new Set(logisticas.map(i => i.carga))].sort((a, b) => a - b)
+
   const clientesOrden: string[] = []
   for (const f of facturaciones) {
     const cli = f.cliente || ''
@@ -427,29 +508,55 @@ export function AgendaDiariaView() {
     setForm(f)
   }
 
-  // ── Fila de línea (estilo cuaderno) ───────────────────────────────────────
+  // ── V29.92 — piezas visuales del tema papel ───────────────────────────────
+  // Cabecera de sección tipo planner: versalitas espaciadas + doble filete
+  function TituloSeccion({ children, color = BURDEOS }: { children: ReactNode; color?: string }) {
+    return (
+      <div className="border-b-4 border-double border-[#cbb98d] pb-1 mb-2">
+        <h2 className="text-[13px] font-bold uppercase tracking-[0.2em]" style={{ color }}>{children}</h2>
+      </div>
+    )
+  }
+
+  // Badge de prioridad A/B/C (A burdeos, B ocre, C pizarra)
+  function BadgePrioridad({ p }: { p: string }) {
+    if (!p) return null
+    const cls = p.startsWith('A')
+      ? 'bg-[#7a1f2b] text-[#fdf6e9] border-[#5f1620]'
+      : p.startsWith('B')
+        ? 'bg-[#c98f2d] text-white border-[#9a6c1f]'
+        : 'bg-[#eef0ee] text-[#5b6b7a] border-[#93a1ad]'
+    return (
+      <span className={`inline-flex items-center justify-center h-5 min-w-[28px] px-1 rounded-md border text-[10px] font-bold tracking-wide ${cls}`} title={`Prioridad ${p}`}>
+        {p}
+      </span>
+    )
+  }
+
+  // ── Fila de línea (estilo cuaderno, con badge de prioridad) ───────────────
   function LineaRow({ l }: { l: AgendaDiaLine }) {
     const flash = flashIds.includes(l.id)
     return (
-      <div className={`group flex items-start gap-2 py-1.5 border-b border-dashed border-gray-200 last:border-b-0 ${flash ? 'bg-green-50 rounded-md px-2 -mx-2' : ''}`}>
-        <div className="flex-1 min-w-0 text-[15px] leading-snug text-slate-800">
+      <div className={`group flex items-start gap-2 py-1.5 border-b border-dashed border-[#ddd2b4] last:border-b-0 ${flash ? 'bg-[#eef4e2] rounded-md px-2 -mx-2' : ''}`}>
+        <span className="pt-[3px] shrink-0"><BadgePrioridad p={l.prioridad || ''} /></span>
+        <div className={`flex-1 min-w-0 text-[15px] leading-snug ${TINTA}`}>
           <span className="font-bold">{l.concepto}</span>
-          <span className="text-slate-500">; </span>
+          <span className={TINTA_SUAVE}>; </span>
           <span className="font-bold">{fmtNum(l.importe)}€</span>
           {l.cantidad > 0 && <span className="font-bold">. {fmtNum(l.cantidad)}{l.unidad ? l.unidad : ''}.</span>}
           {l.nota && <span className="font-bold"> {l.nota}</span>}
         </div>
         <div className="flex items-center gap-1 shrink-0 opacity-60 group-hover:opacity-100">
           <button
-            onClick={() => setForm({ mode: 'edit', ...l, importeTxt: fmtTxt(l.importe), cantidadTxt: fmtTxt(l.cantidad) })}
-            className="h-8 w-8 rounded-md hover:bg-slate-100 flex items-center justify-center text-slate-500"
+            onClick={() => setForm({ mode: 'edit', ...l, prioridad: l.prioridad || '', importeTxt: fmtTxt(l.importe), cantidadTxt: fmtTxt(l.cantidad) })}
+            className="h-8 w-8 rounded-md hover:bg-[#f1e8d2] flex items-center justify-center text-[#8a7a55]"
             title="Editar línea"
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={() => borrarLinea(l.id)}
-            className="h-8 w-8 rounded-md hover:bg-red-50 flex items-center justify-center text-red-500"
+            className="h-8 w-8 rounded-md hover:bg-[#f3e0dd] flex items-center justify-center text-[#a33b30]"
             title="Borrar línea"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -459,44 +566,44 @@ export function AgendaDiariaView() {
     )
   }
 
-  return (
-    <div className="w-full max-w-3xl mx-auto space-y-4 pb-8">
-      {/* Cabecera + navegación por día */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Agenda Diaria</h1>
-          <p className="text-sm text-slate-500">Dicta por voz y el agente rellena la agenda del día — es solo un cuaderno, no toca registros ni facturas.</p>
-        </div>
-        {items.length > 0 && (
-          <Button variant="outline" size="sm" onClick={vaciarDia} className="text-red-600 border-red-300 hover:bg-red-50">
-            <Trash2 className="h-4 w-4 mr-1" /> Vaciar día
-          </Button>
-        )}
-      </div>
+  // Fecha partida para el strip estilo planner: «LUNES» + «16 de noviembre de 2026»
+  const [diaNombre, ...fechaResto] = fmtFechaLarga(fecha).split(', ')
+  const esHoy = fecha === hoyISO()
 
-      <Card>
-        <CardContent className="p-3 flex items-center justify-between gap-2">
-          <Button variant="ghost" size="icon" onClick={() => setFecha(addDias(fecha, -1))} className="h-10 w-10 shrink-0" title="Día anterior">
+  return (
+    <div className={`w-full max-w-xl mx-auto pb-10 ${SERIF}`}>
+      <div className={`${HOJA} p-3 sm:p-5 space-y-4`}>
+
+        {/* Cabecera de la página (planner) */}
+        <div className="text-center pt-1">
+          <div className={`text-[10px] tracking-[0.35em] uppercase ${TINTA_SUAVE}`}>Transportes Hualsa</div>
+          <h1 className="text-[26px] leading-tight font-bold text-[#7a1f2b] mt-0.5">Agenda Diaria</h1>
+          <p className={`text-xs italic mt-0.5 ${TINTA_SUAVE}`}>Tu día en una página — dicta y el agente rellena</p>
+        </div>
+
+        {/* Navegación por día (strip estilo planner) */}
+        <div className={`${PAPEL} p-2.5 flex items-center justify-between gap-2`}>
+          <Button variant="ghost" size="icon" onClick={() => setFecha(addDias(fecha, -1))} className="h-10 w-10 shrink-0 text-[#7a1f2b] hover:bg-[#f1e8d2]" title="Día anterior">
             <ChevronLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1 text-center min-w-0">
-            <div className="flex items-center justify-center gap-2 text-sm sm:text-[15px] font-bold text-slate-700">
-              <CalendarDays className="h-4 w-4 shrink-0 text-[#2bb24c]" />
-              {fmtFechaLarga(fecha)}
+            <div className={`flex items-center justify-center gap-1.5 text-[11px] uppercase tracking-[0.25em] ${TINTA_SUAVE}`}>
+              <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+              {diaNombre}
             </div>
-            {fecha !== hoyISO() && (
-              <button onClick={() => setFecha(hoyISO())} className="text-xs text-[#005bb5] underline mt-0.5">Ir a hoy</button>
+            <div className={`text-lg font-bold leading-tight ${TINTA}`}>{fechaResto.join(', ')}</div>
+            {!esHoy && (
+              <button onClick={() => setFecha(hoyISO())} className="text-xs text-[#7a1f2b] underline underline-offset-2 mt-0.5">Ir a hoy</button>
             )}
           </div>
-          <Button variant="ghost" size="icon" onClick={() => setFecha(addDias(fecha, 1))} className="h-10 w-10 shrink-0" title="Día siguiente">
+          <Button variant="ghost" size="icon" onClick={() => setFecha(addDias(fecha, 1))} className="h-10 w-10 shrink-0 text-[#7a1f2b] hover:bg-[#f1e8d2]" title="Día siguiente">
             <ChevronRight className="h-5 w-5" />
           </Button>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* DICTADO */}
-      <Card>
-        <CardContent className="p-4 space-y-3">
+        {/* DICTADO */}
+        <div className={`${PAPEL} p-4 space-y-3`}>
+          <TituloSeccion>Dictado</TituloSeccion>
           <div className="flex items-center gap-3 flex-wrap">
             <Button
               onClick={toggleGrabar}
@@ -505,9 +612,9 @@ export function AgendaDiariaView() {
             >
               {grabando ? <><MicOff className="h-4 w-4 mr-2" /> Parar…</> : <><Mic className="h-4 w-4 mr-2" /> Dictar por voz</>}
             </Button>
-            {grabando && <span className="text-sm text-red-600 font-bold">● Grabando — habla claro, una línea por frase</span>}
-            {!soportaVoz && <span className="text-xs text-amber-600">Tu navegador no soporta dictado por voz (usa Chrome/Edge) — puedes escribir el texto</span>}
-            <Button onClick={handleInterpretar} disabled={interpretando || !texto.trim()} className="bg-[#005bb5] hover:bg-[#003d7a] text-white ml-auto">
+            {grabando && <span className="text-sm text-[#a33b30] font-bold">● Grabando — habla claro, una línea por frase</span>}
+            {!soportaVoz && <span className="text-xs text-[#8a5a19]">Tu navegador no soporta dictado por voz (usa Chrome/Edge) — puedes escribir el texto</span>}
+            <Button onClick={handleInterpretar} disabled={interpretando || !texto.trim()} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white ml-auto">
               {interpretando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
               {interpretando ? 'Rellenando agenda…' : 'Añadir a la agenda'}
             </Button>
@@ -517,129 +624,147 @@ export function AgendaDiariaView() {
             onChange={e => { textoRef.current = e.target.value; setTexto(e.target.value) }}
             placeholder={grabando ? 'Escuchando… el dictado aparece aquí' : 'Ej: «Hualsa Milagro 125 euros. Piking bobinas 72 bobinas a 1,20. Carga palets 3 palets a 3 euros. Nueva carga. Milca Milagro 20 euros. La Boquera Milca 90 euros facturar a Vega»'}
             rows={4}
-            className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-[#2bb24c] focus:outline-none resize-y"
+            className="w-full bg-[#fffdf7] border border-[#e3d8bc] rounded-lg p-3 text-sm focus:border-[#7a1f2b] focus:outline-none resize-y leading-relaxed"
           />
-          <p className="text-xs text-slate-400">Consejo: di «nueva carga» para empezar la siguiente carga; en facturación di el cliente («para Florette») y el destino («Milca/Milagro 90 euros»). Todo lo dictado se añade al día seleccionado.</p>
-        </CardContent>
-      </Card>
-
-      {msg && (
-        <div className={`text-sm font-bold px-3 py-2 rounded-lg ${msg.startsWith('✓') ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>{msg}</div>
-      )}
-
-      {/* PESTAÑAS */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => setTab('logistica')}
-          className={`px-4 py-2 rounded-t-lg text-sm font-bold border-b-[3px] transition-colors ${tab === 'logistica' ? 'text-[#2bb24c] border-[#2bb24c] bg-white' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
-        >
-          Logística Hualsa {totalLog > 0 && <span className="hidden sm:inline text-xs font-normal">({fmtNum(totalLog)}€)</span>}
-        </button>
-        <button
-          onClick={() => setTab('facturacion')}
-          className={`px-4 py-2 rounded-t-lg text-sm font-bold border-b-[3px] transition-colors ${tab === 'facturacion' ? 'text-[#005bb5] border-[#005bb5] bg-white' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
-        >
-          Facturación Día {totalFac > 0 && <span className="hidden sm:inline text-xs font-normal">({fmtNum(totalFac)}€)</span>}
-        </button>
-      </div>
-
-      {cargando ? (
-        <div className="flex items-center justify-center py-10 text-slate-400"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando agenda…</div>
-      ) : tab === 'logistica' ? (
-        /* ── LOGÍSTICA: cargas 1, 2, 3... con subtotal ── */
-        <div className="space-y-4">
-          {cargasNums.length === 0 && (
-            <div className="text-center text-slate-400 py-8 text-sm">No hay cargas este día. Dicta arriba o añade una línea a mano.</div>
-          )}
-          {cargasNums.map(c => {
-            const lineas = logisticas.filter(i => i.carga === c)
-            const sub = lineas.reduce((s, i) => s + (Number(i.importe) || 0), 0)
-            return (
-              <Card key={c}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-lg font-black text-slate-800">{c}</h3>
-                    <div className="flex items-center gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => abrirAddLinea('logistica', c)} className="h-8 text-xs text-[#2bb24c]">
-                        <Plus className="h-3.5 w-3.5 mr-1" /> Línea
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => borrarCarga(c)} className="h-8 w-8 p-0 text-red-500" title="Borrar carga completa">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div>
-                    {lineas.map(l => <LineaRow key={l.id} l={l} />)}
-                  </div>
-                  <div className="mt-3 text-[15px] font-bold text-slate-800">Total; {fmtNum(sub)}€</div>
-                </CardContent>
-              </Card>
-            )
-          })}
-          <Button onClick={abrirNuevaCarga} variant="outline" className="w-full border-dashed border-[#2bb24c] text-[#2bb24c] hover:bg-green-50">
-            <Plus className="h-4 w-4 mr-1" /> Nueva carga
-          </Button>
-          {cargasNums.length > 0 && (
-            <div className="text-lg font-black text-slate-800 text-center py-2 border-t-2 border-slate-200">
-              Total Dia; {fmtNum(totalLog)}€
-            </div>
-          )}
+          <p className={`text-xs ${TINTA_SUAVE}`}>Consejo: di «nueva carga» para empezar la siguiente carga; en facturación di el cliente («para Florette») y el destino («Milca/Milagro 90 euros»). Prioridades: di «prioridad A1» o «urgente». Todo lo dictado se añade al día seleccionado.</p>
         </div>
-      ) : (
-        /* ── FACTURACIÓN: grupos por cliente + recuentos ── */
-        <div className="space-y-4">
-          {facturaciones.length === 0 && (
-            <div className="text-center text-slate-400 py-8 text-sm">No hay facturación este día. Dicta arriba o añade una línea a mano.</div>
-          )}
-          {clientesOrden.map(cli => {
-            const lineas = facturaciones.filter(i => (i.cliente || '') === cli)
-            const sub = lineas.reduce((s, i) => s + (Number(i.importe) || 0), 0)
-            return (
-              <Card key={cli || '(sin cliente)'}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-lg font-black text-slate-800 underline underline-offset-4">{cli || 'Sin cliente'}</h3>
-                    <Button size="sm" variant="ghost" onClick={() => abrirAddLinea('facturacion', undefined, cli)} className="h-8 text-xs text-[#005bb5]">
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Línea
-                    </Button>
-                  </div>
-                  <div>
-                    {lineas.map(l => <LineaRow key={l.id} l={l} />)}
-                  </div>
-                  <div className="mt-3 text-[15px] font-bold text-slate-800">Total; {fmtNum(sub)}€</div>
-                </CardContent>
-              </Card>
-            )
-          })}
-          {facturaciones.length > 0 && (
-            <>
-              <div className="text-lg font-black text-slate-800 text-center py-2 border-t-2 border-slate-200">
-                Total; {fmtNum(totalFac)}€
+
+        {msg && (
+          <div className={`text-sm font-bold px-3 py-2 rounded-lg border ${msg.startsWith('✓') ? 'bg-[#eef4e2] text-[#4a6b2f] border-[#d3e0c0]' : 'bg-[#f7ecd7] text-[#8a5a19] border-[#e8d3a8]'}`}>{msg}</div>
+        )}
+
+        {cargando ? (
+          <div className={`flex items-center justify-center py-10 ${TINTA_SUAVE}`}><Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando agenda…</div>
+        ) : (
+          <>
+            {/* ── LOGÍSTICA: cargas 1, 2, 3... con subtotal ── */}
+            <div className={`${PAPEL} p-4`}>
+              <div className="flex items-center justify-between">
+                <TituloSeccion>Logística Hualsa</TituloSeccion>
+                <button onClick={abrirNuevaCarga} className="text-xs text-[#7a1f2b] hover:underline flex items-center gap-1 mb-2 shrink-0">
+                  <Plus className="h-3.5 w-3.5" /> Nueva carga
+                </button>
               </div>
-              {recuentosArr.length > 0 && (
-                <div className="text-sm font-bold text-slate-600 space-y-0.5 px-1">
-                  {recuentosArr.map(([dest, n]) => (
-                    <div key={dest}>{dest}; {n}</div>
-                  ))}
+              {cargasNums.length === 0 && (
+                <div className={`text-center py-6 text-sm italic ${TINTA_SUAVE}`}>No hay cargas este día. Dicta arriba o añade una línea a mano.</div>
+              )}
+              <div className="space-y-3">
+                {cargasNums.map(c => {
+                  const lineas = logisticas.filter(i => i.carga === c)
+                  const sub = lineas.reduce((s, i) => s + (Number(i.importe) || 0), 0)
+                  return (
+                    <div key={c} className="bg-[#fbf6e7] border border-[#e9dfc2] rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <h3 className={`text-base font-bold ${TINTA}`}>Carga {c}</h3>
+                        <div className="flex items-center gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => abrirAddLinea('logistica', c)} className="h-7 text-xs text-[#7a1f2b] hover:bg-[#f1e8d2]">
+                            <Plus className="h-3 w-3 mr-1" /> Línea
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => borrarCarga(c)} className="h-7 w-7 p-0 text-[#a33b30] hover:bg-[#f3e0dd]" title="Borrar carga completa">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div>
+                        {lineas.map(l => <LineaRow key={l.id} l={l} />)}
+                      </div>
+                      <div className={`mt-2 text-[15px] font-bold text-right ${TINTA}`}>Total; {fmtNum(sub)}€</div>
+                    </div>
+                  )
+                })}
+              </div>
+              {cargasNums.length > 0 && (
+                <div className={`mt-3 pt-2 border-t-4 border-double border-[#cbb98d] text-lg font-bold text-center ${TINTA}`}>
+                  Total Día; {fmtNum(totalLog)}€
                 </div>
               )}
-            </>
-          )}
-        </div>
-      )}
+            </div>
+
+            {/* ── FACTURACIÓN: grupos por cliente + recuentos ── */}
+            <div className={`${PAPEL} p-4`}>
+              <TituloSeccion color="#1d4ed8">Facturación del día</TituloSeccion>
+              {facturaciones.length === 0 && (
+                <div className={`text-center py-6 text-sm italic ${TINTA_SUAVE}`}>No hay facturación este día. Dicta arriba o añade una línea a mano.</div>
+              )}
+              <div className="space-y-3">
+                {clientesOrden.map(cli => {
+                  const lineas = facturaciones.filter(i => (i.cliente || '') === cli)
+                  const sub = lineas.reduce((s, i) => s + (Number(i.importe) || 0), 0)
+                  return (
+                    <div key={cli || '(sin cliente)'} className="bg-[#fbf6e7] border border-[#e9dfc2] rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <h3 className={`text-base font-bold underline underline-offset-4 decoration-[#cbb98d] ${TINTA}`}>{cli || 'Sin cliente'}</h3>
+                        <Button size="sm" variant="ghost" onClick={() => abrirAddLinea('facturacion', undefined, cli)} className="h-7 text-xs text-[#1d4ed8] hover:bg-[#e5ebf7]">
+                          <Plus className="h-3 w-3 mr-1" /> Línea
+                        </Button>
+                      </div>
+                      <div>
+                        {lineas.map(l => <LineaRow key={l.id} l={l} />)}
+                      </div>
+                      <div className={`mt-2 text-[15px] font-bold text-right ${TINTA}`}>Total; {fmtNum(sub)}€</div>
+                    </div>
+                  )
+                })}
+              </div>
+              {facturaciones.length > 0 && (
+                <>
+                  <div className={`mt-3 pt-2 border-t-4 border-double border-[#cbb98d] text-lg font-bold text-center ${TINTA}`}>
+                    Total; {fmtNum(totalFac)}€
+                  </div>
+                  {recuentosArr.length > 0 && (
+                    <div className={`text-sm font-bold space-y-0.5 px-1 mt-2 ${TINTA}`}>
+                      {recuentosArr.map(([dest, n]) => (
+                        <div key={dest}>{dest}; {n}</div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* ── NOTAS DEL DÍA (Opus One "Daily Notes") ── */}
+            <div className={`${PAPEL} p-4`}>
+              <TituloSeccion>Notas del día</TituloSeccion>
+              <textarea
+                value={nota}
+                onChange={e => cambiarNota(e.target.value)}
+                onBlur={() => { if (notaTimerRef.current) clearTimeout(notaTimerRef.current); guardarNota(nota, fecha) }}
+                placeholder="Apuntes libres del día (se guardan solos)…"
+                rows={4}
+                className="w-full bg-transparent border-0 border-b border-dashed border-[#ddd2b4] p-1 text-[15px] leading-relaxed focus:outline-none focus:border-[#7a1f2b] resize-y"
+              />
+              <div className={`text-[11px] text-right mt-1 ${TINTA_SUAVE}`}>
+                {notaEstado === 'guardando' && 'Guardando…'}
+                {notaEstado === 'guardada' && '✓ Guardado'}
+                {notaEstado === 'error' && <span className="text-[#a33b30] font-bold">⚠ No se pudo guardar — toca la nota para reintentar</span>}
+                {notaEstado === '' && <span> </span>}
+              </div>
+            </div>
+
+            {/* Vaciar día */}
+            {items.length > 0 && (
+              <div className="text-center">
+                <Button variant="outline" size="sm" onClick={vaciarDia} className="text-[#a33b30] border-[#dcc3b8] hover:bg-[#f3e0dd] bg-transparent">
+                  <Trash2 className="h-4 w-4 mr-1" /> Vaciar el día
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {/* DIÁLOGO añadir/editar línea */}
       <Dialog open={!!form} onOpenChange={(open) => { if (!open) setForm(null) }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className={SERIF}>
               {form?.mode === 'edit' ? 'Editar línea' : form?.tipo === 'logistica' ? `Nueva línea — Carga ${form?.carga}` : 'Nueva línea de facturación'}
             </DialogTitle>
           </DialogHeader>
           {form && (
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase">Concepto</label>
+                <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Concepto</label>
                 <Input
                   value={form.concepto}
                   onChange={e => setForm({ ...form, concepto: e.target.value })}
@@ -653,46 +778,60 @@ export function AgendaDiariaView() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase">Importe €</label>
+                  <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Importe €</label>
                   {/* V29.82: texto + inputMode decimal — acepta coma («9,5») */}
                   <Input type="text" inputMode="decimal" value={form.importeTxt || ''} onChange={e => setForm({ ...form, importeTxt: e.target.value, importe: parseNumEs(e.target.value) })} className="mt-1 text-right" placeholder="0" />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase">Cantidad</label>
+                  <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Cantidad</label>
                   <Input type="text" inputMode="decimal" value={form.cantidadTxt || ''} onChange={e => setForm({ ...form, cantidadTxt: e.target.value, cantidad: parseNumEs(e.target.value) })} className="mt-1 text-right" placeholder="0" />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase">Unidad</label>
+                  <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Unidad</label>
                   <Input value={form.unidad} onChange={e => setForm({ ...form, unidad: e.target.value })} placeholder="b, p, u…" className="mt-1" />
                 </div>
               </div>
-              {form.tipo === 'logistica' ? (
+              <div className="grid grid-cols-2 gap-2">
+                {form.tipo === 'logistica' ? (
+                  <div>
+                    <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Nº de carga</label>
+                    <Input type="number" min="1" value={form.carga} onChange={e => setForm({ ...form, carga: Math.max(1, Number(e.target.value) || 1) })} className="mt-1" />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Cliente (agrupación)</label>
+                    <Input
+                      value={form.cliente}
+                      onChange={e => setForm({ ...form, cliente: e.target.value })}
+                      placeholder="Florette, Milca…"
+                      list="agenda-diaria-clientes"
+                      className="mt-1"
+                    />
+                    <datalist id="agenda-diaria-clientes">
+                      {[...new Set([...clientesLista, ...vocabClientes])].map(c => <option key={c} value={c} />)}
+                    </datalist>
+                  </div>
+                )}
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase">Nº de carga</label>
-                  <Input type="number" min="1" value={form.carga} onChange={e => setForm({ ...form, carga: Math.max(1, Number(e.target.value) || 1) })} className="mt-1" />
+                  {/* V29.92 — prioridad estilo Opus One */}
+                  <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Prioridad</label>
+                  <select
+                    value={form.prioridad}
+                    onChange={e => setForm({ ...form, prioridad: e.target.value })}
+                    className="mt-1 w-full h-10 rounded-md border border-input bg-transparent px-2 text-sm focus:outline-none focus:border-[#7a1f2b]"
+                  >
+                    <option value="">— sin prioridad —</option>
+                    {['A1', 'A2', 'A3', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3'].map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
                 </div>
-              ) : (
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase">Cliente (agrupación)</label>
-                  <Input
-                    value={form.cliente}
-                    onChange={e => setForm({ ...form, cliente: e.target.value })}
-                    placeholder="Florette, Milca…"
-                    list="agenda-diaria-clientes"
-                    className="mt-1"
-                  />
-                  <datalist id="agenda-diaria-clientes">
-                    {[...new Set([...clientesLista, ...vocabClientes])].map(c => <option key={c} value={c} />)}
-                  </datalist>
-                </div>
-              )}
+              </div>
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase">Nota</label>
+                <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Nota</label>
                 <Input value={form.nota} onChange={e => setForm({ ...form, nota: e.target.value })} placeholder="Facturar a Vega, envases…" className="mt-1" />
               </div>
               <div className="flex justify-end gap-2 pt-1">
                 <Button variant="outline" onClick={() => setForm(null)}>Cancelar</Button>
-                <Button onClick={guardarForm} disabled={guardandoForm} className="bg-[#2bb24c] hover:bg-[#239540] text-white">
+                <Button onClick={guardarForm} disabled={guardandoForm} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white">
                   {guardandoForm ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                   Guardar
                 </Button>

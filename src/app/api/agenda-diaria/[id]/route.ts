@@ -3,6 +3,13 @@ import { NextResponse } from 'next/server'
 import { requireTenantId } from '@/lib/tenant-context'
 
 // V29.80 — AGENDA DIARIA: edición y borrado (soft delete) de una línea.
+// V29.92 — el PUT acepta también la prioridad estilo Opus One (A1, A2, B1...).
+
+// Prioridad estilo Opus One: letra A-C + número. Cualquier otra cosa → ''.
+function normPrioridad(v: any): string {
+  const m = String(v || '').trim().toUpperCase().match(/^([ABC])\s*-?\s*(\d{1,2})$/)
+  return m ? `${m[1]}${m[2]}` : ''
+}
 
 // PUT /api/agenda-diaria/[id] — actualiza los campos editables de la línea.
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -25,6 +32,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (body.unidad !== undefined) data.unidad = String(body.unidad || '').trim().slice(0, 12)
     if (body.importe !== undefined) data.importe = Number(body.importe) || 0
     if (body.orden !== undefined) data.orden = Math.round(Number(body.orden) || 0)
+    if (body.prioridad !== undefined) data.prioridad = normPrioridad(body.prioridad)
 
     const updated = await db.agendaDia.update({ where: { id }, data })
     return NextResponse.json({ item: updated })
