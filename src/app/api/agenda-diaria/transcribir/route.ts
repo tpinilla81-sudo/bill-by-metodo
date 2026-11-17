@@ -69,7 +69,16 @@ export async function POST(req: Request) {
     if (!apiRes.ok) {
       const txt = await apiRes.text().catch(() => '')
       console.error('Z.ai /audio/transcriptions error:', apiRes.status, txt.slice(0, 500))
-      return NextResponse.json({ error: `Z.ai transcripción falló (${apiRes.status})` }, { status: 502 })
+      // Incluir el detalle de Z.ai en el error (sin secretos — solo el mensaje)
+      let detalle = `Z.ai transcripción falló (${apiRes.status})`
+      try {
+        const j = JSON.parse(txt)
+        if (j?.error?.message) detalle += `: ${String(j.error.message).slice(0, 200)}`
+        else if (j?.message) detalle += `: ${String(j.message).slice(0, 200)}`
+      } catch {
+        if (txt) detalle += `: ${txt.slice(0, 200)}`
+      }
+      return NextResponse.json({ error: detalle }, { status: 502 })
     }
     const data = await apiRes.json()
     const texto = String(data?.text || '').trim()
