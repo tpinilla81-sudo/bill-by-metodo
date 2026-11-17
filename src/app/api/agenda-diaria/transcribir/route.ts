@@ -42,33 +42,62 @@ export async function POST(req: Request) {
     }
     const baseUrl = String(r.cfg.baseUrl || '').replace(/\/$/, '')
     const apiKey = String(r.cfg.apiKey || '')
-    // Construir la URL del endpoint de transcripciones
     const url = `${baseUrl}/audio/transcriptions`
 
     // Llamar a la API como multipart/form-data (igual que OpenAI Whisper):
     // - model=glm-asr-2512
-    // - file=audio.webm (binario)
-    // El base64 → Blob → FormData para no tener que decodificar a Buffer.
+    // - file=audio.wav (binario)
+    // El endpoint de Z.ai exige multipart con campo file; acepta WAV y MP3.
     const audioBuffer = Buffer.from(b64Limpio, 'base64')
-    const mime = String(body.mime || 'audio/webm').trim() || 'audio/webm'
-    const ext = mime.includes('mp4') ? 'mp4' : mime.includes('ogg') ? 'ogg' : 'webm'
-    const form = new FormData()
-    form.append('model', 'glm-asr-2512')
-    form.append('stream', 'false')
-    form.append('file', new Blob([audioBuffer], { type: mime }), `audio.${ext}`)
+    const mime = String(body.mime || '').trim().toLowerCase()
+    // Si no viene mime, inferir del magic bytes
+    let finalMime = mime
+    let finalExt = 'wav'
+    if (!finalMime) {
+      if (audioBuffer.slice(0, 4).toString() === 'RIFF') { finalMime = 'audio/wav'; finalExt = 'wav' }
+      else if (audioBuffer.slice(0, 3).toString() === 'ID3' || (audioBuffer[0] === 0xff && audioBuffer[1] === 0xfb)) { finalMime = 'audio/mpeg'; finalExt = 'mp3' }
+      else if (audioBuffer.slice(4, 8).toString() === 'ftyp') { finalMime = 'audio/mp4'; finalExt = 'm4a' }
+      else if (audioBuffer.slice(0, 4).toString() === 'OggS') { finalMime = 'audio/ogg'; finalExt = 'ogg' }
+      else { finalMime = 'audio/wav'; finalExt = 'wav' } // default
+    } else {
+      if (mime.includes('mp3') || mime.includes('mpeg')) { finalExt = 'mp3'; finalMime = 'audio/mpeg' }
+      else if (mime.includes('wav')) { finalExt = 'wav'; finalMime = 'audio/wav' }
+      else if (mime.includes('mp4') || mime.includes('m4a')) { finalExt = 'm4a'; finalMime = 'audio/mp4' }
+      else if (mime.includes('ogg')) { finalExt = 'ogg'; finalMime = 'audio/ogg' }
+      else if (mime.includes('webm')) { finalExt = 'webm'; finalMime = 'audio/webm' }
+    }
+
+    // Construir el body multipart a mano para controlar el Content-Type exacto
+    // del campo file (Vercel/Node a veces no lo pone bien con FormData nativa).
+    const boundary = '----ZaiBoundary' + Math.random().toString(36).slice(2)
+    const parts: Buffer[] = []
+    const enc = (s: string) => Buffer.from(s, 'utf8')
+    parts.push(enc(`--${boundary}\r\n`))
+    parts.push(enc(`Content-Disposition: form-data; name="model"\r\n\r\n`))
+    parts.push(enc(`glm-asr-2512\r\n`))
+    parts.push(enc(`--${boundary}\r\n`))
+    parts.push(enc(`Content-Disposition: form-data; name="stream"\r\n\r\n`))
+    parts.push(enc(`false\r\n`))
+    parts.push(enc(`--${boundary}\r\n`))
+    parts.push(enc(`Content-Disposition: form-data; name="file"; filename="audio.${finalExt}"\r\n`))
+    parts.push(enc(`Content-Type: ${finalMime}\r\n\r\n`))
+    parts.push(audioBuffer)
+    parts.push(enc(`\r\n`))
+    parts.push(enc(`--${boundary}--\r\n`))
+    const bodyBuf = Buffer.concat(parts)
 
     const apiRes = await fetch(url, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
-        // Si la config trae token (gateway interno), añadir X-Token también
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
         ...(r.cfg.token ? { 'X-Token': String(r.cfg.token) } : {}),
       },
-      body: form,
+      body: bodyBuf,
     })
     if (!apiRes.ok) {
       const txt = await apiRes.text().catch(() => '')
-      console.error('Z.ai /audio/transcriptions error:', apiRes.status, txt.slice(0, 500))
+      console.error('Z.ai /audio/transcriptions error:', apiRes.status, txt.slice(0, 500), 'mime:', finalMime, 'ext:', finalExt, 'size:', audioBuffer.length)
       // Incluir el detalle de Z.ai en el error (sin secretos — solo el mensaje)
       let detalle = `Z.ai transcripción falló (${apiRes.status})`
       try {
@@ -78,6 +107,7 @@ export async function POST(req: Request) {
       } catch {
         if (txt) detalle += `: ${txt.slice(0, 200)}`
       }
+      detalle += ` [mime=${finalMime} size=${audioBuffer.length}b]`
       return NextResponse.json({ error: detalle }, { status: 502 })
     }
     const data = await apiRes.json()
