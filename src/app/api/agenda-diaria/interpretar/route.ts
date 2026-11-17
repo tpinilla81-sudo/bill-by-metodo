@@ -40,6 +40,11 @@ import path from 'path'
 // la petición. Sin él (gateway interno del entorno local) todo sigue igual.
 // V29.92 — estilo Opus One: el dictado puede traer PRIORIDAD (A1, A2, B1...
 // "prioridad A1", "es urgente"); el LLM la extrae y el código la normaliza.
+// V29.95 — entrada por IMAGEN (foto de un parte, una hoja escrita, etc.): el POST
+// acepta campo "imagen" (base64 con o sin prefijo data:). Si está presente, se
+// usa chat.completions.createVision con content multimodal (texto+imagen) en
+// lugar del chat normal. Reutiliza TODO el prompt, vocabulario y lógica de
+// guardado — el agente lee la imagen y devuelve el mismo array JSON.
 
 function normStr(s: string): string {
   return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -198,7 +203,20 @@ export async function POST(req: Request) {
     const texto = String(body.texto || '').trim()
     const fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(body.fecha)) ? String(body.fecha) : hoyMadrid()
 
-    if (!texto) return NextResponse.json({ error: 'No hay texto para interpretar' }, { status: 400 })
+    // V29.95 — imagen (foto) opcional en base64. Puede venir como
+    // "data:image/jpeg;base64,...." (URL completa) o solo base64 crudo + mime.
+    let imagenUrl = ''
+    const imagenRaw = String(body.imagen || '').trim()
+    if (imagenRaw) {
+      if (imagenRaw.startsWith('data:')) {
+        imagenUrl = imagenRaw
+      } else {
+        const mime = String(body.imagenMime || 'image/jpeg').trim()
+        imagenUrl = `data:${mime};base64,${imagenRaw}`
+      }
+    }
+
+    if (!texto && !imagenUrl) return NextResponse.json({ error: 'No hay texto ni imagen para interpretar' }, { status: 400 })
 
     // ── Vocabulario real del tenant ──────────────────────────────────────────
     const clientes = await db.cliente.findMany({
@@ -286,18 +304,37 @@ ${conceptosLog.slice(0, 40).map(c => `- ${c}`).join('\n') || '(ninguno aún)'}
 CONCEPTOS DE FACTURACIÓN HABITUALES:
 ${conceptosFac.slice(0, 60).map(c => `- ${c}`).join('\n') || '(ninguno aún)'}
 
-Dictado a interpretar (puede tener errores de transcripción de voz — interpreta por contexto):`
+${imagenUrl
+  ? `El usuario ha adjuntado una FOTO (parte de trabajo, hoja escrita a mano, albarán, lista de servicios del día...). Lee la imagen con atención y EXTRAe todas las líneas de logística y facturación que veas, aplicando las mismas reglas que con el dictado por voz. Si en la imagen hay texto manuscrito, interprétalo (puede tener letras mal escritas). Si el texto que acompaña aclara algo (cliente, fecha, prioridad), úsalo como contexto. Devuelve SOLO el array JSON con las líneas detectadas.`
+  : 'Dictado a interpretar (puede tener errores de transcripción de voz — interpreta por contexto):'}`
 
     const { zai, cfg } = await crearZai()
-    const completion = await zai.chat.completions.create({
-      // V29.91 — la API pública exige "model"; el gateway interno usa su default
-      ...(cfg?.model ? { model: String(cfg.model).trim() } : {}),
-      messages: [
-        { role: 'assistant', content: system },
-        { role: 'user', content: texto },
-      ],
-      thinking: { type: 'disabled' },
-    })
+    let completion: any
+    if (imagenUrl) {
+      // V29.95 — VLM: mensaje multimodal (texto + imagen)
+      const content: any[] = [{ type: 'text', text: system }]
+      if (texto) content.push({ type: 'text', text: texto })
+      content.push({ type: 'image_url', image_url: { url: imagenUrl } })
+      // createVision acepta el mismo formato de mensajes
+      completion = await (zai as any).chat.completions.createVision({
+        ...(cfg?.model ? { model: String(cfg.model).trim() } : {}),
+        messages: [
+          { role: 'assistant', content: system },
+          { role: 'user', content },
+        ],
+        thinking: { type: 'disabled' },
+      })
+    } else {
+      completion = await zai.chat.completions.create({
+        // V29.91 — la API pública exige "model"; el gateway interno usa su default
+        ...(cfg?.model ? { model: String(cfg.model).trim() } : {}),
+        messages: [
+          { role: 'assistant', content: system },
+          { role: 'user', content: texto },
+        ],
+        thinking: { type: 'disabled' },
+      })
+    }
 
     const raw = completion.choices[0]?.message?.content || ''
     let arr: any[] = []

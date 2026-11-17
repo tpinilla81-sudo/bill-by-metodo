@@ -25,7 +25,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Mic, MicOff, Sparkles, Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
+import { Mic, MicOff, Sparkles, Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, Camera, X, Image as ImageIcon } from 'lucide-react'
 
 type AgendaDiaLine = {
   id: string
@@ -230,6 +230,9 @@ export function AgendaDiariaView() {
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const notaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const notaGuardadaRef = useRef('') // último texto de nota GUARDADO en el servidor
+  // V29.95 — foto adjunta (data URL) para que el agente la lea con VLM
+  const [foto, setFoto] = useState<string>('') // data URL
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   // Resalta líneas nuevas 6s (limpia el timer anterior para no pisar tandas)
   function flash(ids: string[]) {
@@ -442,14 +445,18 @@ export function AgendaDiariaView() {
 
   // ── AGENTE: interpretar dictado y rellenar la agenda ──────────────────────
   async function handleInterpretar() {
-    if (!texto.trim()) { setMsg('Escribe o dicta primero el texto'); return }
+    // V29.95 — se puede enviar texto, foto, o ambos
+    if (!texto.trim() && !foto) { setMsg('Escribe, dicta o adjunta una foto primero'); return }
     setInterpretando(true)
     setMsg('')
     try {
+      const payload: any = { fecha }
+      if (texto.trim()) payload.texto = texto.trim()
+      if (foto) payload.imagen = foto
       const res = await fetch('/api/agenda-diaria/interpretar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ texto, fecha }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -462,6 +469,7 @@ export function AgendaDiariaView() {
       flash(nuevas.map(n => n.id))
       setTexto('')
       textoRef.current = ''
+      setFoto('') // V29.95 — limpia la foto tras procesarla
       const nLog = nuevas.filter(n => n.tipo === 'logistica').length
       const nFac = nuevas.filter(n => n.tipo === 'facturacion').length
       const partes: string[] = []
@@ -472,6 +480,51 @@ export function AgendaDiariaView() {
       setMsg('⚠ Error de conexión: ' + (err?.message || ''))
     } finally {
       setInterpretando(false)
+    }
+  }
+
+  // V29.95 — leer un File de imagen y devolver un data URL redimensionado
+  // (max ~1280px lado largo, JPEG calidad 0.8) para no petar el body del POST.
+  function fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onerror = () => reject(new Error('No se pudo leer el archivo'))
+      reader.onload = () => {
+        const img = new Image()
+        img.onerror = () => reject(new Error('La imagen no es válida'))
+        img.onload = () => {
+          const MAX = 1280
+          let w = img.width, h = img.height
+          if (w > MAX || h > MAX) {
+            if (w >= h) { h = Math.round(h * MAX / w); w = MAX }
+            else { w = Math.round(w * MAX / h); h = MAX }
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = w; canvas.height = h
+          const ctx = canvas.getContext('2d')
+          if (!ctx) { resolve(String(reader.result)); return }
+          ctx.drawImage(img, 0, 0, w, h)
+          try { resolve(canvas.toDataURL('image/jpeg', 0.8)) }
+          catch { resolve(String(reader.result)) }
+        }
+        img.src = String(reader.result)
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  async function onSeleccionarFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = '' // permite volver a elegir el mismo archivo
+    if (!f) return
+    if (!f.type.startsWith('image/')) { setMsg('⚠ El archivo no es una imagen'); return }
+    if (f.size > 15 * 1024 * 1024) { setMsg('⚠ La imagen es demasiado grande (máx 15MB)'); return }
+    try {
+      const url = await fileToDataUrl(f)
+      setFoto(url)
+      setMsg('')
+    } catch (err: any) {
+      setMsg('⚠ ' + (err?.message || 'No se pudo cargar la imagen'))
     }
   }
 
@@ -772,7 +825,7 @@ export function AgendaDiariaView() {
         {/* DICTADO */}
         <div className={`${PAPEL} p-4 space-y-3`}>
           <TituloSeccion>Dictado</TituloSeccion>
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               onClick={toggleGrabar}
               className={grabando ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse' : 'bg-[#2bb24c] hover:bg-[#239540] text-white'}
@@ -780,21 +833,51 @@ export function AgendaDiariaView() {
             >
               {grabando ? <><MicOff className="h-4 w-4 mr-2" /> Parar…</> : <><Mic className="h-4 w-4 mr-2" /> Dictar por voz</>}
             </Button>
+            {/* V29.95 — Foto: en móvil abre la cámara (capture=environment), en desktop elige archivo */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={onSeleccionarFoto}
+              className="hidden"
+            />
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              className="text-[#7a1f2b] border-[#d8b88a] hover:bg-[#f1e8d2]"
+              title="Hacer o adjuntar una foto para que el agente la lea"
+            >
+              <Camera className="h-4 w-4 mr-2" /> Foto
+            </Button>
             {grabando && <span className="text-sm text-[#a33b30] font-bold">● Grabando — habla claro, una línea por frase</span>}
-            {!soportaVoz && <span className="text-xs text-[#8a5a19]">Tu navegador no soporta dictado por voz (usa Chrome/Edge) — puedes escribir el texto</span>}
-            <Button onClick={handleInterpretar} disabled={interpretando || !texto.trim()} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white ml-auto">
+            {!soportaVoz && <span className="text-xs text-[#8a5a19]">Tu navegador no soporta dictado por voz (usa Chrome/Edge) — puedes escribir el texto o adjuntar una foto</span>}
+            <Button onClick={handleInterpretar} disabled={interpretando || (!texto.trim() && !foto)} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white ml-auto">
               {interpretando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
               {interpretando ? 'Rellenando agenda…' : 'Añadir a la agenda'}
             </Button>
           </div>
+          {/* V29.95 — vista previa de la foto adjunta */}
+          {foto && (
+            <div className="relative inline-block rounded-lg overflow-hidden border border-[#d8b88a] bg-[#fbf6e7]">
+              <img src={foto} alt="Foto adjunta" className="max-h-44 block" />
+              <button
+                onClick={() => setFoto('')}
+                className="absolute top-1 right-1 h-7 w-7 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
+                title="Quitar foto"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           <textarea
             value={texto}
             onChange={e => { textoRef.current = e.target.value; setTexto(e.target.value) }}
-            placeholder={grabando ? 'Escuchando… el dictado aparece aquí' : 'Ej: «Hualsa Milagro 125 euros. Piking bobinas 72 bobinas a 1,20. Carga palets 3 palets a 3 euros. Nueva carga. Milca Milagro 20 euros. La Boquera Milca 90 euros facturar a Vega»'}
+            placeholder={grabando ? 'Escuchando… el dictado aparece aquí' : foto ? 'Contexto opcional para la foto (cliente, fecha, prioridad…) — puedes dejarlo vacío' : 'Ej: «Hualsa Milagro 125 euros. Piking bobinas 72 bobinas a 1,20. Carga palets 3 palets a 3 euros. Nueva carga. Milca Milagro 20 euros. La Boquera Milca 90 euros facturar a Vega»'}
             rows={4}
             className="w-full bg-[#fffdf7] border border-[#e3d8bc] rounded-lg p-3 text-sm focus:border-[#7a1f2b] focus:outline-none resize-y leading-relaxed"
           />
-          <p className={`text-xs ${TINTA_SUAVE}`}>Consejo: di «nueva carga» para empezar la siguiente carga; en facturación di el cliente («para Florette») y el destino («Milca/Milagro 90 euros»). Prioridades: di «prioridad A1» o «urgente». Todo lo dictado se añade al día seleccionado.</p>
+          <p className={`text-xs ${TINTA_SUAVE}`}>Consejo: di «nueva carga» para empezar la siguiente carga; en facturación di el cliente («para Florette») y el destino («Milca/Milagro 90 euros»). Prioridades: di «prioridad A1» o «urgente». <strong>Foto</strong>: adjunta un parte, hoja escrita o albarán y el agente lo leerá con visión IA. Todo lo dictado o fotografiado se añade al día seleccionado.</p>
         </div>
 
         {msg && (

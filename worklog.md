@@ -2663,3 +2663,31 @@ Verificación:
 
 Stage Summary:
 - La Agenda Diaria ahora tiene el calendario mensual en una página paralela (izquierda en desktop, arriba en móvil), como una libreta Filofax. Los marcadores burdeos/azul indican qué días tienen contenido. Pendiente de validar en producción.
+
+### V29.95 · 2026-11-17 · AGENDA: entrada por FOTO (VLM) además de dictado y texto
+
+Request:
+- "tenemos la opcion de dictar, la opcion de escribi, quiero tambien opcion de adjuntar o mpegar una foto" → tercera vía de entrada en la Agenda Diaria.
+
+Cambios:
+- /api/agenda-diaria/interpretar/route.ts (POST): acepta campo "imagen" opcional (base64 con o sin prefijo data:). Si está presente, usa zai.chat.completions.createVision con content multimodal (texto del prompt + texto opcional del usuario + image_url) en lugar del chat normal. Reutiliza TODO el system prompt, vocabulario del tenant, catálogo, fuzzy-match, redes de seguridad (reglas 10/11) y guardado — solo cambia la llamada al LLM. El prompt añade una instrucción cuando hay imagen: "Lee la imagen con atención y EXTRAe todas las líneas de logística y facturación que veas".
+- Validación: si no hay texto NI imagen → 400 "No hay texto ni imagen para interpretar".
+- agenda-diaria-view.tsx: nuevo botón "Foto" (icono Camera) al lado de Dictar. Usa <input type="file" accept="image/*" capture="environment"> → en móvil abre la cámara, en desktop elige archivo. La imagen se redimensiona a máx 1280px (lado largo) y se codifica como JPEG 0.8 con canvas para no petar el body del POST (fileToDataUrl). Vista previa inline con botón X para quitarla. El botón "Añadir a la agenda" se habilita si hay texto O foto. Tras procesar, se limpia texto + foto. El placeholder del textarea cambia cuando hay foto: "Contexto opcional para la foto (cliente, fecha, prioridad) — puedes dejarlo vacío".
+- Sin cambios en el modelo de datos ni en las rutas existentes.
+
+Verificación (test E2E scripts/test-agenda-foto.ts):
+- Login → estado agente OK → POST con imagen de un "parte de trabajo" simulado (PNG con texto: Hualsa/Milagro 125€, Piking Bobinas 72 a 1,20, Carga Palets 3 a 3€, Milca/Milagro 20€, La Boquera/Milca 90€ facturar a Vega, Villafranca/Milagro 180€, URGENTE viaje daroca).
+- Respuesta 200 en 9,4s · 7 items creados:
+  - Hualsa/Milagro 125€ (logística)
+  - Piking Bobinas 86,4€ 72b (¡el agente calculó 72×1,20!)
+  - Carga Palets 9€ 3p (3×3)
+  - Milca/Milagro 20€ (facturación)
+  - La Boquera/Milca 90€ nota "Facturar a Vega" (¡captó el "facturar a Vega"!)
+  - Villafranca/Milagro 180€
+  - Viaje Daroca nota "Urgente" prioridad A1 (regla 12: "urgente" → A1)
+- GET del día devuelve los 7 items. Cleanup OK.
+- Caso control: POST sin texto ni imagen → 400 "No hay texto ni imagen para interpretar".
+- Label V29.95.
+
+Stage Summary:
+- La Agenda Diaria ahora acepta 3 vías de entrada: DICTADO por voz, ESCRIBIR texto, o ADJUNTAR/HACER FOTO. La foto se procesa con visión IA (VLM) y se aplican las mismas reglas del agente (catálogo, prioridades, facturación). Pendiente de validar en producción (necesita el agente IA configurado, que ya lo está con la clave del usuario).
