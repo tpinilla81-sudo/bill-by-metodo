@@ -309,15 +309,24 @@ ${imagenUrl
   : 'Dictado a interpretar (puede tener errores de transcripción de voz — interpreta por contexto):'}`
 
     const { zai, cfg } = await crearZai()
+    // V29.95 — si hay imagen, asegurarnos de usar un modelo VLM. La config del
+    // usuario puede tener "glm-4.5-flash" (solo texto) — al mandar una imagen con
+    // ese modelo la API fallaría. Modelos VLM de Z.ai: glm-4.5v, glm-4.6v,
+    // glm-4.6v-flash (GRATIS), glm-4.7v... Si el model configurado no es VLM,
+    // forzamos glm-4.6v-flash (gratis) automáticamente.
+    const modelCfg = String(cfg?.model || '').trim()
+    const esVlm = /-?v(-?flash|-?air)?$/i.test(modelCfg) || /vision/i.test(modelCfg)
+    const modelFinal = imagenUrl && !esVlm ? 'glm-4.6v-flash' : modelCfg
     let completion: any
     if (imagenUrl) {
-      // V29.95 — VLM: mensaje multimodal (texto + imagen)
+      // V29.95 — VLM: la API pública de Z.ai acepta imágenes en el endpoint NORMAL
+      // /v4/chat/completions con content de tipo image_url — NO existe
+      // /v4/chat/completions/vision (createVision del SDK apunta ahí y falla 404).
       const content: any[] = [{ type: 'text', text: system }]
       if (texto) content.push({ type: 'text', text: texto })
       content.push({ type: 'image_url', image_url: { url: imagenUrl } })
-      // createVision acepta el mismo formato de mensajes
-      completion = await (zai as any).chat.completions.createVision({
-        ...(cfg?.model ? { model: String(cfg.model).trim() } : {}),
+      completion = await zai.chat.completions.create({
+        ...(modelFinal ? { model: modelFinal } : {}),
         messages: [
           { role: 'assistant', content: system },
           { role: 'user', content },
@@ -327,7 +336,7 @@ ${imagenUrl
     } else {
       completion = await zai.chat.completions.create({
         // V29.91 — la API pública exige "model"; el gateway interno usa su default
-        ...(cfg?.model ? { model: String(cfg.model).trim() } : {}),
+        ...(modelFinal ? { model: modelFinal } : {}),
         messages: [
           { role: 'assistant', content: system },
           { role: 'user', content: texto },
