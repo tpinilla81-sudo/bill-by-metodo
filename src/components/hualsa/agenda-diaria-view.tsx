@@ -25,7 +25,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Mic, MicOff, Sparkles, Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, Camera, X, Image as ImageIcon } from 'lucide-react'
+import { Mic, MicOff, Sparkles, Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, Camera, X, Image as ImageIcon, AudioLines, Square } from 'lucide-react'
 
 type AgendaDiaLine = {
   id: string
@@ -233,6 +233,15 @@ export function AgendaDiariaView() {
   // V29.95 — foto adjunta (data URL) para que el agente la lea con VLM
   const [foto, setFoto] = useState<string>('') // data URL
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  // V29.96 — dictado con IA (Whisper): graba con MediaRecorder y sube el audio
+  // al endpoint /api/agenda-diaria/transcribir. Mejor calidad con acento/ruido
+  // que Web Speech API y funciona en Safari/Firefox (no solo Chrome/Edge).
+  const [grabandoIa, setGrabandoIa] = useState(false)
+  const [transcribiendo, setTranscribiendo] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const streamRef = useRef<MediaStream | null>(null)
+  const grabIaStartRef = useRef<number>(0) // para mostrar duración
 
   // Resalta líneas nuevas 6s (limpia el timer anterior para no pisar tandas)
   function flash(ids: string[]) {
@@ -245,6 +254,9 @@ export function AgendaDiariaView() {
   useEffect(() => () => {
     seguirRef.current = false
     try { recRef.current?.stop() } catch {}
+    // V29.96 — también parar MediaRecorder y liberar el stream de micrófono
+    try { mediaRecorderRef.current?.state === 'recording' && mediaRecorderRef.current?.stop() } catch {}
+    streamRef.current?.getTracks().forEach(t => t.stop())
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
     if (notaTimerRef.current) clearTimeout(notaTimerRef.current)
   }, [])
@@ -398,10 +410,11 @@ export function AgendaDiariaView() {
       recRef.current = null
       if (!seguirRef.current) { setGrabando(false); return }
       // Corte de Chrome (silencio largo, límite interno): reinicio automático
-      if (reintentosRef.current >= 5) {
+      // V29.96 — subido de 5 a 10 reintentos para frases largas con pausas
+      if (reintentosRef.current >= 10) {
         seguirRef.current = false
         setGrabando(false)
-        setMsg('⚠ El dictado se cortó varias veces sin reconocer nada — pulsa «Dictar por voz» para continuar')
+        setMsg('⚠ El dictado se cortó varias veces sin reconocer nada — prueba «Dictar con IA» (más estable con ruido y pausas)')
         return
       }
       try {
@@ -442,6 +455,97 @@ export function AgendaDiariaView() {
       setMsg('⚠ No se pudo iniciar el micrófono')
     }
   }, [grabando])
+
+  // ── V29.96 — DICTADO CON IA (Whisper): graba con MediaRecorder ────────────
+  // Al parar, sube el audio a /api/agenda-diaria/transcribir y vuelca el texto
+  // al textarea. Es la alternativa a Web Speech API: mejor con acento y ruido,
+  // funciona en Safari/Firefox, no se corta por silencios. El usuario puede
+  // combinar: dicta con IA → revisa/edita → Añadir a la agenda.
+  const toggleGrabarIa = useCallback(async () => {
+    if (grabandoIa) {
+      // Parar grabación → disparar onstop que sube el audio
+      try { mediaRecorderRef.current?.state === 'recording' && mediaRecorderRef.current?.stop() } catch {}
+      return
+    }
+    // Iniciar grabación
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMsg('⚠ Tu navegador no permite grabar audio (usa Chrome/Safari actualizado)')
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      // Elegir el mejor formato que soporte el navegador (webm/opus > mp4 > webm)
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : MediaRecorder.isTypeSupported('audio/mp4')
+            ? 'audio/mp4'
+            : ''
+      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
+      audioChunksRef.current = []
+      mr.ondataavailable = (e: BlobEvent) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        // Liberar el micrófono
+        streamRef.current?.getTracks().forEach(t => t.stop())
+        streamRef.current = null
+        const blob = new Blob(audioChunksRef.current, { type: mr.mimeType || 'audio/webm' })
+        if (blob.size < 500) {
+          setMsg('⚠ Grabación demasiado corta — mantén pulsado y habla claro')
+          return
+        }
+        if (blob.size > 25 * 1024 * 1024) {
+          setMsg('⚠ Grabación demasiado larga (máx ~3 min) — grava por tandas más cortas')
+          return
+        }
+        // Subir el audio al servidor para transcribir con Whisper
+        setTranscribiendo(true)
+        setMsg('Transcribiendo audio con IA…')
+        try {
+          const b64 = await new Promise<string>((resolve, reject) => {
+            const r = new FileReader()
+            r.onerror = () => reject(new Error('No se pudo leer el audio'))
+            r.onload = () => resolve(String(r.result || ''))
+            r.readAsDataURL(blob)
+          })
+          const res = await fetch('/api/agenda-diaria/transcribir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ audio: b64 }),
+          })
+          const data = await res.json()
+          if (!res.ok) { setMsg('⚠ ' + (data.error || 'Error transcribiendo')); return }
+          const txt = String(data.texto || '').trim()
+          if (!txt) { setMsg('⚠ La transcripción vino vacía — prueba a hablar más claro'); return }
+          // Añadir el texto al textarea (preservar lo que ya hubiera)
+          const previo = textoRef.current ? textoRef.current.replace(/\s+$/, '') + ' ' : ''
+          const nuevo = previo + txt
+          textoRef.current = nuevo
+          setTexto(nuevo)
+          setMsg('✓ Transcrito — revisa el texto y dale a Añadir a la agenda')
+        } catch (err: any) {
+          setMsg('⚠ Error transcribiendo: ' + (err?.message || ''))
+        } finally {
+          setTranscribiendo(false)
+        }
+      }
+      mediaRecorderRef.current = mr
+      grabIaStartRef.current = Date.now()
+      mr.start()
+      setGrabandoIa(true)
+      setMsg('')
+    } catch (err: any) {
+      const e = String(err?.name || err?.message || '')
+      if (e === 'NotAllowedError' || e === 'SecurityError') {
+        setMsg('⚠ Permiso de micrófono denegado — actívalo en el navegador')
+      } else if (e === 'NotFoundError' || e === 'DevicesNotFoundError') {
+        setMsg('⚠ No se detecta micrófono — comprueba que funciona')
+      } else {
+        setMsg('⚠ No se pudo iniciar la grabación: ' + (err?.message || e))
+      }
+    }
+  }, [grabandoIa])
 
   // ── AGENTE: interpretar dictado y rellenar la agenda ──────────────────────
   async function handleInterpretar() {
@@ -828,10 +932,27 @@ export function AgendaDiariaView() {
           <div className="flex items-center gap-2 flex-wrap">
             <Button
               onClick={toggleGrabar}
+              disabled={grabandoIa || transcribiendo}
               className={grabando ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse' : 'bg-[#2bb24c] hover:bg-[#239540] text-white'}
-              title={soportaVoz ? (grabando ? 'Parar dictado' : 'Dictar por voz') : 'Tu navegador no soporta dictado'}
+              title={soportaVoz ? (grabando ? 'Parar dictado' : 'Dictar por voz (reconocimiento del navegador, tiempo real)') : 'Tu navegador no soporta dictado'}
             >
               {grabando ? <><MicOff className="h-4 w-4 mr-2" /> Parar…</> : <><Mic className="h-4 w-4 mr-2" /> Dictar por voz</>}
+            </Button>
+            {/* V29.96 — Dictar con IA (Whisper): graba y transcribe en el servidor.
+                Mejor con acento/ruido y funciona en Safari/Firefox también. */}
+            <Button
+              onClick={toggleGrabarIa}
+              disabled={grabando || transcribiendo}
+              className={grabandoIa
+                ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse'
+                : 'bg-[#1d4ed8] hover:bg-[#1e40af] text-white'}
+              title="Dictar con IA (Whisper) — graba y transcribe en el servidor, mejor con ruido y acento"
+            >
+              {grabandoIa
+                ? <><Square className="h-4 w-4 mr-2" /> Parar y transcribir</>
+                : transcribiendo
+                  ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Transcribiendo…</>
+                  : <><AudioLines className="h-4 w-4 mr-2" /> Dictar con IA</>}
             </Button>
             {/* V29.95 — Foto: en móvil abre la cámara (capture=environment), en desktop elige archivo */}
             <input
@@ -845,18 +966,24 @@ export function AgendaDiariaView() {
             <Button
               variant="outline"
               onClick={() => fileInputRef.current?.click()}
+              disabled={grabando || grabandoIa || transcribiendo}
               className="text-[#7a1f2b] border-[#d8b88a] hover:bg-[#f1e8d2]"
               title="Hacer o adjuntar una foto para que el agente la lea"
             >
               <Camera className="h-4 w-4 mr-2" /> Foto
             </Button>
-            {grabando && <span className="text-sm text-[#a33b30] font-bold">● Grabando — habla claro, una línea por frase</span>}
-            {!soportaVoz && <span className="text-xs text-[#8a5a19]">Tu navegador no soporta dictado por voz (usa Chrome/Edge) — puedes escribir el texto o adjuntar una foto</span>}
             <Button onClick={handleInterpretar} disabled={interpretando || (!texto.trim() && !foto)} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white ml-auto">
               {interpretando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
               {interpretando ? 'Rellenando agenda…' : 'Añadir a la agenda'}
             </Button>
           </div>
+          {(grabando || grabandoIa) && (
+            <div className="flex items-center gap-2 text-sm">
+              {grabando && <span className="text-[#a33b30] font-bold">● Grabando (Web Speech) — habla claro, una línea por frase. Si se corta, prueba «Dictar con IA»</span>}
+              {grabandoIa && <span className="text-[#1d4ed8] font-bold">● Grabando audio (IA) — habla con normalidad. Cuando termines, pulsa Parar y se transcribirá solo</span>}
+            </div>
+          )}
+          {!soportaVoz && !grabandoIa && <span className="text-xs text-[#8a5a19]">Tu navegador no soporta «Dictar por voz» (Web Speech API). Usa «Dictar con IA» (funciona en cualquier navegador) o escribe el texto.</span>}
           {/* V29.95 — vista previa de la foto adjunta */}
           {foto && (
             <div className="relative inline-block rounded-lg overflow-hidden border border-[#d8b88a] bg-[#fbf6e7]">
@@ -877,7 +1004,7 @@ export function AgendaDiariaView() {
             rows={4}
             className="w-full bg-[#fffdf7] border border-[#e3d8bc] rounded-lg p-3 text-sm focus:border-[#7a1f2b] focus:outline-none resize-y leading-relaxed"
           />
-          <p className={`text-xs ${TINTA_SUAVE}`}>Consejo: di «nueva carga» para empezar la siguiente carga; en facturación di el cliente («para Florette») y el destino («Milca/Milagro 90 euros»). Prioridades: di «prioridad A1» o «urgente». <strong>Foto</strong>: adjunta un parte, hoja escrita o albarán y el agente lo leerá con visión IA. Todo lo dictado o fotografiado se añade al día seleccionado.</p>
+          <p className={`text-xs ${TINTA_SUAVE}`}>Consejo: «<strong>Dictar por voz</strong>» (verde) va en tiempo real pero a veces se corta — si falla, usa «<strong>Dictar con IA</strong>» (azul, graba y transcribe con Whisper, más estable con ruido y acento). Di «nueva carga» para empezar la siguiente carga; en facturación di el cliente («para Florette») y el destino («Milca/Milagro 90 euros»). Prioridades: di «prioridad A1» o «urgente». <strong>Foto</strong>: adjunta un parte, hoja escrita o albarán y el agente lo leerá con visión IA. Todo lo dictado o fotografiado se añade al día seleccionado.</p>
         </div>
 
         {msg && (
