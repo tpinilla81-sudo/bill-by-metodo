@@ -2639,3 +2639,27 @@ Verificación:
 
 Stage Summary:
 - El usuario con rol facturación ya tiene el botón Regenerar (Simple) en el detalle de la factura (excepto SMURFIT). Pendiente de validar en producción.
+
+### V29.94 · 2026-11-17 · AGENDA DIARIA con calendario mensual paralelo (estilo Filofax/Opus One)
+
+Request:
+- "ESTA ES LA INTERFACE QUE QUEREMOS. EN UNA HOJA APARECE EL CALENDARIO PARA ELEGIR EL DIA PARA CONSULTAR LO APUNTADO EN OTRA HOJA PARALELA TE APARECE LO APUNTADO" + fotos de una libreta Filofax roja y una captura de app tipo Opus One con calendario mensual a la izquierda y contenido del día a la derecha.
+- Defaults aplicados (skip de AskUserQuestion): 2 columnas en desktop (calendario | día), apiladas en móvil; mes actual con flechas + "Ir a hoy"; marcadores burdeos (logística) y azul (facturación) en cada día con contenido; mantener estética Opus One y secciones actuales.
+
+Cambios:
+- NUEVA ruta /api/agenda-diaria/mes?mes=YYYY-MM: devuelve { dias: { "2026-11-13": { log: true, fac: true }, ... } } — solo filas activas (deletedAt: null). Sin tocar Registros/Facturas, solo AgendaDia del tenant. 400 en mes inválido o sin mes, 401 sin auth.
+- agenda-diaria-view.tsx: layout en grid lg:grid-cols-[280px_1fr] — a la izquierda <aside> con el calendario mensual (lg:sticky top-2), a la derecha la hoja del día. En móvil se apila (calendario arriba → día abajo).
+- CalendarioMensual (inline en el componente): flechas mes anterior/siguiente + cabecera "Calendario / Noviembre 2026" + "Ir a hoy" si el mes no es el actual. Grid 7 columnas (L M X J V S D — formato es-ES) con días del mes anterior/siguiente en gris. Día seleccionado: fondo burdeos + texto crema. Hoy: fondo crema + borde. Marcadores: punto burdeos (logística) + punto azul (facturación) bajo el número del día. Leyenda al pie.
+- Estado nuevo: mesCal (YYYY-MM del mes mostrado, independiente del día seleccionado) y marcadoresMes (caché del resumen del mes). useEffect carga el resumen al cambiar mesCal. Al cambiar el día con las flechas del strip, si el día cae en otro mes, también se mueve el calendario y se refrescan los marcadores (por si se acaba de añadir/borrar algo).
+- MatrizMes(mes): calcula el grid de 6 semanas con días del mes anterior y siguiente rellenos en gris (celda.fuera=true).
+- fmtMesLargo(mes): "Noviembre 2026" en español.
+- Sin cambios en el modelo de datos ni en las rutas existentes — solo se añade /mes.
+
+Verificación:
+- Build OK (next build sin errores). Ruta /api/agenda-diaria/mes registrada.
+- bun -e con Prisma directo confirma el filtro deletedAt: null (filas borradas no se cuentan). Endpoint en local dev: GET 200 con días activos, 400 mes inválido, 401 sin auth. Bug encontrado y arreglado DURANTE el test: el primer draft del endpoint NO filtraba deletedAt y contaba filas en soft-delete; arreglado antes de pushear.
+- Visual con agent-browser: en desktop 1280x900 aparece el calendario mensual a la izquierda (con días 26-31 del mes anterior + 1-30 actual + 1-6 siguiente) y la página del día a la derecha con todas las secciones. En móvil 390x844 se apila correctamente (calendario arriba → Dictado → Logística → Facturación → Notas). Click en día 13 → strip cambia a "13 de noviembre de 2026" correctamente.
+- Label V29.94.
+
+Stage Summary:
+- La Agenda Diaria ahora tiene el calendario mensual en una página paralela (izquierda en desktop, arriba en móvil), como una libreta Filofax. Los marcadores burdeos/azul indican qué días tienen contenido. Pendiente de validar en producción.

@@ -16,6 +16,10 @@
 // (calendario → dictado → Logística → Facturación → Notas del día), PRIORIDADES
 // A/B/C en cada línea (badge + orden dentro del grupo, también extraídas del
 // dictado) y NOTAS DEL DÍA libres con autosave (GET/PUT /api/agenda-diaria/notas).
+// V29.94 — Calendario MENSUAL en una página paralela (estilo Filofax/Opus One):
+// a la izquierda el mes con flechas anterior/siguiente + "Ir a hoy" y marcadores
+// (punto burdeos si hay logística, azul si hay facturación); a la derecha el día
+// seleccionado con todo su contenido. En móvil se apila (calendario arriba).
 
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
@@ -96,6 +100,49 @@ function addDias(iso: string, dias: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// V29.94 — mes (YYYY-MM) de una fecha ISO
+function mesDeFecha(iso: string): string {
+  return iso.slice(0, 7)
+}
+
+// V29.94 — nombre del mes en español + año («Noviembre 2026»)
+function fmtMesLargo(mes: string): string {
+  const [yy, mm] = mes.split('-').map(Number)
+  const d = new Date(yy, mm - 1, 1, 12, 0, 0)
+  const s = d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+// V29.94 — matriz del mes para pintar el grid: semanas (L→D) con días rellenos
+// y huecos del mes anterior/siguiente en gris claro.
+function matrizMes(mes: string): { iso: string; dia: number; fuera: boolean }[][] {
+  const [yy, mm] = mes.split('-').map(Number)
+  const primero = new Date(yy, mm - 1, 1, 12, 0, 0)
+  // 0=domingo → queremos L=0
+  let primerLun = (primero.getDay() + 6) % 7
+  const ultimoDia = new Date(yy, mm, 0).getDate()
+  // días del mes anterior para completar la primera semana
+  const prevUltimo = new Date(yy, mm - 1, 0).getDate()
+  const dias: { iso: string; dia: number; fuera: boolean }[] = []
+  for (let i = primerLun - 1; i >= 0; i--) {
+    const d = new Date(yy, mm - 2, prevUltimo - i, 12, 0, 0)
+    dias.push({ iso: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, dia: d.getDate(), fuera: true })
+  }
+  for (let d = 1; d <= ultimoDia; d++) {
+    dias.push({ iso: `${mes}-${String(d).padStart(2, '0')}`, dia: d, fuera: false })
+  }
+  // completar hasta múltiplo de 7
+  while (dias.length % 7 !== 0) {
+    const last = dias[dias.length - 1].iso
+    const d = new Date(last + 'T12:00:00'); d.setDate(d.getDate() + 1)
+    dias.push({ iso: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, dia: d.getDate(), fuera: true })
+  }
+  // trocear en semanas
+  const sem: { iso: string; dia: number; fuera: boolean }[][] = []
+  for (let i = 0; i < dias.length; i += 7) sem.push(dias.slice(i, i + 7))
+  return sem
+}
+
 function fmtFechaLarga(iso: string): string {
   const d = new Date(iso + 'T12:00:00')
   const s = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -155,6 +202,9 @@ const BURDEOS = '#7a1f2b'
 
 export function AgendaDiariaView() {
   const [fecha, setFecha] = useState(hoyISO())
+  // V29.94 — mes mostrado en el calendario mensual (independiente del día seleccionado)
+  const [mesCal, setMesCal] = useState(mesDeFecha(hoyISO()))
+  const [marcadoresMes, setMarcadoresMes] = useState<Record<string, { log: boolean; fac: boolean }>>({})
   const [items, setItems] = useState<AgendaDiaLine[]>([])
   const [texto, setTexto] = useState('')
   const [interpretando, setInterpretando] = useState(false)
@@ -225,6 +275,36 @@ export function AgendaDiariaView() {
   useEffect(() => {
     setSoportaVoz(!!getSpeechRecognition())
   }, [])
+
+  // ── V29.94 — cargar marcadores del mes para el calendario mensual ─────────
+  useEffect(() => {
+    let cancel = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/agenda-diaria/mes?mes=${mesCal}`, { cache: 'no-store' })
+        const d = await res.json()
+        if (!cancel && res.ok) setMarcadoresMes(d.dias || {})
+      } catch { /* sin marcadores no rompe */ }
+    })()
+    return () => { cancel = true }
+  }, [mesCal])
+
+  // V29.94 — al cambiar de día con las flechas del strip, si el día cae en otro mes
+  // distinto del calendario, también movemos el calendario para que se vea.
+  // (El usuario puede seguir navegando el calendario por su cuenta con sus flechas.)
+  useEffect(() => {
+    const m = mesDeFecha(fecha)
+    if (m !== mesCal) setMesCal(m)
+    // refrescar marcadores (puede haber cambiado algo en el día recién editado)
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/agenda-diaria/mes?mes=${m}`, { cache: 'no-store' })
+        const d = await res.json()
+        if (res.ok) setMarcadoresMes(d.dias || {})
+      } catch {}
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha])
 
   // ── V29.92 — NOTAS DEL DÍA: cargar al cambiar de fecha ────────────────────
   useEffect(() => {
@@ -570,9 +650,97 @@ export function AgendaDiariaView() {
   const [diaNombre, ...fechaResto] = fmtFechaLarga(fecha).split(', ')
   const esHoy = fecha === hoyISO()
 
+  // V29.94 — mover mes del calendario
+  function cambiarMes(delta: number) {
+    const [yy, mm] = mesCal.split('-').map(Number)
+    const d = new Date(yy, mm - 1 + delta, 1, 12, 0, 0)
+    setMesCal(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+
+  // ── V29.94 — Calendario mensual (página izquierda) ──────────────────────────
+  const semanas = matrizMes(mesCal)
+  const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
+
   return (
-    <div className={`w-full max-w-xl mx-auto pb-10 ${SERIF}`}>
-      <div className={`${HOJA} p-3 sm:p-5 space-y-4`}>
+    <div className={`w-full max-w-5xl mx-auto pb-10 ${SERIF}`}>
+      <div className="lg:grid lg:grid-cols-[280px_1fr] lg:gap-4 space-y-4 lg:space-y-0">
+
+        {/* ── PÁGINA IZQUIERDA: calendario mensual ── */}
+        <aside className={`${HOJA} p-3 lg:sticky lg:top-2 lg:self-start`}>
+          <div className="flex items-center justify-between mb-2">
+            <Button variant="ghost" size="icon" onClick={() => cambiarMes(-1)} className="h-8 w-8 shrink-0 text-[#7a1f2b] hover:bg-[#f1e8d2]" title="Mes anterior">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="text-center min-w-0 px-1">
+              <div className={`text-[10px] tracking-[0.25em] uppercase ${TINTA_SUAVE}`}>Calendario</div>
+              <div className={`text-sm font-bold leading-tight ${TINTA}`}>{fmtMesLargo(mesCal)}</div>
+              {mesCal !== mesDeFecha(hoyISO()) && (
+                <button onClick={() => { setMesCal(mesDeFecha(hoyISO())); setFecha(hoyISO()) }} className="text-[11px] text-[#7a1f2b] underline underline-offset-2 mt-0.5">Ir a hoy</button>
+              )}
+            </div>
+            <Button variant="ghost" size="icon" onClick={() => cambiarMes(1)} className="h-8 w-8 shrink-0 text-[#7a1f2b] hover:bg-[#f1e8d2]" title="Mes siguiente">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Cabecera días de la semana */}
+          <div className="grid grid-cols-7 gap-0.5 mb-1">
+            {DOW.map(d => (
+              <div key={d} className={`text-center text-[10px] font-bold uppercase tracking-wide ${TINTA_SUAVE}`}>{d}</div>
+            ))}
+          </div>
+
+          {/* Grid de días */}
+          <div className="space-y-0.5">
+            {semanas.map((sem, i) => (
+              <div key={i} className="grid grid-cols-7 gap-0.5">
+                {sem.map(celda => {
+                  const marc = marcadoresMes[celda.iso]
+                  const esHoyCell = celda.iso === hoyISO()
+                  const esSel = celda.iso === fecha
+                  return (
+                    <button
+                      key={celda.iso}
+                      onClick={() => setFecha(celda.iso)}
+                      className={`relative h-9 rounded-md flex items-center justify-center text-sm transition-colors
+                        ${celda.fuera ? `text-[#b9ad8a]/60 ${esSel ? 'bg-[#e8d3a8] font-bold' : 'hover:bg-[#f1e8d2]'}` : ''}
+                        ${!celda.fuera && esSel ? 'bg-[#7a1f2b] text-[#fdf6e9] font-bold' : ''}
+                        ${!celda.fuera && !esSel && esHoyCell ? 'bg-[#fbf6e7] border border-[#cbb98d] font-bold text-[#7a1f2b]' : ''}
+                        ${!celda.fuera && !esSel && !esHoyCell ? `${TINTA} hover:bg-[#f1e8d2]` : ''}
+                      `}
+                      title={celda.fuera ? '' : (marc ? `${marc.log ? 'logística' : ''}${marc.log && marc.fac ? ' + ' : ''}${marc.fac ? 'facturación' : ''}` : 'día sin apuntes')}
+                    >
+                      <span>{celda.dia}</span>
+                      {/* Marcadores: punto burdeos (logística) + punto azul (facturación) */}
+                      {marc && (marc.log || marc.fac) && !esSel && (
+                        <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
+                          {marc.log && <span className="h-1.5 w-1.5 rounded-full bg-[#7a1f2b]" />}
+                          {marc.fac && <span className="h-1.5 w-1.5 rounded-full bg-[#1d4ed8]" />}
+                        </span>
+                      )}
+                      {/* En el día seleccionado los puntos en blanco para que se vean */}
+                      {marc && (marc.log || marc.fac) && esSel && (
+                        <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
+                          {marc.log && <span className="h-1.5 w-1.5 rounded-full bg-[#fdf6e9]" />}
+                          {marc.fac && <span className="h-1.5 w-1.5 rounded-full bg-[#9ec5ff]" />}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+
+          {/* Leyenda */}
+          <div className={`mt-2 pt-2 border-t border-dashed border-[#ddd2b4] flex items-center gap-3 text-[10px] ${TINTA_SUAVE}`}>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[#7a1f2b]" />Logística</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[#1d4ed8]" />Facturación</span>
+          </div>
+        </aside>
+
+        {/* ── PÁGINA DERECHA: el día seleccionado ── */}
+        <div className={`${HOJA} p-3 sm:p-5 space-y-4`}>
 
         {/* Cabecera de la página (planner) */}
         <div className="text-center pt-1">
@@ -581,7 +749,7 @@ export function AgendaDiariaView() {
           <p className={`text-xs italic mt-0.5 ${TINTA_SUAVE}`}>Tu día en una página — dicta y el agente rellena</p>
         </div>
 
-        {/* Navegación por día (strip estilo planner) */}
+        {/* Navegación por día (strip compacto: flechas + fecha) */}
         <div className={`${PAPEL} p-2.5 flex items-center justify-between gap-2`}>
           <Button variant="ghost" size="icon" onClick={() => setFecha(addDias(fecha, -1))} className="h-10 w-10 shrink-0 text-[#7a1f2b] hover:bg-[#f1e8d2]" title="Día anterior">
             <ChevronLeft className="h-5 w-5" />
@@ -751,7 +919,8 @@ export function AgendaDiariaView() {
             )}
           </>
         )}
-      </div>
+        </div>{/* fin página derecha */}
+      </div>{/* fin grid calendario | día */}
 
       {/* DIÁLOGO añadir/editar línea */}
       <Dialog open={!!form} onOpenChange={(open) => { if (!open) setForm(null) }}>
