@@ -98,7 +98,14 @@ export async function POST(req: Request) {
     if (!apiRes.ok) {
       const txt = await apiRes.text().catch(() => '')
       console.error('Z.ai /audio/transcriptions error:', apiRes.status, txt.slice(0, 500), 'mime:', finalMime, 'ext:', finalExt, 'size:', audioBuffer.length)
-      // Incluir el detalle de Z.ai en el error (sin secretos — solo el mensaje)
+      // V29.96 — el modelo glm-asr-2512 es de PAGO en Z.ai ($0.03/MTok). Con la
+      // cuenta Free del usuario devuelve 429 "Insufficient balance". Detectamos
+      // ese caso concreto y damos un mensaje accionable.
+      if (apiRes.status === 429 && /Insufficient balance|no resource package/i.test(txt)) {
+        return NextResponse.json({
+          error: 'El modelo de transcripción GLM-ASR-2512 es de pago en Z.ai (necesitas saldo en tu cuenta). Opciones: 1) recarga saldo en z.ai/manage-apikey/billing, 2) sigue usando «Dictar por voz» (Web Speech, gratis) que ahora reintenta más veces.'
+        }, { status: 402 })
+      }
       let detalle = `Z.ai transcripción falló (${apiRes.status})`
       try {
         const j = JSON.parse(txt)
