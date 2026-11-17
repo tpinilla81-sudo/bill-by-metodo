@@ -252,33 +252,58 @@ ${imagenUrl
     const modelCfg = String(cfg?.model || '').trim()
     const esVlm = /-?v(-?flash|-?air)?$/i.test(modelCfg) || /vision/i.test(modelCfg)
     const modelFinal = imagenUrl && !esVlm ? 'glm-4.6v-flash' : modelCfg
+    // V29.96 — glm-4.6v-flash (gratis) tiene límite de 3 peticiones concurrentes
+    // y a veces se satura devolviendo 429 código 1305 "service overloaded".
+    // Reintentamos con backoff (2s, 5s) — solo imágenes (las de texto no suelen
+    // saturar; el modelo glm-4.5-flash tiene más cuota).
+    const maxReintentos = imagenUrl ? 3 : 1
+    const backoffMs = [0, 2000, 5000]
     let completion: any
-    if (imagenUrl) {
-      // V29.95 — VLM: la API pública de Z.ai acepta imágenes en el endpoint NORMAL
-      // /v4/chat/completions con content de tipo image_url — NO existe
-      // /v4/chat/completions/vision (createVision del SDK apunta ahí y falla 404).
-      const content: any[] = [{ type: 'text', text: system }]
-      if (texto) content.push({ type: 'text', text: texto })
-      content.push({ type: 'image_url', image_url: { url: imagenUrl } })
-      completion = await zai.chat.completions.create({
-        ...(modelFinal ? { model: modelFinal } : {}),
-        messages: [
-          { role: 'assistant', content: system },
-          { role: 'user', content },
-        ],
-        thinking: { type: 'disabled' },
-      })
-    } else {
-      completion = await zai.chat.completions.create({
-        // V29.91 — la API pública exige "model"; el gateway interno usa su default
-        ...(modelFinal ? { model: modelFinal } : {}),
-        messages: [
-          { role: 'assistant', content: system },
-          { role: 'user', content: texto },
-        ],
-        thinking: { type: 'disabled' },
-      })
+    let ultimoErr: any = null
+    for (let intento = 0; intento < maxReintentos; intento++) {
+      if (intento > 0) await new Promise(r => setTimeout(r, backoffMs[intento]))
+      try {
+        if (imagenUrl) {
+          // V29.95 — VLM: la API pública de Z.ai acepta imágenes en el endpoint NORMAL
+          // /v4/chat/completions con content de tipo image_url — NO existe
+          // /v4/chat/completions/vision (createVision del SDK apunta ahí y falla 404).
+          const content: any[] = [{ type: 'text', text: system }]
+          if (texto) content.push({ type: 'text', text: texto })
+          content.push({ type: 'image_url', image_url: { url: imagenUrl } })
+          completion = await zai.chat.completions.create({
+            ...(modelFinal ? { model: modelFinal } : {}),
+            messages: [
+              { role: 'assistant', content: system },
+              { role: 'user', content },
+            ],
+            thinking: { type: 'disabled' },
+          })
+        } else {
+          completion = await zai.chat.completions.create({
+            ...(modelFinal ? { model: modelFinal } : {}),
+            messages: [
+              { role: 'assistant', content: system },
+              { role: 'user', content: texto },
+            ],
+            thinking: { type: 'disabled' },
+          })
+        }
+        // Si llegamos aquí sin excepción, rompemos el bucle de reintentos.
+        ultimoErr = null
+        break
+      } catch (err: any) {
+        ultimoErr = err
+        const msg = String(err?.message || '')
+        const esOverload = /status 429|code.?1305|overloaded|temporarily/i.test(msg)
+        if (!esOverload || intento === maxReintentos - 1) {
+          // No es saturación temporal (o ya reintentamos 3 veces): relanzar
+          break
+        }
+        // Si es saturación y quedan intentos, el bucle espera y reintenta
+        console.log(`[interpretar] reintento ${intento + 1}/${maxReintentos} por 429/1305`)
+      }
     }
+    if (ultimoErr) throw ultimoErr
 
     const raw = completion.choices[0]?.message?.content || ''
     let arr: any[] = []
@@ -387,6 +412,13 @@ ${imagenUrl
             ? 'están definidas Z_AI_BASE_URL y Z_AI_API_KEY pero falta una de las dos (siempre las dos juntas)'
             : 'no hay configuración del agente IA: en el hosting (Vercel → Settings → Environment Variables, igual que DATABASE_URL) define Z_AI_BASE_URL y Z_AI_API_KEY (opción recomendada), o Z_AI_CONFIG con el JSON { "baseUrl", "apiKey" }'
       return NextResponse.json({ error: 'El agente IA no está disponible en este servidor: ' + detalle + '. Tras definirlas o corregirlas, haz Redeploy.' }, { status: 503 })
+    }
+    // V29.96 — saturación temporal del modelo VLM (glm-4.6v-flash free, 3 concurrentes).
+    // Ya hemos reintentado 3 veces; avisamos al usuario para que vuelva a intentarlo.
+    if (/status 429|code.?1305|overloaded|temporarily/i.test(m)) {
+      return NextResponse.json({
+        error: 'El servicio de visión IA (glm-4.6v-flash, gratuito) está saturado en este momento. Vuelve a intentarlo en 1-2 minutos. Si persiste, puedes dictar por voz o escribir el texto a mano — el agente lo interpretará igual.'
+      }, { status: 503 })
     }
     return NextResponse.json({ error: 'Error interpretando con IA: ' + (m || 'desconocido') }, { status: 500 })
   }
