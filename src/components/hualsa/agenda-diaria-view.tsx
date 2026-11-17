@@ -954,12 +954,13 @@ export function AgendaDiariaView() {
                   ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Transcribiendo…</>
                   : <><AudioLines className="h-4 w-4 mr-2" /> Dictar con IA</>}
             </Button>
-            {/* V29.95 — Foto: en móvil abre la cámara (capture=environment), en desktop elige archivo */}
+            {/* V29.95 — Foto: en móvil SIN capture=environment el sistema pregunta
+                'Cámara o Galería' (iOS) o abre el selector (Android); en desktop elige
+                archivo. Antes tenía capture que forzaba cámara y no dejaba elegir foto. */}
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
               onChange={onSeleccionarFoto}
               className="hidden"
             />
@@ -968,7 +969,7 @@ export function AgendaDiariaView() {
               onClick={() => fileInputRef.current?.click()}
               disabled={grabando || grabandoIa || transcribiendo}
               className="text-[#7a1f2b] border-[#d8b88a] hover:bg-[#f1e8d2]"
-              title="Hacer o adjuntar una foto para que el agente la lea"
+              title="Hacer una foto o elegir una de la galería para que el agente la lea"
             >
               <Camera className="h-4 w-4 mr-2" /> Foto
             </Button>

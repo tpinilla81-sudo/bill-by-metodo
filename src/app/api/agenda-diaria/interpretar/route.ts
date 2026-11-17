@@ -240,7 +240,13 @@ CONCEPTOS DE FACTURACIÓN HABITUALES:
 ${conceptosFac.slice(0, 60).map(c => `- ${c}`).join('\n') || '(ninguno aún)'}
 
 ${imagenUrl
-  ? `El usuario ha adjuntado una FOTO (parte de trabajo, hoja escrita a mano, albarán, lista de servicios del día...). Lee la imagen con atención y EXTRAe todas las líneas de logística y facturación que veas, aplicando las mismas reglas que con el dictado por voz. Si en la imagen hay texto manuscrito, interprétalo (puede tener letras mal escritas). Si el texto que acompaña aclara algo (cliente, fecha, prioridad), úsalo como contexto. Devuelve SOLO el array JSON con las líneas detectadas.`
+  ? `El usuario ha adjuntado una FOTO (parte de trabajo, hoja escrita a mano, albarán, lista de servicios del día...). Lee la imagen con atención y EXTRAe todas las líneas de logística y facturación que veas, aplicando las mismas reglas que con el dictado por voz. Si en la imagen hay texto manuscrito, interprétalo (puede tener letras mal escritas). Si el texto que acompaña aclara algo (cliente, fecha, prioridad), úsalo como contexto.
+
+IMPORTANTE PARA IMÁGENES:
+- Lee con cuidado los IMPORTES (€) y CANTIDADES de la imagen. Si en la foto pone "125€" o "125 euros", importe=125. Si pone "72 bobinas a 1,20" → cantidad=72, unidad="b", importe=86.4 (72×1.20). Si pone "3 palets a 3€" → cantidad=3, unidad="p", importe=9.
+- Si una línea NO tiene importe en la foto pero su CONCEPTO encaja con el CATÁLOGO DE SERVICIOS de abajo, AÚN ASÍ ponlo como línea y deja importe=0; el código rellenará el precio del catálogo automáticamente.
+- NO omitas líneas porque falte el importe — mejor meterlas sin importe que perderlas.
+- Devuelve SOLO el array JSON con las líneas detectadas.`
   : 'Dictado a interpretar (puede tener errores de transcripción de voz — interpreta por contexto):'}`
 
     const { zai, cfg } = await crearZai()
@@ -365,12 +371,21 @@ ${imagenUrl
       const importeRaw = Number(String(it.importe ?? 0).toString().replace(',', '.'))
       const cantidadRaw = Number(String(it.cantidad ?? 0).toString().replace(',', '.'))
 
-      // V29.84 — REGLA 10 EN CÓDIGO (red de seguridad): cantidad dictada y el LLM
-      // no puso importe → precio por unidad del catálogo × cantidad (el importe
-      // dictado siempre manda; este caso solo dispara con importe 0/vacío).
+      // V29.84/96 — REGLA 10 EN CÓDIGO (red de seguridad): el LLM (sobre todo con
+      // imágenes) a veces devuelve importe 0 incluso cuando la línea encaja con el
+      // catálogo. Si la entrada del catálogo tiene precio > 0 y el dictado/foto no
+      // trae importe, rellenamos:
+      //   a) si hay cantidad dictada → importe = cantidad × precio (palets, bobinas…)
+      //   b) si no hay cantidad → importe = precio fijo del catálogo (viajes, alquiler…)
+      // El importe dictado SIEMPRE manda; este caso solo dispara con importe 0/vacío.
       let importe = Number.isFinite(importeRaw) ? importeRaw : 0
-      if (importe <= 0 && cantidadRaw > 0 && catEntry && catEntry.precio > 0) {
-        importe = Math.round(cantidadRaw * catEntry.precio * 100) / 100
+      if (importe <= 0 && catEntry && catEntry.precio > 0) {
+        if (cantidadRaw > 0) {
+          importe = Math.round(cantidadRaw * catEntry.precio * 100) / 100
+        } else {
+          // V29.96 — precio fijo del catálogo (viajes, alquiler...) sin cantidad
+          importe = Math.round(catEntry.precio * 100) / 100
+        }
       }
 
       const row = await db.agendaDia.create({
