@@ -66,12 +66,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: ya > 0 ? `No hay líneas pendientes de traspasar (las ${ya} líneas de logística ya están traspasadas)` : 'No hay líneas de logística este día para traspasar' }, { status: 400 })
     }
 
-    // Catálogo completo para lookup de c1/c2/clienteId/precio por nombre
+    // Catálogo completo para lookup de c1/c2/clienteId/precio por nombre.
+    // V29.99.8 — incluimos customData para rellenar la DESCRIPCION del registro
+    // igual que Entrada: 1) descripción larga del catálogo (campo customData
+    // del catálogo con clave que contenga "descripcion"); 2) si no, cae al c2.
     const catRaw = await db.catalogo.findMany({
       where: { tenantId: tid, deletedAt: null },
-      select: { c1: true, c2: true, clienteId: true, final: true },
+      select: { c1: true, c2: true, clienteId: true, final: true, customData: true },
     })
-    const catPorNombre = new Map<string, { c1: string; c2: string; clienteId: string; precio: number }>()
+    const catPorNombre = new Map<string, { c1: string; c2: string; clienteId: string; precio: number; customData: string }>()
     const catVistos = new Set<string>()
     for (const c of catRaw) {
       const n2 = String(c.c2 || '').trim().replace(/\s+/g, ' ')
@@ -117,6 +120,24 @@ export async function POST(req: Request) {
         precioUnitario = lookupPrecio(catRawLookup, c1, c2, effectiveClienteId)
       }
 
+      // V29.99.8 — DESCRIPCIÓN (customData del registro, clave custom_descripcion):
+      // rellenar igual que Entrada. 1) si el catálogo tiene customData con una
+      // clave que contenga "descripcion", usar su valor; 2) si no, caer al c2
+      // (que es el "nombre" del producto en el catálogo).
+      let descripcionCanon = c2
+      if (catEntry?.customData) {
+        try {
+          const cd = JSON.parse(catEntry.customData) as Record<string, unknown>
+          for (const [k, v] of Object.entries(cd)) {
+            if (!/descripcion/i.test(k)) continue
+            const txt = String(v ?? '').trim()
+            if (txt) { descripcionCanon = txt; break }
+          }
+        } catch { /* customData corrupto — usar c2 */ }
+      }
+      // customData del registro: { custom_descripcion: "..." } (igual que Entrada)
+      const customDataRegistro = JSON.stringify({ custom_descripcion: descripcionCanon })
+
       const reg = await db.registro.create({
         data: {
           tenantId: tid,
@@ -129,7 +150,7 @@ export async function POST(req: Request) {
           precioUnitario,
           obs: String(l.nota || '').trim().slice(0, 200),
           pasadoRegistro: true, // ya está en Registros, no hace falta pasar por Entradas
-          customData: '',
+          customData: customDataRegistro,
         },
       })
       // Marca la línea de agenda como traspasada
@@ -137,6 +158,7 @@ export async function POST(req: Request) {
       registrosCreados.push({
         id: reg.id, c1: reg.c1, c2: reg.c2, cant: reg.cant, precio: reg.precioUnitario,
         clienteId: reg.clienteId, cliente: reg.cliente,
+        descripcion: descripcionCanon,
       })
     }
 
