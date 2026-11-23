@@ -5,7 +5,9 @@ import { requireTenantId } from '@/lib/tenant-context'
 // GET /api/agenda-diaria/mes?mes=YYYY-MM
 // V29.94 — resumen mensual para pintar marcadores en el calendario mensual
 // (Opus One: punto burdeos si hay logística, punto azul si hay facturación).
-// Devuelve { dias: { "2026-11-15": { log: true, fac: false }, ... } }
+// V29.99.5 — además marca si hay líneas traspasadas a Registros (logTrasp/facTrasp)
+// para pintar un círculo alrededor del punto correspondiente.
+// Devuelve { dias: { "2026-11-15": { log, fac, logTrasp, facTrasp }, ... } }
 // Sin tocar Registros ni Facturas — solo AgendaDia del tenant.
 export async function GET(req: Request) {
   try {
@@ -26,14 +28,20 @@ export async function GET(req: Request) {
 
     const rows = await db.agendaDia.findMany({
       where: { tenantId: tid, fecha: { gte: desde, lte: hasta }, deletedAt: null },
-      select: { fecha: true, tipo: true },
+      select: { fecha: true, tipo: true, traspasadoAt: true },
     })
 
-    const dias: Record<string, { log: boolean; fac: boolean }> = {}
+    const dias: Record<string, { log: boolean; fac: boolean; logTrasp: boolean; facTrasp: boolean }> = {}
     for (const r of rows) {
-      if (!dias[r.fecha]) dias[r.fecha] = { log: false, fac: false }
-      if (r.tipo === 'logistica') dias[r.fecha].log = true
-      else if (r.tipo === 'facturacion') dias[r.fecha].fac = true
+      if (!dias[r.fecha]) dias[r.fecha] = { log: false, fac: false, logTrasp: false, facTrasp: false }
+      const traspasada = !!r.traspasadoAt
+      if (r.tipo === 'logistica') {
+        dias[r.fecha].log = true
+        if (traspasada) dias[r.fecha].logTrasp = true
+      } else if (r.tipo === 'facturacion') {
+        dias[r.fecha].fac = true
+        if (traspasada) dias[r.fecha].facTrasp = true
+      }
     }
     return NextResponse.json({ dias })
   } catch (err) {
@@ -41,3 +49,4 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Error leyendo resumen mensual' }, { status: 500 })
   }
 }
+

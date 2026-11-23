@@ -184,7 +184,7 @@ export function AgendaDiariaView() {
   const [fecha, setFecha] = useState(hoyISO())
   // V29.94 — mes mostrado en el calendario mensual (independiente del día seleccionado)
   const [mesCal, setMesCal] = useState(mesDeFecha(hoyISO()))
-  const [marcadoresMes, setMarcadoresMes] = useState<Record<string, { log: boolean; fac: boolean }>>({})
+  const [marcadoresMes, setMarcadoresMes] = useState<Record<string, { log: boolean; fac: boolean; logTrasp: boolean; facTrasp: boolean }>>({})
   const [items, setItems] = useState<AgendaDiaLine[]>([])
   const [cargando, setCargando] = useState(false)
   const [msg, setMsg] = useState('')
@@ -672,21 +672,22 @@ export function AgendaDiariaView() {
                         ${!celda.fuera && !esSel && esHoyCell ? 'bg-[#fbf6e7] border border-[#cbb98d] font-bold text-[#7a1f2b]' : ''}
                         ${!celda.fuera && !esSel && !esHoyCell ? `${TINTA} hover:bg-[#f1e8d2]` : ''}
                       `}
-                      title={celda.fuera ? '' : (marc ? `${marc.log ? 'logística' : ''}${marc.log && marc.fac ? ' + ' : ''}${marc.fac ? 'facturación' : ''}` : 'día sin apuntes')}
+                      title={celda.fuera ? '' : (marc ? `${marc.log ? 'logística' : ''}${marc.log && marc.fac ? ' + ' : ''}${marc.fac ? 'facturación' : ''}${marc.logTrasp || marc.facTrasp ? ' (con traspaso a registro)' : ''}` : 'día sin apuntes')}
                     >
                       <span>{celda.dia}</span>
-                      {/* Marcadores: punto burdeos (logística) + punto azul (facturación) */}
+                      {/* Marcadores: punto burdeos (logística) + punto azul (facturación).
+                          V29.99.5 — si está traspasado a registro, el punto lleva un círculo alrededor. */}
                       {marc && (marc.log || marc.fac) && !esSel && (
                         <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
-                          {marc.log && <span className="h-1.5 w-1.5 rounded-full bg-[#7a1f2b]" />}
-                          {marc.fac && <span className="h-1.5 w-1.5 rounded-full bg-[#1d4ed8]" />}
+                          {marc.log && <span className={`h-1.5 w-1.5 rounded-full bg-[#7a1f2b] ${marc.logTrasp ? 'ring-1 ring-[#7a1f2b] ring-offset-[1px] ring-offset-[#f6f1e2]' : ''}`} />}
+                          {marc.fac && <span className={`h-1.5 w-1.5 rounded-full bg-[#1d4ed8] ${marc.facTrasp ? 'ring-1 ring-[#1d4ed8] ring-offset-[1px] ring-offset-[#f6f1e2]' : ''}`} />}
                         </span>
                       )}
                       {/* En el día seleccionado los puntos en blanco para que se vean */}
                       {marc && (marc.log || marc.fac) && esSel && (
                         <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
-                          {marc.log && <span className="h-1.5 w-1.5 rounded-full bg-[#fdf6e9]" />}
-                          {marc.fac && <span className="h-1.5 w-1.5 rounded-full bg-[#9ec5ff]" />}
+                          {marc.log && <span className={`h-1.5 w-1.5 rounded-full bg-[#fdf6e9] ${marc.logTrasp ? 'ring-1 ring-[#fdf6e9] ring-offset-[1px] ring-offset-[#7a1f2b]' : ''}`} />}
+                          {marc.fac && <span className={`h-1.5 w-1.5 rounded-full bg-[#9ec5ff] ${marc.facTrasp ? 'ring-1 ring-[#9ec5ff] ring-offset-[1px] ring-offset-[#7a1f2b]' : ''}`} />}
                         </span>
                       )}
                     </button>
@@ -697,9 +698,10 @@ export function AgendaDiariaView() {
           </div>
 
           {/* Leyenda */}
-          <div className={`mt-2 pt-2 border-t border-dashed border-[#ddd2b4] flex items-center gap-3 text-[10px] ${TINTA_SUAVE}`}>
+          <div className={`mt-2 pt-2 border-t border-dashed border-[#ddd2b4] flex items-center gap-3 text-[10px] ${TINTA_SUAVE} flex-wrap`}>
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[#7a1f2b]" />Logística</span>
             <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[#1d4ed8]" />Facturación</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[#7a1f2b] ring-1 ring-[#7a1f2b] ring-offset-[1px] ring-offset-[#f6f1e2]" />Traspasado a registro</span>
           </div>
         </aside>
 
