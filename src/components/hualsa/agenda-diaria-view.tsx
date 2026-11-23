@@ -197,6 +197,12 @@ export function AgendaDiariaView() {
   const [catalogoLista, setCatalogoLista] = useState<{ nombre: string; grupo: string; precio: number; cliente: string }[]>([])
   const [catalogoAbierto, setCatalogoAbierto] = useState<null | 'logistica' | 'facturacion'>(null)
   const [catalogoBusq, setCatalogoBusq] = useState('')
+  // V29.99.2 — modal propio para pedir cantidad/nota al añadir del catálogo.
+  // Sustituye a prompt() nativo que iOS Safari bloquea en PWA standalone.
+  const [catSel, setCatSel] = useState<{ item: { nombre: string; grupo: string; precio: number; cliente: string }; tipo: 'logistica' | 'facturacion' } | null>(null)
+  const [catSelCantidad, setCatSelCantidad] = useState('') // texto del input (acepta coma decimal)
+  const [catSelNota, setCatSelNota] = useState('')
+  const [guardandoCat, setGuardandoCat] = useState(false)
   // V29.92 — notas del día (Opus One "Daily Notes") con autosave
   const [nota, setNota] = useState('')
   const [notaEstado, setNotaEstado] = useState<'' | 'guardando' | 'guardada' | 'error'>('')
@@ -320,31 +326,36 @@ export function AgendaDiariaView() {
     notaTimerRef.current = setTimeout(() => guardarNota(v, f), 900)
   }
 
-  // ── V29.98 — AÑADIR DEL CATÁLOGO: click directo en una entrada del catálogo
-  // y se crea la línea con importe automático. Si el concepto admite cantidad
-  // (palets, bobinas...) pide la cantidad antes de crearla; si no, usa precio
-  // fijo del catálogo. Reutiliza el POST /api/agenda-diaria como el formulario.
-  async function anadirDelCatalogo(item: { nombre: string; grupo: string; precio: number; cliente: string }) {
+  // ── V29.98 — AÑADIR DEL CATÁLOGO: click directo en una entrada del catálogo.
+  // V29.99.2 — ya NO usamos prompt() nativo (iOS lo bloquea en PWA). Abrimos un
+  // modal propio que pide la cantidad (si aplica) y la nota (si aplica) y guarda.
+  function abrirDesdeCatalogo(item: { nombre: string; grupo: string; precio: number; cliente: string }) {
     if (!catalogoAbierto) return
-    const tipo = catalogoAbierto // 'logistica' | 'facturacion'
+    setCatSel({ item, tipo: catalogoAbierto })
+    // Si admite cantidad, pre-llenamos con "1" para que el usuario solo tenga
+    // que pulsar Añadir si está conforme.
+    const txt = (item.nombre + ' ' + item.grupo).toLowerCase()
+    const admiteCantidad = /palet|bobina|doypack|rollo|pieza|unidad|caja|bulto/.test(txt)
+    setCatSelCantidad(admiteCantidad ? '1' : '')
+    setCatSelNota('')
+  }
 
-    // Detectar si el concepto admite cantidad: si el nombre/grupo menciona
-    // palets, bobinas, doypack, piezas, rollos, unidades... pedimos cantidad.
+  // Confirma el alta de la línea seleccionada (llamado por el modal).
+  async function confirmarDesdeCatalogo() {
+    if (!catSel) return
+    const { item, tipo } = catSel
     const txt = (item.nombre + ' ' + item.grupo).toLowerCase()
     const admiteCantidad = /palet|bobina|doypack|rollo|pieza|unidad|caja|bulto/.test(txt)
 
     let cantidad = 0
     let unidad = ''
     let importe = item.precio
-    let nota = ''
+    let nota = catSelNota.trim()
 
     if (admiteCantidad) {
-      const input = prompt(`¿Cuántas unidades de "${item.nombre}"?\n(precio: ${fmtNum(item.precio)}€/ud — el importe se calcula solo)`, '1')
-      if (input === null) return // cancelado
-      const n = parseNumEs(input)
+      const n = parseNumEs(catSelCantidad)
       if (n <= 0) { setMsg('⚠ Cantidad no válida — no se ha añadido nada'); return }
       cantidad = n
-      // Inferir unidad del nombre/grupo (palets→p, bobinas→b, rollos→rollos...)
       if (/palet/.test(txt)) unidad = 'p'
       else if (/bobina/.test(txt)) unidad = 'b'
       else if (/rollo/.test(txt)) unidad = 'rollos'
@@ -353,19 +364,13 @@ export function AgendaDiariaView() {
       importe = Math.round(n * item.precio * 100) / 100
     }
 
-    // Si es facturación y no hay cliente explícito, pero la entrada del catálogo
-    // tiene cliente asociado, lo usamos (regla 11 del agente, aquí explícita)
+    // Facturación: cliente del catálogo si la entrada lo tiene
     let cliente = ''
     if (tipo === 'facturacion' && item.cliente) {
       cliente = item.cliente
-      // Si no admite cantidad, ofrecemos añadir nota ("facturar a Vega" etc.)
-      if (!admiteCantidad) {
-        const n = prompt(`Cliente: ${cliente}\n¿Nota opcional para "${item.nombre}"? (ej: facturar a Vega, envases...)`, '')
-        if (n === null) return
-        nota = n.trim()
-      }
     }
 
+    setGuardandoCat(true)
     setMsg('')
     try {
       const body: any = {
@@ -389,8 +394,11 @@ export function AgendaDiariaView() {
       await cargar(fecha)
       flash((data.items || []).map((x: AgendaDiaLine) => x.id))
       setMsg(`✓ Añadido: ${item.nombre} — ${fmtNum(importe)}€${cantidad > 0 ? ` (${fmtNum(cantidad)}${unidad})` : ''}`)
+      setCatSel(null) // cerrar modal
     } catch (err: any) {
       setMsg('⚠ Error de conexión: ' + (err?.message || ''))
+    } finally {
+      setGuardandoCat(false)
     }
   }
 
@@ -959,7 +967,7 @@ export function AgendaDiariaView() {
               return ordenados.map((c, i) => (
                 <button
                   key={i}
-                  onClick={() => { anadirDelCatalogo(c) }}
+                  onClick={() => { abrirDesdeCatalogo(c) }}
                   className="w-full text-left px-3 py-2 rounded-md border border-[#e3d8bc] bg-[#fffdf7] hover:bg-[#f1e8d2] hover:border-[#7a1f2b] transition-colors flex items-center justify-between gap-2"
                 >
                   <div className="min-w-0 flex-1">
@@ -983,6 +991,81 @@ export function AgendaDiariaView() {
               ? 'Pulsa un servicio para añadirlo a la carga actual. Si lleva cantidad (palets, bobinas...) te la pedirá.'
               : 'Pulsa un servicio para añadirlo con su cliente e importe. Si lleva cantidad te la pedirá.'}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* V29.99.2 — MODAL para pedir cantidad (y nota opcional) al añadir del catálogo.
+          Sustituye al prompt() nativo que iOS bloquea en PWA standalone. */}
+      <Dialog open={!!catSel} onOpenChange={(open) => { if (!open && !guardandoCat) setCatSel(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className={SERIF}>
+              {catSel?.item.nombre}
+            </DialogTitle>
+          </DialogHeader>
+          {catSel && (() => {
+            const txt = (catSel.item.nombre + ' ' + catSel.item.grupo).toLowerCase()
+            const admiteCantidad = /palet|bobina|doypack|rollo|pieza|unidad|caja|bulto/.test(txt)
+            const cantNum = parseNumEs(catSelCantidad)
+            const importeCalc = admiteCantidad && cantNum > 0
+              ? Math.round(cantNum * catSel.item.precio * 100) / 100
+              : catSel.item.precio
+            return (
+              <div className="space-y-3">
+                <div className={`text-sm ${TINTA_SUAVE}`}>
+                  {catSel.tipo === 'logistica' ? 'Logística' : 'Facturación'} · {catSel.item.grupo}
+                  {catSel.tipo === 'facturacion' && catSel.item.cliente ? ` · cliente: ${catSel.item.cliente}` : ''}
+                </div>
+
+                {admiteCantidad && (
+                  <div>
+                    <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Cantidad</label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        autoFocus
+                        value={catSelCantidad}
+                        onChange={e => setCatSelCantidad(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') confirmarDesdeCatalogo() }}
+                        placeholder="0"
+                        className="text-right text-lg font-bold w-28"
+                      />
+                      <span className={`text-sm ${TINTA_SUAVE}`}>
+                        × {fmtNum(catSel.item.precio)}€/ud
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Vista previa del importe calculado */}
+                <div className={`flex items-center justify-between px-3 py-2 rounded-md bg-[#fbf6e7] border border-[#e3d8bc] ${SERIF}`}>
+                  <span className={`text-xs uppercase tracking-wide ${TINTA_SUAVE}`}>Importe</span>
+                  <span className="text-xl font-bold text-[#7a1f2b]">{fmtNum(importeCalc)}€</span>
+                </div>
+
+                {/* Nota opcional (facturación sin cantidad, o cualquier caso) */}
+                <div>
+                  <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Nota (opcional)</label>
+                  <Input
+                    value={catSelNota}
+                    onChange={e => setCatSelNota(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') confirmarDesdeCatalogo() }}
+                    placeholder="Facturar a Vega, envases..."
+                    className="mt-1"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button variant="outline" onClick={() => setCatSel(null)} disabled={guardandoCat}>Cancelar</Button>
+                  <Button onClick={confirmarDesdeCatalogo} disabled={guardandoCat || (admiteCantidad && parseNumEs(catSelCantidad) <= 0)} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white">
+                    {guardandoCat ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                    {guardandoCat ? 'Guardando…' : 'Añadir a la agenda'}
+                  </Button>
+                </div>
+              </div>
+            )
+          })()}
         </DialogContent>
       </Dialog>
     </div>
