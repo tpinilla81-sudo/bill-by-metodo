@@ -46,30 +46,48 @@ export async function GET(req: Request) {
       where,
       orderBy: [{ createdAt: 'asc' }],
     })
-    // Lista de clientes del tenant para el datalist del formulario manual
+    // Lista de clientes del tenant para el datalist del formulario manual.
+    // V29.98 — ahora también necesitamos el id para poder resolver el clienteId
+    // de cada entrada del catálogo (c1/c2/clienteId → nombre de cliente).
     const clientes = await db.cliente.findMany({
       where: { tenantId: tid, deletedAt: null },
-      select: { nombre: true },
+      select: { id: true, nombre: true },
       orderBy: { nombre: 'asc' },
     })
     // V29.83 — conceptos del CATÁLOGO para el datalist del concepto (tipear
-    // manualmente también usa los nombres exactos del catálogo)
+    // manualmente también usa los nombres exactos del catálogo).
+    // V29.98 — ahora también devolvemos el catálogo COMPLETO (nombre+grupo+precio+
+    // cliente) para el nuevo diálogo "Del catálogo" con click directo.
     const catRaw = await db.catalogo.findMany({
       where: { tenantId: tid, deletedAt: null },
-      select: { c2: true },
+      select: { c1: true, c2: true, final: true, clienteId: true },
       orderBy: { updatedAt: 'desc' },
       take: 300,
     })
+    const clientesMap = new Map(clientes.map(c => [c.id, c.nombre]))
     const conceptosCatalogo: string[] = []
     const vistos = new Set<string>()
+    // V29.98 — catálogo con todo, deduplicado por nombre
+    const catalogoCompleto: { nombre: string; grupo: string; precio: number; cliente: string }[] = []
     for (const c of catRaw) {
       const n = String(c.c2 || '').trim().replace(/\s+/g, ' ')
       const k = n.toLowerCase()
       if (!n || vistos.has(k)) continue
       vistos.add(k)
       conceptosCatalogo.push(n)
+      catalogoCompleto.push({
+        nombre: n,
+        grupo: String(c.c1 || '').trim().replace(/\s+/g, ' '),
+        precio: Number(c.final) || 0,
+        cliente: clientesMap.get(c.clienteId) || '',
+      })
     }
-    return NextResponse.json({ items, fecha, clientes: clientes.map(c => c.nombre).filter(Boolean), conceptos: conceptosCatalogo })
+    return NextResponse.json({
+      items, fecha,
+      clientes: clientes.map(c => c.nombre).filter(Boolean),
+      conceptos: conceptosCatalogo,
+      catalogo: catalogoCompleto, // V29.98 — para el diálogo "Del catálogo"
+    })
   } catch (err: any) {
     console.error('Agenda diaria GET error:', err)
     return NextResponse.json({ error: 'Error cargando agenda: ' + (err?.message || '') }, { status: 500 })

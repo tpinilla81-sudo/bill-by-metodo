@@ -25,7 +25,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Mic, MicOff, Sparkles, Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, Camera, X, Image as ImageIcon, AudioLines, Square } from 'lucide-react'
+import { Mic, MicOff, Sparkles, Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, Camera, X, Image as ImageIcon, AudioLines, Square, ListPlus, Search } from 'lucide-react'
 
 type AgendaDiaLine = {
   id: string
@@ -217,6 +217,11 @@ export function AgendaDiariaView() {
   const [flashIds, setFlashIds] = useState<string[]>([])
   const [clientesLista, setClientesLista] = useState<string[]>([]) // clientes del tenant (V29.82)
   const [conceptosLista, setConceptosLista] = useState<string[]>([]) // conceptos del catálogo (V29.83)
+  // V29.98 — catálogo completo (nombre+grupo+precio+cliente) para el diálogo
+  // "Del catálogo" con click directo. Cargado al inicio del día desde /api/agenda-diaria.
+  const [catalogoLista, setCatalogoLista] = useState<{ nombre: string; grupo: string; precio: number; cliente: string }[]>([])
+  const [catalogoAbierto, setCatalogoAbierto] = useState<null | 'logistica' | 'facturacion'>(null)
+  const [catalogoBusq, setCatalogoBusq] = useState('')
   // V29.92 — notas del día (Opus One "Daily Notes") con autosave
   const [nota, setNota] = useState('')
   const [notaEstado, setNotaEstado] = useState<'' | 'guardando' | 'guardada' | 'error'>('')
@@ -273,6 +278,8 @@ export function AgendaDiariaView() {
         if (Array.isArray(data.clientes)) setClientesLista(data.clientes as string[])
         // V29.83 — conceptos del catálogo (datalist del concepto)
         if (Array.isArray(data.conceptos)) setConceptosLista(data.conceptos as string[])
+        // V29.98 — catálogo completo para el diálogo "Del catálogo" (click directo)
+        if (Array.isArray(data.catalogo)) setCatalogoLista(data.catalogo as { nombre: string; grupo: string; precio: number; cliente: string }[])
       }
       else setMsg('⚠ ' + (data.error || 'Error cargando la agenda'))
     } catch (err: any) {
@@ -546,6 +553,80 @@ export function AgendaDiariaView() {
       }
     }
   }, [grabandoIa])
+
+  // ── V29.98 — AÑADIR DEL CATÁLOGO: click directo en una entrada del catálogo
+  // y se crea la línea con importe automático. Si el concepto admite cantidad
+  // (palets, bobinas...) pide la cantidad antes de crearla; si no, usa precio
+  // fijo del catálogo. Reutiliza el POST /api/agenda-diaria como el formulario.
+  async function anadirDelCatalogo(item: { nombre: string; grupo: string; precio: number; cliente: string }) {
+    if (!catalogoAbierto) return
+    const tipo = catalogoAbierto // 'logistica' | 'facturacion'
+
+    // Detectar si el concepto admite cantidad: si el nombre/grupo menciona
+    // palets, bobinas, doypack, piezas, rollos, unidades... pedimos cantidad.
+    const txt = (item.nombre + ' ' + item.grupo).toLowerCase()
+    const admiteCantidad = /palet|bobina|doypack|rollo|pieza|unidad|caja|bulto/.test(txt)
+
+    let cantidad = 0
+    let unidad = ''
+    let importe = item.precio
+    let nota = ''
+
+    if (admiteCantidad) {
+      const input = prompt(`¿Cuántas unidades de "${item.nombre}"?\n(precio: ${fmtNum(item.precio)}€/ud — el importe se calcula solo)`, '1')
+      if (input === null) return // cancelado
+      const n = parseNumEs(input)
+      if (n <= 0) { setMsg('⚠ Cantidad no válida — no se ha añadido nada'); return }
+      cantidad = n
+      // Inferir unidad del nombre/grupo (palets→p, bobinas→b, rollos→rollos...)
+      if (/palet/.test(txt)) unidad = 'p'
+      else if (/bobina/.test(txt)) unidad = 'b'
+      else if (/rollo/.test(txt)) unidad = 'rollos'
+      else if (/doypack/.test(txt)) unidad = 'p'
+      else unidad = 'u'
+      importe = Math.round(n * item.precio * 100) / 100
+    }
+
+    // Si es facturación y no hay cliente explícito, pero la entrada del catálogo
+    // tiene cliente asociado, lo usamos (regla 11 del agente, aquí explícita)
+    let cliente = ''
+    if (tipo === 'facturacion' && item.cliente) {
+      cliente = item.cliente
+      // Si no admite cantidad, ofrecemos añadir nota ("facturar a Vega" etc.)
+      if (!admiteCantidad) {
+        const n = prompt(`Cliente: ${cliente}\n¿Nota opcional para "${item.nombre}"? (ej: facturar a Vega, envases...)`, '')
+        if (n === null) return
+        nota = n.trim()
+      }
+    }
+
+    setMsg('')
+    try {
+      const body: any = {
+        fecha, tipo,
+        carga: tipo === 'logistica' ? (cargasNums.length > 0 ? Math.max(...cargasNums) : 1) : 0,
+        cliente,
+        concepto: item.nombre,
+        nota,
+        cantidad,
+        unidad,
+        importe,
+        prioridad: '',
+      }
+      const res = await fetch('/api/agenda-diaria', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg('⚠ ' + (data.error || 'Error guardando')); return }
+      await cargar(fecha)
+      flash((data.items || []).map((x: AgendaDiaLine) => x.id))
+      setMsg(`✓ Añadido: ${item.nombre} — ${fmtNum(importe)}€${cantidad > 0 ? ` (${fmtNum(cantidad)}${unidad})` : ''}`)
+    } catch (err: any) {
+      setMsg('⚠ Error de conexión: ' + (err?.message || ''))
+    }
+  }
 
   // ── AGENTE: interpretar dictado y rellenar la agenda ──────────────────────
   async function handleInterpretar() {
@@ -1018,14 +1099,20 @@ export function AgendaDiariaView() {
           <>
             {/* ── LOGÍSTICA: cargas 1, 2, 3... con subtotal ── */}
             <div className={`${PAPEL} p-4`}>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <TituloSeccion>Logística Hualsa</TituloSeccion>
-                <button onClick={abrirNuevaCarga} className="text-xs text-[#7a1f2b] hover:underline flex items-center gap-1 mb-2 shrink-0">
-                  <Plus className="h-3.5 w-3.5" /> Nueva carga
-                </button>
+                <div className="flex items-center gap-2 mb-2 shrink-0">
+                  {/* V29.98 — Añadir del catálogo con click directo */}
+                  <button onClick={() => { setCatalogoAbierto('logistica'); setCatalogoBusq('') }} className="text-xs text-[#1d4ed8] hover:underline flex items-center gap-1 font-bold" title="Elegir un servicio del catálogo y añadirlo con su precio automático">
+                    <ListPlus className="h-3.5 w-3.5" /> Del catálogo
+                  </button>
+                  <button onClick={abrirNuevaCarga} className="text-xs text-[#7a1f2b] hover:underline flex items-center gap-1">
+                    <Plus className="h-3.5 w-3.5" /> Nueva carga
+                  </button>
+                </div>
               </div>
               {cargasNums.length === 0 && (
-                <div className={`text-center py-6 text-sm italic ${TINTA_SUAVE}`}>No hay cargas este día. Dicta arriba o añade una línea a mano.</div>
+                <div className={`text-center py-6 text-sm italic ${TINTA_SUAVE}`}>No hay cargas este día. Pulsa «Del catálogo» para elegir un servicio, o añade una línea a mano.</div>
               )}
               <div className="space-y-3">
                 {cargasNums.map(c => {
@@ -1061,9 +1148,15 @@ export function AgendaDiariaView() {
 
             {/* ── FACTURACIÓN: grupos por cliente + recuentos ── */}
             <div className={`${PAPEL} p-4`}>
-              <TituloSeccion color="#1d4ed8">Facturación del día</TituloSeccion>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <TituloSeccion color="#1d4ed8">Facturación del día</TituloSeccion>
+                {/* V29.98 — Añadir del catálogo en facturación */}
+                <button onClick={() => { setCatalogoAbierto('facturacion'); setCatalogoBusq('') }} className="text-xs text-[#1d4ed8] hover:underline flex items-center gap-1 mb-2 font-bold" title="Elegir un servicio del catálogo y añadirlo con su precio y cliente automático">
+                  <ListPlus className="h-3.5 w-3.5" /> Del catálogo
+                </button>
+              </div>
               {facturaciones.length === 0 && (
-                <div className={`text-center py-6 text-sm italic ${TINTA_SUAVE}`}>No hay facturación este día. Dicta arriba o añade una línea a mano.</div>
+                <div className={`text-center py-6 text-sm italic ${TINTA_SUAVE}`}>No hay facturación este día. Pulsa «Del catálogo» para elegir un servicio, o añade una línea a mano.</div>
               )}
               <div className="space-y-3">
                 {clientesOrden.map(cli => {
@@ -1218,6 +1311,77 @@ export function AgendaDiariaView() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* V29.98 — DIÁLOGO "DEL CATÁLOGO": lista navegable con buscador.
+          Click en una entrada → crea la línea con importe automático. */}
+      <Dialog open={!!catalogoAbierto} onOpenChange={(open) => { if (!open) { setCatalogoAbierto(null); setCatalogoBusq('') } }}>
+        <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className={SERIF}>
+              {catalogoAbierto === 'logistica' ? 'Añadir servicio de logística' : 'Añadir servicio de facturación'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8a7a55]" />
+              <input
+                autoFocus
+                value={catalogoBusq}
+                onChange={e => setCatalogoBusq(e.target.value)}
+                placeholder="Buscar servicio..."
+                className="w-full pl-8 pr-3 py-2 text-sm border border-[#e3d8bc] rounded-md bg-[#fffdf7] focus:outline-none focus:border-[#7a1f2b]"
+              />
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto -mx-1 px-1 space-y-1">
+            {catalogoLista.length === 0 && (
+              <div className={`text-center py-6 text-sm italic ${TINTA_SUAVE}`}>
+                No hay servicios en el catálogo todavía.<br/>
+                Cuando des de alta servicios en CATÁLOGO aparecerán aquí para añadirlos con un toque.
+              </div>
+            )}
+            {catalogoLista.length > 0 && (() => {
+              const q = catalogoBusq.trim().toLowerCase()
+              const filtrados = q
+                ? catalogoLista.filter(c => (c.nombre + ' ' + c.grupo + ' ' + c.cliente).toLowerCase().includes(q))
+                : catalogoLista
+              if (filtrados.length === 0) {
+                return <div className={`text-center py-4 text-sm italic ${TINTA_SUAVE}`}>No hay coincidencias para «{catalogoBusq}»</div>
+              }
+              // Ordenar: primero por grupo (MILCA, NAVE, HUALSA...) y luego por nombre
+              const ordenados = [...filtrados].sort((a, b) => {
+                const g = a.grupo.localeCompare(b.grupo)
+                return g !== 0 ? g : a.nombre.localeCompare(b.nombre)
+              })
+              return ordenados.map((c, i) => (
+                <button
+                  key={i}
+                  onClick={() => { anadirDelCatalogo(c) }}
+                  className="w-full text-left px-3 py-2 rounded-md border border-[#e3d8bc] bg-[#fffdf7] hover:bg-[#f1e8d2] hover:border-[#7a1f2b] transition-colors flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-sm font-bold ${TINTA} truncate`}>{c.nombre}</div>
+                    <div className={`text-[10px] uppercase tracking-wide ${TINTA_SUAVE}`}>
+                      {c.grupo}{c.cliente ? ` · ${c.cliente}` : ''}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-bold text-[#7a1f2b]">{fmtNum(c.precio)}€</div>
+                    {catalogoAbierto === 'facturacion' && c.cliente && (
+                      <div className={`text-[10px] ${TINTA_SUAVE}`}>cli: {c.cliente}</div>
+                    )}
+                  </div>
+                </button>
+              ))
+            })()}
+          </div>
+          <div className={`text-xs ${TINTA_SUAVE} pt-2 border-t border-[#e3d8bc] mt-1`}>
+            {catalogoAbierto === 'logistica'
+              ? 'Pulsa un servicio para añadirlo a la carga actual. Si lleva cantidad (palets, bobinas...) te la pedirá.'
+              : 'Pulsa un servicio para añadirlo con su cliente e importe. Si lleva cantidad te la pedirá.'}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
