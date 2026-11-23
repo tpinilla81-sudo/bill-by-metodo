@@ -539,6 +539,8 @@ export function AgendaDiariaView() {
       <div className={`group flex items-start gap-2 py-1.5 border-b border-dashed border-[#ddd2b4] last:border-b-0 ${flash ? 'bg-[#eef4e2] rounded-md px-2 -mx-2' : ''}`}>
         <span className="pt-[3px] shrink-0"><BadgePrioridad p={l.prioridad || ''} /></span>
         <div className={`flex-1 min-w-0 text-[15px] leading-snug ${TINTA}`}>
+          {/* V29.99.1 — punto (bullet) delante de cada línea, como lista de texto */}
+          <span className="font-bold mr-1 leading-none">•</span>
           <span className="font-bold">{l.concepto}</span>
           <span className={TINTA_SUAVE}>; </span>
           <span className="font-bold">{fmtNum(l.importe)}€</span>
