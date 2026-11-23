@@ -1,21 +1,18 @@
 'use client'
 
-// V29.80 — AGENDA DIARIA
-// El usuario navega por días y DICTA POR VOZ (o teclea) lo que va haciendo;
-// el agente IA va rellenando la agenda directamente (POST /api/agenda-diaria/
-// interpretar). Dos apartados:
+// AGENDA DIARIA — Transportes Hualsa
+// Diario por días con dos apartados:
 //   - LOGÍSTICA: servicios del día agrupados en CARGAS (1, 2...) con subtotal
 //     por carga y Total Día.
 //   - FACTURACIÓN: entregas agrupadas por CLIENTE con total y recuentos por
 //     destino (lo de antes de la "/").
-// Cada línea es editable y borrable; también se pueden añadir a mano.
-// V29.85 — el diario es SOLO la agenda que rellena el agente: no se vincula con
-// Registros ni Facturas (no los lee ni los escribe).
-// V29.92 — REDISEÑO estilo OPUS ONE (planner de papel): hoja crema con
-// tipografía serif, tarjetas papel, tinta burdeos, una sola columna apilada
-// (calendario → dictado → Logística → Facturación → Notas del día), PRIORIDADES
-// A/B/C en cada línea (badge + orden dentro del grupo, también extraídas del
-// dictado) y NOTAS DEL DÍA libres con autosave (GET/PUT /api/agenda-diaria/notas).
+// Cada línea es editable y borrable; también se pueden añadir a mano o desde
+// el catálogo con click directo (V29.98).
+// V29.99 — DICTADO eliminado: se quita Web Speech, Whisper y foto (VLM). Solo
+// se añaden líneas a mano o desde el catálogo. Mucho más fiable.
+// V29.92 — Estilo OPUS ONE (planner de papel): hoja crema con tipografía serif,
+// tarjetas papel, tinta burdeos. PRIORIDADES A/B/C en cada línea (badge + orden
+// dentro del grupo) y NOTAS DEL DÍA libres con autosave.
 // V29.94 — Calendario MENSUAL en una página paralela (estilo Filofax/Opus One):
 // a la izquierda el mes con flechas anterior/siguiente + "Ir a hoy" y marcadores
 // (punto burdeos si hay logística, azul si hay facturación); a la derecha el día
@@ -25,7 +22,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Mic, MicOff, Sparkles, Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, Camera, X, Image as ImageIcon, AudioLines, Square, ListPlus, Search } from 'lucide-react'
+import { Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, ListPlus, Search } from 'lucide-react'
 
 type AgendaDiaLine = {
   id: string
@@ -174,24 +171,6 @@ function compararLineas(a: AgendaDiaLine, b: AgendaDiaLine): number {
   return (a.orden || 0) - (b.orden || 0)
 }
 
-// Tipos mínimos de la Web Speech API (no están en el DOM lib de TS)
-type SpeechRecognitionLike = {
-  lang: string
-  continuous: boolean
-  interimResults: boolean
-  onresult: ((e: any) => void) | null
-  onerror: ((e: any) => void) | null
-  onend: (() => void) | null
-  start: () => void
-  stop: () => void
-}
-
-function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
-  if (typeof window === 'undefined') return null
-  const w = window as any
-  return w.SpeechRecognition || w.webkitSpeechRecognition || null
-}
-
 // ── V29.92 — clases del tema PAPEL (Opus One) ───────────────────────────────
 const SERIF = "[font-family:Georgia,'Times_New_Roman',serif]"
 const HOJA = 'bg-[#f6f1e2] border border-[#e3d8bc] rounded-2xl shadow-[0_2px_10px_rgba(90,70,20,0.10)]'
@@ -206,11 +185,7 @@ export function AgendaDiariaView() {
   const [mesCal, setMesCal] = useState(mesDeFecha(hoyISO()))
   const [marcadoresMes, setMarcadoresMes] = useState<Record<string, { log: boolean; fac: boolean }>>({})
   const [items, setItems] = useState<AgendaDiaLine[]>([])
-  const [texto, setTexto] = useState('')
-  const [interpretando, setInterpretando] = useState(false)
   const [cargando, setCargando] = useState(false)
-  const [grabando, setGrabando] = useState(false)
-  const [soportaVoz, setSoportaVoz] = useState(true)
   const [msg, setMsg] = useState('')
   const [form, setForm] = useState<FormLine | null>(null) // diálogo editar/añadir
   const [guardandoForm, setGuardandoForm] = useState(false)
@@ -225,28 +200,9 @@ export function AgendaDiariaView() {
   // V29.92 — notas del día (Opus One "Daily Notes") con autosave
   const [nota, setNota] = useState('')
   const [notaEstado, setNotaEstado] = useState<'' | 'guardando' | 'guardada' | 'error'>('')
-  const recRef = useRef<SpeechRecognitionLike | null>(null)
-  const textoBaseRef = useRef('')
-  // V29.82 — robustez del dictado: Chrome corta el reconocimiento tras silencios
-  // largos; con seguirRef activo se reinicia solo (hasta pulsar Parar).
-  const textoRef = useRef('')
-  const seguirRef = useRef(false)
-  const reintentosRef = useRef(0)
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const notaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const notaGuardadaRef = useRef('') // último texto de nota GUARDADO en el servidor
-  // V29.95 — foto adjunta (data URL) para que el agente la lea con VLM
-  const [foto, setFoto] = useState<string>('') // data URL
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
-  // V29.96 — dictado con IA (Whisper): graba con MediaRecorder y sube el audio
-  // al endpoint /api/agenda-diaria/transcribir. Mejor calidad con acento/ruido
-  // que Web Speech API y funciona en Safari/Firefox (no solo Chrome/Edge).
-  const [grabandoIa, setGrabandoIa] = useState(false)
-  const [transcribiendo, setTranscribiendo] = useState(false)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
-  const streamRef = useRef<MediaStream | null>(null)
-  const grabIaStartRef = useRef<number>(0) // para mostrar duración
 
   // Resalta líneas nuevas 6s (limpia el timer anterior para no pisar tandas)
   function flash(ids: string[]) {
@@ -255,13 +211,8 @@ export function AgendaDiariaView() {
     flashTimerRef.current = setTimeout(() => setFlashIds([]), 6000)
   }
 
-  // Al desmontar: parar el micro, limpiar timers y descartar nota pendiente
+  // Al desmontar: limpiar timers pendientes
   useEffect(() => () => {
-    seguirRef.current = false
-    try { recRef.current?.stop() } catch {}
-    // V29.96 — también parar MediaRecorder y liberar el stream de micrófono
-    try { mediaRecorderRef.current?.state === 'recording' && mediaRecorderRef.current?.stop() } catch {}
-    streamRef.current?.getTracks().forEach(t => t.stop())
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
     if (notaTimerRef.current) clearTimeout(notaTimerRef.current)
   }, [])
@@ -293,10 +244,6 @@ export function AgendaDiariaView() {
     setMsg('')
     cargar(fecha)
   }, [fecha, cargar])
-
-  useEffect(() => {
-    setSoportaVoz(!!getSpeechRecognition())
-  }, [])
 
   // ── V29.94 — cargar marcadores del mes para el calendario mensual ─────────
   useEffect(() => {
@@ -373,187 +320,6 @@ export function AgendaDiariaView() {
     notaTimerRef.current = setTimeout(() => guardarNota(v, f), 900)
   }
 
-  // ── DICTADO POR VOZ (Web Speech API, es-ES) ────────────────────────────────
-  // V29.82: crearRec() construye el reconocedor y onend lo REINICIA mientras
-  // seguirRef esté activo — el dictado continúa aunque Chrome lo corte por
-  // silencio; solo para con el botón Parar, permiso denegado o 5 cortes sin
-  // recibir nada. El texto ya reconocido nunca se pierde.
-  function crearRec(SR: new () => SpeechRecognitionLike): SpeechRecognitionLike {
-    const rec = new SR()
-    rec.lang = 'es-ES'
-    rec.continuous = true
-    rec.interimResults = true
-    rec.onresult = (e: any) => {
-      reintentosRef.current = 0
-      let finalTxt = ''
-      let interimTxt = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const chunk = e.results[i][0].transcript
-        if (e.results[i].isFinal) finalTxt += chunk + ' '
-        else interimTxt += chunk
-      }
-      if (finalTxt || interimTxt) {
-        const nuevo = (textoBaseRef.current + (finalTxt || interimTxt)).trim()
-        textoRef.current = nuevo
-        setTexto(nuevo)
-      }
-    }
-    rec.onerror = (e: any) => {
-      const err = String(e?.error || '')
-      if (err === 'not-allowed' || err === 'service-not-allowed' || err === 'audio-capture') {
-        // errores permanentes: no reintentar
-        seguirRef.current = false
-        recRef.current = null
-        setGrabando(false)
-        if (err === 'not-allowed') setMsg('⚠ Permiso de micrófono denegado — actívalo en el navegador')
-        else if (err === 'audio-capture') setMsg('⚠ No se detecta micrófono — comprueba que funciona')
-        else setMsg('⚠ No se pudo iniciar el micrófono — recarga la página e inténtalo de nuevo')
-      } else if (err === 'network') {
-        setMsg('⚠ El servicio de dictado pierde conexión — reintentando…')
-      }
-      // no-speech (silencio) y aborted se resuelven en onend (reinicio o parada)
-    }
-    rec.onend = () => {
-      recRef.current = null
-      if (!seguirRef.current) { setGrabando(false); return }
-      // Corte de Chrome (silencio largo, límite interno): reinicio automático
-      // V29.96 — subido de 5 a 10 reintentos para frases largas con pausas
-      if (reintentosRef.current >= 10) {
-        seguirRef.current = false
-        setGrabando(false)
-        setMsg('⚠ El dictado se cortó varias veces sin reconocer nada — prueba «Dictar con IA» (más estable con ruido y pausas)')
-        return
-      }
-      try {
-        textoBaseRef.current = textoRef.current ? textoRef.current + ' ' : ''
-        const rec2 = crearRec(SR)
-        rec2.start()
-        recRef.current = rec2
-        reintentosRef.current += 1 // se resetea al primer resultado reconocido
-      } catch {
-        seguirRef.current = false
-        setGrabando(false)
-      }
-    }
-    return rec
-  }
-
-  const toggleGrabar = useCallback(() => {
-    if (grabando) {
-      seguirRef.current = false
-      recRef.current?.stop()
-      setGrabando(false)
-      return
-    }
-    const SR = getSpeechRecognition()
-    if (!SR) { setSoportaVoz(false); return }
-    seguirRef.current = true
-    reintentosRef.current = 0
-    textoBaseRef.current = textoRef.current ? textoRef.current + ' ' : ''
-    const rec = crearRec(SR)
-    recRef.current = rec
-    try {
-      rec.start()
-      setGrabando(true)
-      setMsg('')
-    } catch {
-      seguirRef.current = false
-      setGrabando(false)
-      setMsg('⚠ No se pudo iniciar el micrófono')
-    }
-  }, [grabando])
-
-  // ── V29.96 — DICTADO CON IA (Whisper): graba con MediaRecorder ────────────
-  // Al parar, sube el audio a /api/agenda-diaria/transcribir y vuelca el texto
-  // al textarea. Es la alternativa a Web Speech API: mejor con acento y ruido,
-  // funciona en Safari/Firefox, no se corta por silencios. El usuario puede
-  // combinar: dicta con IA → revisa/edita → Añadir a la agenda.
-  const toggleGrabarIa = useCallback(async () => {
-    if (grabandoIa) {
-      // Parar grabación → disparar onstop que sube el audio
-      try { mediaRecorderRef.current?.state === 'recording' && mediaRecorderRef.current?.stop() } catch {}
-      return
-    }
-    // Iniciar grabación
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setMsg('⚠ Tu navegador no permite grabar audio (usa Chrome/Safari actualizado)')
-      return
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
-      // Elegir el mejor formato que soporte el navegador (webm/opus > mp4 > webm)
-      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-          ? 'audio/webm'
-          : MediaRecorder.isTypeSupported('audio/mp4')
-            ? 'audio/mp4'
-            : ''
-      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
-      audioChunksRef.current = []
-      mr.ondataavailable = (e: BlobEvent) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
-      mr.onstop = async () => {
-        // Liberar el micrófono
-        streamRef.current?.getTracks().forEach(t => t.stop())
-        streamRef.current = null
-        const blob = new Blob(audioChunksRef.current, { type: mr.mimeType || 'audio/webm' })
-        if (blob.size < 500) {
-          setMsg('⚠ Grabación demasiado corta — mantén pulsado y habla claro')
-          return
-        }
-        if (blob.size > 25 * 1024 * 1024) {
-          setMsg('⚠ Grabación demasiado larga (máx ~3 min) — grava por tandas más cortas')
-          return
-        }
-        // Subir el audio al servidor para transcribir con Whisper
-        setTranscribiendo(true)
-        setMsg('Transcribiendo audio con IA…')
-        try {
-          const b64 = await new Promise<string>((resolve, reject) => {
-            const r = new FileReader()
-            r.onerror = () => reject(new Error('No se pudo leer el audio'))
-            r.onload = () => resolve(String(r.result || ''))
-            r.readAsDataURL(blob)
-          })
-          const res = await fetch('/api/agenda-diaria/transcribir', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ audio: b64 }),
-          })
-          const data = await res.json()
-          if (!res.ok) { setMsg('⚠ ' + (data.error || 'Error transcribiendo')); return }
-          const txt = String(data.texto || '').trim()
-          if (!txt) { setMsg('⚠ La transcripción vino vacía — prueba a hablar más claro'); return }
-          // Añadir el texto al textarea (preservar lo que ya hubiera)
-          const previo = textoRef.current ? textoRef.current.replace(/\s+$/, '') + ' ' : ''
-          const nuevo = previo + txt
-          textoRef.current = nuevo
-          setTexto(nuevo)
-          setMsg('✓ Transcrito — revisa el texto y dale a Añadir a la agenda')
-        } catch (err: any) {
-          setMsg('⚠ Error transcribiendo: ' + (err?.message || ''))
-        } finally {
-          setTranscribiendo(false)
-        }
-      }
-      mediaRecorderRef.current = mr
-      grabIaStartRef.current = Date.now()
-      mr.start()
-      setGrabandoIa(true)
-      setMsg('')
-    } catch (err: any) {
-      const e = String(err?.name || err?.message || '')
-      if (e === 'NotAllowedError' || e === 'SecurityError') {
-        setMsg('⚠ Permiso de micrófono denegado — actívalo en el navegador')
-      } else if (e === 'NotFoundError' || e === 'DevicesNotFoundError') {
-        setMsg('⚠ No se detecta micrófono — comprueba que funciona')
-      } else {
-        setMsg('⚠ No se pudo iniciar la grabación: ' + (err?.message || e))
-      }
-    }
-  }, [grabandoIa])
-
   // ── V29.98 — AÑADIR DEL CATÁLOGO: click directo en una entrada del catálogo
   // y se crea la línea con importe automático. Si el concepto admite cantidad
   // (palets, bobinas...) pide la cantidad antes de crearla; si no, usa precio
@@ -625,91 +391,6 @@ export function AgendaDiariaView() {
       setMsg(`✓ Añadido: ${item.nombre} — ${fmtNum(importe)}€${cantidad > 0 ? ` (${fmtNum(cantidad)}${unidad})` : ''}`)
     } catch (err: any) {
       setMsg('⚠ Error de conexión: ' + (err?.message || ''))
-    }
-  }
-
-  // ── AGENTE: interpretar dictado y rellenar la agenda ──────────────────────
-  async function handleInterpretar() {
-    // V29.95 — se puede enviar texto, foto, o ambos
-    if (!texto.trim() && !foto) { setMsg('Escribe, dicta o adjunta una foto primero'); return }
-    setInterpretando(true)
-    setMsg('')
-    try {
-      const payload: any = { fecha }
-      if (texto.trim()) payload.texto = texto.trim()
-      if (foto) payload.imagen = foto
-      const res = await fetch('/api/agenda-diaria/interpretar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setMsg('⚠ ' + (data.error || 'Error interpretando'))
-        return
-      }
-      const nuevas: AgendaDiaLine[] = (data.items || []) as AgendaDiaLine[]
-      // Refresca desde el servidor y resalta las líneas nuevas unos segundos
-      await cargar(fecha)
-      flash(nuevas.map(n => n.id))
-      setTexto('')
-      textoRef.current = ''
-      setFoto('') // V29.95 — limpia la foto tras procesarla
-      const nLog = nuevas.filter(n => n.tipo === 'logistica').length
-      const nFac = nuevas.filter(n => n.tipo === 'facturacion').length
-      const partes: string[] = []
-      if (nLog > 0) partes.push(`${nLog} de logística`)
-      if (nFac > 0) partes.push(`${nFac} de facturación`)
-      setMsg(`✓ Añadidas a la agenda: ${partes.join(' y ')}`)
-    } catch (err: any) {
-      setMsg('⚠ Error de conexión: ' + (err?.message || ''))
-    } finally {
-      setInterpretando(false)
-    }
-  }
-
-  // V29.95 — leer un File de imagen y devolver un data URL redimensionado
-  // (max ~1280px lado largo, JPEG calidad 0.8) para no petar el body del POST.
-  function fileToDataUrl(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onerror = () => reject(new Error('No se pudo leer el archivo'))
-      reader.onload = () => {
-        const img = new Image()
-        img.onerror = () => reject(new Error('La imagen no es válida'))
-        img.onload = () => {
-          const MAX = 1280
-          let w = img.width, h = img.height
-          if (w > MAX || h > MAX) {
-            if (w >= h) { h = Math.round(h * MAX / w); w = MAX }
-            else { w = Math.round(w * MAX / h); h = MAX }
-          }
-          const canvas = document.createElement('canvas')
-          canvas.width = w; canvas.height = h
-          const ctx = canvas.getContext('2d')
-          if (!ctx) { resolve(String(reader.result)); return }
-          ctx.drawImage(img, 0, 0, w, h)
-          try { resolve(canvas.toDataURL('image/jpeg', 0.8)) }
-          catch { resolve(String(reader.result)) }
-        }
-        img.src = String(reader.result)
-      }
-      reader.readAsDataURL(file)
-    })
-  }
-
-  async function onSeleccionarFoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    e.target.value = '' // permite volver a elegir el mismo archivo
-    if (!f) return
-    if (!f.type.startsWith('image/')) { setMsg('⚠ El archivo no es una imagen'); return }
-    if (f.size > 15 * 1024 * 1024) { setMsg('⚠ La imagen es demasiado grande (máx 15MB)'); return }
-    try {
-      const url = await fileToDataUrl(f)
-      setFoto(url)
-      setMsg('')
-    } catch (err: any) {
-      setMsg('⚠ ' + (err?.message || 'No se pudo cargar la imagen'))
     }
   }
 
@@ -984,7 +665,7 @@ export function AgendaDiariaView() {
         <div className="text-center pt-1">
           <div className={`text-[10px] tracking-[0.35em] uppercase ${TINTA_SUAVE}`}>Transportes Hualsa</div>
           <h1 className="text-[26px] leading-tight font-bold text-[#7a1f2b] mt-0.5">Agenda Diaria</h1>
-          <p className={`text-xs italic mt-0.5 ${TINTA_SUAVE}`}>Tu día en una página — dicta y el agente rellena</p>
+          <p className={`text-xs italic mt-0.5 ${TINTA_SUAVE}`}>Tu día en una página — añade servicios del catálogo con un toque</p>
         </div>
 
         {/* Navegación por día (strip compacto: flechas + fecha) */}
@@ -1005,88 +686,6 @@ export function AgendaDiariaView() {
           <Button variant="ghost" size="icon" onClick={() => setFecha(addDias(fecha, 1))} className="h-10 w-10 shrink-0 text-[#7a1f2b] hover:bg-[#f1e8d2]" title="Día siguiente">
             <ChevronRight className="h-5 w-5" />
           </Button>
-        </div>
-
-        {/* DICTADO */}
-        <div className={`${PAPEL} p-4 space-y-3`}>
-          <TituloSeccion>Dictado</TituloSeccion>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              onClick={toggleGrabar}
-              disabled={grabandoIa || transcribiendo}
-              className={grabando ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse' : 'bg-[#2bb24c] hover:bg-[#239540] text-white'}
-              title={soportaVoz ? (grabando ? 'Parar dictado' : 'Dictar por voz (reconocimiento del navegador, tiempo real)') : 'Tu navegador no soporta dictado'}
-            >
-              {grabando ? <><MicOff className="h-4 w-4 mr-2" /> Parar…</> : <><Mic className="h-4 w-4 mr-2" /> Dictar por voz</>}
-            </Button>
-            {/* V29.96 — Dictar con IA (Whisper): graba y transcribe en el servidor.
-                Mejor con acento/ruido y funciona en Safari/Firefox también. */}
-            <Button
-              onClick={toggleGrabarIa}
-              disabled={grabando || transcribiendo}
-              className={grabandoIa
-                ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse'
-                : 'bg-[#1d4ed8] hover:bg-[#1e40af] text-white'}
-              title="Dictar con IA (Whisper) — graba y transcribe en el servidor, mejor con ruido y acento"
-            >
-              {grabandoIa
-                ? <><Square className="h-4 w-4 mr-2" /> Parar y transcribir</>
-                : transcribiendo
-                  ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Transcribiendo…</>
-                  : <><AudioLines className="h-4 w-4 mr-2" /> Dictar con IA</>}
-            </Button>
-            {/* V29.95 — Foto: en móvil SIN capture=environment el sistema pregunta
-                'Cámara o Galería' (iOS) o abre el selector (Android); en desktop elige
-                archivo. Antes tenía capture que forzaba cámara y no dejaba elegir foto. */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={onSeleccionarFoto}
-              className="hidden"
-            />
-            <Button
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={grabando || grabandoIa || transcribiendo}
-              className="text-[#7a1f2b] border-[#d8b88a] hover:bg-[#f1e8d2]"
-              title="Hacer una foto o elegir una de la galería para que el agente la lea"
-            >
-              <Camera className="h-4 w-4 mr-2" /> Foto
-            </Button>
-            <Button onClick={handleInterpretar} disabled={interpretando || (!texto.trim() && !foto)} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white ml-auto">
-              {interpretando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-              {interpretando ? 'Rellenando agenda…' : 'Añadir a la agenda'}
-            </Button>
-          </div>
-          {(grabando || grabandoIa) && (
-            <div className="flex items-center gap-2 text-sm">
-              {grabando && <span className="text-[#a33b30] font-bold">● Grabando (Web Speech) — habla claro, una línea por frase. Si se corta, prueba «Dictar con IA»</span>}
-              {grabandoIa && <span className="text-[#1d4ed8] font-bold">● Grabando audio (IA) — habla con normalidad. Cuando termines, pulsa Parar y se transcribirá solo</span>}
-            </div>
-          )}
-          {!soportaVoz && !grabandoIa && <span className="text-xs text-[#8a5a19]">Tu navegador no soporta «Dictar por voz» (Web Speech API). Usa «Dictar con IA» (funciona en cualquier navegador) o escribe el texto.</span>}
-          {/* V29.95 — vista previa de la foto adjunta */}
-          {foto && (
-            <div className="relative inline-block rounded-lg overflow-hidden border border-[#d8b88a] bg-[#fbf6e7]">
-              <img src={foto} alt="Foto adjunta" className="max-h-44 block" />
-              <button
-                onClick={() => setFoto('')}
-                className="absolute top-1 right-1 h-7 w-7 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
-                title="Quitar foto"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-          <textarea
-            value={texto}
-            onChange={e => { textoRef.current = e.target.value; setTexto(e.target.value) }}
-            placeholder={grabando ? 'Escuchando… el dictado aparece aquí' : foto ? 'Contexto opcional para la foto (cliente, fecha, prioridad…) — puedes dejarlo vacío' : 'Ej: «Hualsa Milagro 125 euros. Piking bobinas 72 bobinas a 1,20. Carga palets 3 palets a 3 euros. Nueva carga. Milca Milagro 20 euros. La Boquera Milca 90 euros facturar a Vega»'}
-            rows={4}
-            className="w-full bg-[#fffdf7] border border-[#e3d8bc] rounded-lg p-3 text-sm focus:border-[#7a1f2b] focus:outline-none resize-y leading-relaxed"
-          />
-          <p className={`text-xs ${TINTA_SUAVE}`}>Consejo: «<strong>Dictar por voz</strong>» (verde) va en tiempo real pero a veces se corta — si falla, usa «<strong>Dictar con IA</strong>» (azul, graba y transcribe con Whisper, más estable con ruido y acento). Di «nueva carga» para empezar la siguiente carga; en facturación di el cliente («para Florette») y el destino («Milca/Milagro 90 euros»). Prioridades: di «prioridad A1» o «urgente». <strong>Foto</strong>: adjunta un parte, hoja escrita o albarán y el agente lo leerá con visión IA. Todo lo dictado o fotografiado se añade al día seleccionado.</p>
         </div>
 
         {msg && (

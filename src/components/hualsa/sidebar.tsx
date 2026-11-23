@@ -97,7 +97,8 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
     { key: 'prefactura', label: config?.sectionPreFactura || 'PRE-FACTURA', icon: <ClipboardList className="h-4 w-4" />, color: 'text-orange-400', permissionKey: 'prefactura' },
     { key: 'facturas', label: config?.sectionFacturas || 'FACTURAS', icon: <Receipt className="h-4 w-4" />, color: 'text-rose-400', permissionKey: 'facturas' },
     { key: 'backup', label: config?.sectionBackup || 'SEGURIDAD', icon: <Shield className="h-4 w-4" />, color: 'text-cyan-400', permissionKey: 'backup' },
-    { key: 'configia', label: 'CONFIG IA', icon: <Bot className="h-4 w-4" />, color: 'text-fuchsia-400', adminOnly: true },
+    // V29.99 — CONFIG IA oculto: el dictado/foto se eliminó; ya no hace falta configurar el agente.
+    // { key: 'configia', label: 'CONFIG IA', icon: <Bot className="h-4 w-4" />, color: 'text-fuchsia-400', adminOnly: true },
     { key: 'suscripcion', label: 'SUSCRIPCIÓN', icon: <CreditCard className="h-4 w-4" />, color: 'text-emerald-400', adminOnly: true, superadminOnly: false },
     { key: 'config', label: 'CONFIGURACIÓN', icon: <Settings className="h-4 w-4" />, color: 'text-gray-400', permissionKey: 'configuracion' },
     { key: 'admin', label: 'ADMIN', icon: <Crown className="h-4 w-4" />, color: 'text-amber-300', superadminOnly: true },
@@ -265,7 +266,7 @@ export function Sidebar({ active, onNavigate, mobileOpen, onMobileToggle, user, 
             {reloading ? 'Actualizando…' : 'Actualizar app'}
           </button>
           {displayName}
-          <div className="mt-1 text-[9px] text-green-700 font-mono">build: V29.98 · 2026-11-17</div>
+          <div className="mt-1 text-[9px] text-green-700 font-mono">build: V29.99 · 2026-11-23</div>
         </div>
       </aside>
     </>
