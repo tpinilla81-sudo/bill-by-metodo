@@ -22,7 +22,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, ListPlus, Search } from 'lucide-react'
+import { Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, ListPlus, Search, ArrowRightLeft, Check } from 'lucide-react'
 
 type AgendaDiaLine = {
   id: string
@@ -37,6 +37,7 @@ type AgendaDiaLine = {
   importe: number
   orden: number
   prioridad?: string // V29.92 estilo Opus One: A1, A2, B1... ('' = sin prioridad)
+  traspasadoAt?: string | null // V29.99.3 — ISO date si la línea ya se traspasó a Registros
 }
 
 type FormLine = {
@@ -203,6 +204,9 @@ export function AgendaDiariaView() {
   const [catSelCantidad, setCatSelCantidad] = useState('') // texto del input (acepta coma decimal)
   const [catSelNota, setCatSelNota] = useState('')
   const [guardandoCat, setGuardandoCat] = useState(false)
+  // V29.99.3 — traspaso a Registros
+  const [traspasando, setTraspasando] = useState(false)
+  const [confirmarTraspaso, setConfirmarTraspaso] = useState(false)
   // V29.92 — notas del día (Opus One "Daily Notes") con autosave
   const [nota, setNota] = useState('')
   const [notaEstado, setNotaEstado] = useState<'' | 'guardando' | 'guardada' | 'error'>('')
@@ -402,6 +406,30 @@ export function AgendaDiariaView() {
     }
   }
 
+  // V29.99.3 — Traspasar las líneas de logística del día a Registros.
+  // Pide confirmación antes (abre el modal confirmarTraspaso). Solo traspasa
+  // las que aún no están traspasadas (traspasadoAt === null).
+  async function traspasarLogistica() {
+    setConfirmarTraspaso(false) // cerrar modal
+    setTraspasando(true)
+    setMsg('')
+    try {
+      const res = await fetch('/api/agenda-diaria/traspasar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg('⚠ ' + (data.error || 'Error traspasando')); return }
+      await cargar(fecha)
+      setMsg(`✓ Traspasadas ${data.count} líneas a Registros${data.yaTraspasadas ? ` (${data.yaTraspasadas} ya estaban traspasadas)` : ''}`)
+    } catch (err: any) {
+      setMsg('⚠ Error de conexión: ' + (err?.message || ''))
+    } finally {
+      setTraspasando(false)
+    }
+  }
+
   // ── CRUD de líneas ────────────────────────────────────────────────────────
   async function guardarForm() {
     if (!form) return
@@ -543,10 +571,11 @@ export function AgendaDiariaView() {
   // ── Fila de línea (estilo cuaderno, con badge de prioridad) ───────────────
   function LineaRow({ l }: { l: AgendaDiaLine }) {
     const flash = flashIds.includes(l.id)
+    const traspasada = !!l.traspasadoAt
     return (
-      <div className={`group flex items-start gap-2 py-1.5 border-b border-dashed border-[#ddd2b4] last:border-b-0 ${flash ? 'bg-[#eef4e2] rounded-md px-2 -mx-2' : ''}`}>
+      <div className={`group flex items-start gap-2 py-1.5 border-b border-dashed border-[#ddd2b4] last:border-b-0 ${flash ? 'bg-[#eef4e2] rounded-md px-2 -mx-2' : ''} ${traspasada ? 'opacity-50' : ''}`}>
         <span className="pt-[3px] shrink-0"><BadgePrioridad p={l.prioridad || ''} /></span>
-        <div className={`flex-1 min-w-0 text-[15px] leading-snug ${TINTA}`}>
+        <div className={`flex-1 min-w-0 text-[15px] leading-snug ${TINTA} ${traspasada ? 'line-through' : ''}`}>
           {/* V29.99.1 — punto (bullet) delante de cada línea, como lista de texto */}
           <span className="font-bold mr-1 leading-none">•</span>
           <span className="font-bold">{l.concepto}</span>
@@ -554,6 +583,12 @@ export function AgendaDiariaView() {
           <span className="font-bold">{fmtNum(l.importe)}€</span>
           {l.cantidad > 0 && <span className="font-bold">. {fmtNum(l.cantidad)}{l.unidad ? l.unidad : ''}.</span>}
           {l.nota && <span className="font-bold"> {l.nota}</span>}
+          {/* V29.99.3 — marca de traspasada */}
+          {traspasada && (
+            <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] uppercase tracking-wide text-[#2d6a4f] font-bold no-underline">
+              <Check className="h-3 w-3" /> en registro
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0 opacity-60 group-hover:opacity-100">
           <button
@@ -751,6 +786,26 @@ export function AgendaDiariaView() {
               {cargasNums.length > 0 && (
                 <div className={`mt-3 pt-2 border-t-4 border-double border-[#cbb98d] text-lg font-bold text-center ${TINTA}`}>
                   Total Día; {fmtNum(totalLog)}€
+                </div>
+              )}
+              {/* V29.99.3 — Pasar logística a Registros. Solo si hay líneas
+                  pendientes (no traspasadas). Pide confirmación antes. */}
+              {logisticas.some(l => !l.traspasadoAt) && (
+                <div className="mt-3 flex justify-center">
+                  <Button
+                    onClick={() => setConfirmarTraspaso(true)}
+                    disabled={traspasando}
+                    className="bg-[#2d6a4f] hover:bg-[#1b4332] text-white"
+                    title="Crear registros en la sección REGISTROS a partir de las líneas de logística pendientes de traspasar"
+                  >
+                    {traspasando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ArrowRightLeft className="h-4 w-4 mr-2" />}
+                    {traspasando ? 'Traspasando…' : 'Pasar a registro'}
+                  </Button>
+                </div>
+              )}
+              {logisticas.length > 0 && logisticas.every(l => l.traspasadoAt) && (
+                <div className={`mt-3 text-center text-xs italic ${TINTA_SUAVE} flex items-center justify-center gap-1`}>
+                  <Check className="h-3.5 w-3.5 text-[#2d6a4f]" /> Logística traspasada a Registros
                 </div>
               )}
             </div>
@@ -1066,6 +1121,33 @@ export function AgendaDiariaView() {
               </div>
             )
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* V29.99.3 — Confirmación de traspaso a Registros */}
+      <Dialog open={confirmarTraspaso} onOpenChange={(open) => { if (!open && !traspasando) setConfirmarTraspaso(false) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className={SERIF}>Pasar logística a Registros</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className={`text-sm ${TINTA}`}>
+              Se van a crear <strong>{logisticas.filter(l => !l.traspasadoAt).length} registros</strong> en la sección <strong>REGISTROS</strong> a partir de las líneas de logística del día <strong>{fmtFechaLarga(fecha)}</strong>.
+            </p>
+            <ul className={`text-xs ${TINTA_SUAVE} list-disc pl-4 space-y-0.5`}>
+              <li>Cada línea se convierte en un registro (c1/c2 del catálogo, fecha de la agenda).</li>
+              <li>Las líneas se marcan como <em>traspasadas</em> en la agenda para no duplicarlas.</li>
+              <li>Las que ya están traspasadas se saltan.</li>
+              <li>Puedes seguir editando las líneas después (la marca no lo impide).</li>
+            </ul>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={() => setConfirmarTraspaso(false)} disabled={traspasando}>Cancelar</Button>
+              <Button onClick={traspasarLogistica} disabled={traspasando} className="bg-[#2d6a4f] hover:bg-[#1b4332] text-white">
+                {traspasando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ArrowRightLeft className="h-4 w-4 mr-2" />}
+                {traspasando ? 'Traspasando…' : 'Sí, traspasar'}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

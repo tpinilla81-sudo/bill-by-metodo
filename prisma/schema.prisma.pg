@@ -173,6 +173,7 @@ model AgendaDia {
   prioridad String    @default("")   // V29.92 estilo Opus One: A1, A2, B1, B2, C1... (vacío = sin prioridad)
   creadoPor String    @default("")  // userId que lo creó ("voz" si vino por dictado)
   viaVoz    Boolean   @default(false)
+  traspasadoAt DateTime?  // V29.99.3 — fecha en que la línea se traspasó a Registros (null = pendiente)
   deletedAt DateTime?               // soft delete — null = activo
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
