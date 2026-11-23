@@ -952,7 +952,46 @@ export function AgendaDiariaView() {
                 </div>
                 <div>
                   <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Cantidad</label>
-                  <Input type="text" inputMode="decimal" value={form.cantidadTxt || ''} onChange={e => setForm({ ...form, cantidadTxt: e.target.value, cantidad: parseNumEs(e.target.value) })} className="mt-1 text-right" placeholder="0" />
+                  {/* V29.99.10 — desplegable de cantidad (0-30 + opción "otra") igual que el catálogo. */}
+                  {(() => {
+                    const valorActual = form.cantidadTxt && form.cantidadTxt !== '' && form.cantidadTxt !== '+30'
+                      ? String(Math.round(parseNumEs(form.cantidadTxt)))
+                      : (form.cantidad > 0 ? String(Math.round(form.cantidad)) : '0')
+                    const esOtra = form.cantidadTxt === '+30' || (form.cantidad > 30)
+                    return (
+                      <>
+                        <select
+                          value={esOtra ? '+30' : valorActual}
+                          onChange={e => {
+                            if (e.target.value === '+30') {
+                              setForm({ ...form, cantidadTxt: '+30', cantidad: 0 })
+                            } else {
+                              const n = parseNumEs(e.target.value)
+                              setForm({ ...form, cantidadTxt: e.target.value, cantidad: n })
+                            }
+                          }}
+                          className="mt-1 w-full h-10 px-2 rounded-md border border-input bg-transparent text-sm focus:outline-none focus:border-[#7a1f2b]"
+                        >
+                          <option value="0">0</option>
+                          {Array.from({ length: 30 }, (_, i) => String(i + 1)).map(n => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                          <option value="+30">+30 (otra)</option>
+                        </select>
+                        {esOtra && (
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            autoFocus
+                            value={form.cantidadTxt === '+30' ? '' : form.cantidadTxt}
+                            onChange={e => setForm({ ...form, cantidadTxt: e.target.value, cantidad: parseNumEs(e.target.value) })}
+                            placeholder="31"
+                            className="mt-1 text-right"
+                          />
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
                 <div>
                   <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Unidad</label>
