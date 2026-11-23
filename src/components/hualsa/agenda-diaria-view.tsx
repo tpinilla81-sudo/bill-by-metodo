@@ -1076,16 +1076,29 @@ export function AgendaDiariaView() {
                   <div>
                     <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Cantidad</label>
                     <div className="flex items-center gap-2 mt-1">
-                      <Input
-                        type="text"
-                        inputMode="decimal"
-                        autoFocus
-                        value={catSelCantidad}
+                      {/* V29.99.4 — selector desplegable de cantidad (más fácil en móvil que teclear) */}
+                      <select
+                        value={catSelCantidad === '' ? '1' : catSelCantidad}
                         onChange={e => setCatSelCantidad(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') confirmarDesdeCatalogo() }}
-                        placeholder="0"
-                        className="text-right text-lg font-bold w-28"
-                      />
+                        className="h-12 px-3 text-lg font-bold rounded-md border border-[#e3d8bc] bg-[#fffdf7] text-[#3d3225] focus:outline-none focus:border-[#7a1f2b]"
+                      >
+                        {Array.from({ length: 30 }, (_, i) => String(i + 1)).map(n => (
+                          <option key={n} value={n}>{n}</option>
+                        ))}
+                        <option value="+30">+30 (otra)</option>
+                      </select>
+                      {catSelCantidad === '+30' && (
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          autoFocus
+                          value={catSelCantidad === '+30' ? '' : catSelCantidad}
+                          onChange={e => setCatSelCantidad(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') confirmarDesdeCatalogo() }}
+                          placeholder="31"
+                          className="text-right text-lg font-bold w-24"
+                        />
+                      )}
                       <span className={`text-sm ${TINTA_SUAVE}`}>
                         × {fmtNum(catSel.item.precio)}€/ud
                       </span>
@@ -1113,7 +1126,7 @@ export function AgendaDiariaView() {
 
                 <div className="flex justify-end gap-2 pt-1">
                   <Button variant="outline" onClick={() => setCatSel(null)} disabled={guardandoCat}>Cancelar</Button>
-                  <Button onClick={confirmarDesdeCatalogo} disabled={guardandoCat || (admiteCantidad && parseNumEs(catSelCantidad) <= 0)} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white">
+                  <Button onClick={confirmarDesdeCatalogo} disabled={guardandoCat || (admiteCantidad && (catSelCantidad === '+30' || parseNumEs(catSelCantidad) <= 0))} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white">
                     {guardandoCat ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                     {guardandoCat ? 'Guardando…' : 'Añadir a la agenda'}
                   </Button>
