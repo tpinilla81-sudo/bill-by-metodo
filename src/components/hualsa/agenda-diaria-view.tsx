@@ -335,7 +335,13 @@ export function AgendaDiariaView() {
   // modal propio que pide la cantidad (si aplica) y la nota (si aplica) y guarda.
   function abrirDesdeCatalogo(item: { nombre: string; grupo: string; precio: number; cliente: string }) {
     if (!catalogoAbierto) return
-    setCatSel({ item, tipo: catalogoAbierto })
+    const tipo = catalogoAbierto // capturar antes de cerrar
+    // V29.99.7 — cerrar el modal del catálogo ANTES de abrir el de cantidad.
+    // Antes quedaban los dos abiertos y en móvil el del catálogo tapaba el de
+    // cantidad (el usuario no veía el modal de cantidad).
+    setCatalogoAbierto(null)
+    setCatalogoBusq('')
+    setCatSel({ item, tipo })
     // Si admite cantidad, pre-llenamos con "1" para que el usuario solo tenga
     // que pulsar Añadir si está conforme.
     const txt = (item.nombre + ' ' + item.grupo).toLowerCase()
