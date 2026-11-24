@@ -180,6 +180,16 @@ const TINTA = 'text-[#3d3225]'
 const TINTA_SUAVE = 'text-[#8a7a55]'
 const BURDEOS = '#7a1f2b'
 
+// V29.99.13 — palabras clave que indican que un servicio del catálogo admite
+// cantidad (palets, bobinas, descargas...). Si el nombre O el grupo las contiene,
+// al añadir se abre el modal pidiendo la cantidad (1-30 + opción "otra").
+// Incluye "descarga" y "carga" porque en el catálogo de Hualsa las descargas
+// (DESCARGA CEPAC, DESCARGA RIALTO, CARGA PALETS...) siempre van por nº de palets.
+const ADMITEN_CANTIDAD = /palet|bobina|doypack|rollo|pieza|unidad|caja|bulto|descarga|carga|movimiento/
+function admiteCantidadPalabra(txt: string): boolean {
+  return ADMITEN_CANTIDAD.test(String(txt || '').toLowerCase())
+}
+
 export function AgendaDiariaView() {
   const [fecha, setFecha] = useState(hoyISO())
   // V29.94 — mes mostrado en el calendario mensual (independiente del día seleccionado)
@@ -365,10 +375,9 @@ export function AgendaDiariaView() {
     setCatalogoAbierto(null)
     setCatalogoBusq('')
     setCatSel({ item, tipo, cargaNueva, cargaDestino, clienteDestino })
-    // Si admite cantidad, pre-llenamos con "1" para que el usuario solo tenga
-    // que pulsar Añadir si está conforme.
+    // V29.99.13 — admiteCantidad ahora también para descargas/cargas/movimientos
     const txt = (item.nombre + ' ' + item.grupo).toLowerCase()
-    const admiteCantidad = /palet|bobina|doypack|rollo|pieza|unidad|caja|bulto/.test(txt)
+    const admiteCantidad = admiteCantidadPalabra(txt)
     setCatSelCantidad(admiteCantidad ? '1' : '')
     setCatSelNota('')
   }
@@ -378,7 +387,7 @@ export function AgendaDiariaView() {
     if (!catSel) return
     const { item, tipo, cargaNueva, cargaDestino, clienteDestino } = catSel
     const txt = (item.nombre + ' ' + item.grupo).toLowerCase()
-    const admiteCantidad = /palet|bobina|doypack|rollo|pieza|unidad|caja|bulto/.test(txt)
+    const admiteCantidad = admiteCantidadPalabra(txt)
 
     let cantidad = 0
     let unidad = ''
@@ -1177,7 +1186,7 @@ export function AgendaDiariaView() {
           </DialogHeader>
           {catSel && (() => {
             const txt = (catSel.item.nombre + ' ' + catSel.item.grupo).toLowerCase()
-            const admiteCantidad = /palet|bobina|doypack|rollo|pieza|unidad|caja|bulto/.test(txt)
+            const admiteCantidad = admiteCantidadPalabra(txt)
             const cantNum = parseNumEs(catSelCantidad)
             const importeCalc = admiteCantidad && cantNum > 0
               ? Math.round(cantNum * catSel.item.precio * 100) / 100
