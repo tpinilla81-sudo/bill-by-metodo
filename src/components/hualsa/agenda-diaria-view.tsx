@@ -1000,17 +1000,17 @@ export function AgendaDiariaView() {
                   <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Cantidad</label>
                   {/* V29.99.10 — desplegable de cantidad (0-30 + opción "otra") igual que el catálogo. */}
                   {(() => {
-                    const valorActual = form.cantidadTxt && form.cantidadTxt !== '' && form.cantidadTxt !== '+30'
+                    const valorActual = form.cantidadTxt && form.cantidadTxt !== '' && form.cantidadTxt !== '+50'
                       ? String(Math.round(parseNumEs(form.cantidadTxt)))
                       : (form.cantidad > 0 ? String(Math.round(form.cantidad)) : '0')
-                    const esOtra = form.cantidadTxt === '+30' || (form.cantidad > 30)
+                    const esOtra = form.cantidadTxt === '+50' || (form.cantidad > 50)
                     return (
                       <>
                         <select
-                          value={esOtra ? '+30' : valorActual}
+                          value={esOtra ? '+50' : valorActual}
                           onChange={e => {
-                            if (e.target.value === '+30') {
-                              setForm({ ...form, cantidadTxt: '+30', cantidad: 0 })
+                            if (e.target.value === '+50') {
+                              setForm({ ...form, cantidadTxt: '+50', cantidad: 0 })
                             } else {
                               const n = parseNumEs(e.target.value)
                               setForm({ ...form, cantidadTxt: e.target.value, cantidad: n })
@@ -1019,17 +1019,17 @@ export function AgendaDiariaView() {
                           className="mt-1 w-full h-10 px-2 rounded-md border border-input bg-transparent text-sm focus:outline-none focus:border-[#7a1f2b]"
                         >
                           <option value="0">0</option>
-                          {Array.from({ length: 30 }, (_, i) => String(i + 1)).map(n => (
+                          {Array.from({ length: 50 }, (_, i) => String(i + 1)).map(n => (
                             <option key={n} value={n}>{n}</option>
                           ))}
-                          <option value="+30">+30 (otra)</option>
+                          <option value="+50">+50 (otra)</option>
                         </select>
                         {esOtra && (
                           <Input
                             type="text"
                             inputMode="decimal"
                             autoFocus
-                            value={form.cantidadTxt === '+30' ? '' : form.cantidadTxt}
+                            value={form.cantidadTxt === '+50' ? '' : form.cantidadTxt}
                             onChange={e => setForm({ ...form, cantidadTxt: e.target.value, cantidad: parseNumEs(e.target.value) })}
                             placeholder="31"
                             className="mt-1 text-right"
@@ -1216,17 +1216,17 @@ export function AgendaDiariaView() {
                         onChange={e => setCatSelCantidad(e.target.value)}
                         className="h-12 px-3 text-lg font-bold rounded-md border border-[#e3d8bc] bg-[#fffdf7] text-[#3d3225] focus:outline-none focus:border-[#7a1f2b]"
                       >
-                        {Array.from({ length: 30 }, (_, i) => String(i + 1)).map(n => (
+                        {Array.from({ length: 50 }, (_, i) => String(i + 1)).map(n => (
                           <option key={n} value={n}>{n}</option>
                         ))}
-                        <option value="+30">+30 (otra)</option>
+                        <option value="+50">+50 (otra)</option>
                       </select>
-                      {catSelCantidad === '+30' && (
+                      {catSelCantidad === '+50' && (
                         <Input
                           type="text"
                           inputMode="decimal"
                           autoFocus
-                          value={catSelCantidad === '+30' ? '' : catSelCantidad}
+                          value={catSelCantidad === '+50' ? '' : catSelCantidad}
                           onChange={e => setCatSelCantidad(e.target.value)}
                           onKeyDown={e => { if (e.key === 'Enter') confirmarDesdeCatalogo() }}
                           placeholder="31"
@@ -1260,7 +1260,7 @@ export function AgendaDiariaView() {
 
                 <div className="flex justify-end gap-2 pt-1">
                   <Button variant="outline" onClick={() => setCatSel(null)} disabled={guardandoCat}>Cancelar</Button>
-                  <Button onClick={confirmarDesdeCatalogo} disabled={guardandoCat || (admiteCantidad && (catSelCantidad === '+30' || parseNumEs(catSelCantidad) <= 0))} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white">
+                  <Button onClick={confirmarDesdeCatalogo} disabled={guardandoCat || (admiteCantidad && (catSelCantidad === '+50' || parseNumEs(catSelCantidad) <= 0))} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white">
                     {guardandoCat ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                     {guardandoCat ? 'Guardando…' : 'Añadir a la agenda'}
                   </Button>
