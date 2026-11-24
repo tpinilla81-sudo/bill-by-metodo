@@ -196,11 +196,31 @@ export function AgendaDiariaView() {
   // V29.98 — catálogo completo (nombre+grupo+precio+cliente) para el diálogo
   // "Del catálogo" con click directo. Cargado al inicio del día desde /api/agenda-diaria.
   const [catalogoLista, setCatalogoLista] = useState<{ nombre: string; grupo: string; precio: number; cliente: string }[]>([])
-  const [catalogoAbierto, setCatalogoAbierto] = useState<null | 'logistica' | 'facturacion'>(null)
+  // V29.99.11 — catálogoAbierto ahora es un objeto con contexto:
+  //   tipo: 'logistica' | 'facturacion'
+  //   cargaNueva?: true → crear una carga nueva (max+1) al confirmar
+  //   cargaDestino?: number → añadir a esta carga existente (logística)
+  //   clienteDestino?: string → asignar este cliente al crear (facturación)
+  // Si no se especifica nada, comportamiento por defecto: logística → añadir a
+  // la carga máxima existente (o crear la 1); facturación → cliente del catálogo.
+  const [catalogoAbierto, setCatalogoAbierto] = useState<{
+    tipo: 'logistica' | 'facturacion'
+    cargaNueva?: boolean
+    cargaDestino?: number
+    clienteDestino?: string
+  } | null>(null)
   const [catalogoBusq, setCatalogoBusq] = useState('')
   // V29.99.2 — modal propio para pedir cantidad/nota al añadir del catálogo.
   // Sustituye a prompt() nativo que iOS Safari bloquea en PWA standalone.
-  const [catSel, setCatSel] = useState<{ item: { nombre: string; grupo: string; precio: number; cliente: string }; tipo: 'logistica' | 'facturacion' } | null>(null)
+  // V29.99.11 — incluye el contexto (cargaNueva/cargaDestino/clienteDestino) para
+  // que confirmarDesdeCatalogo sepa dónde añadir la línea.
+  const [catSel, setCatSel] = useState<{
+    item: { nombre: string; grupo: string; precio: number; cliente: string }
+    tipo: 'logistica' | 'facturacion'
+    cargaNueva?: boolean
+    cargaDestino?: number
+    clienteDestino?: string
+  } | null>(null)
   const [catSelCantidad, setCatSelCantidad] = useState('') // texto del input (acepta coma decimal)
   const [catSelNota, setCatSelNota] = useState('')
   const [guardandoCat, setGuardandoCat] = useState(false)
@@ -334,15 +354,17 @@ export function AgendaDiariaView() {
   // ── V29.98 — AÑADIR DEL CATÁLOGO: click directo en una entrada del catálogo.
   // V29.99.2 — ya NO usamos prompt() nativo (iOS lo bloquea en PWA). Abrimos un
   // modal propio que pide la cantidad (si aplica) y la nota (si aplica) y guarda.
+  // V29.99.11 — propagamos el contexto (cargaNueva/cargaDestino/clienteDestino)
+  // desde catalogoAbierto a catSel para que confirmarDesdeCatalogo sepa dónde
+  // añadir la línea.
   function abrirDesdeCatalogo(item: { nombre: string; grupo: string; precio: number; cliente: string }) {
     if (!catalogoAbierto) return
-    const tipo = catalogoAbierto // capturar antes de cerrar
+    // Capturar el contexto antes de cerrar
+    const { tipo, cargaNueva, cargaDestino, clienteDestino } = catalogoAbierto
     // V29.99.7 — cerrar el modal del catálogo ANTES de abrir el de cantidad.
-    // Antes quedaban los dos abiertos y en móvil el del catálogo tapaba el de
-    // cantidad (el usuario no veía el modal de cantidad).
     setCatalogoAbierto(null)
     setCatalogoBusq('')
-    setCatSel({ item, tipo })
+    setCatSel({ item, tipo, cargaNueva, cargaDestino, clienteDestino })
     // Si admite cantidad, pre-llenamos con "1" para que el usuario solo tenga
     // que pulsar Añadir si está conforme.
     const txt = (item.nombre + ' ' + item.grupo).toLowerCase()
@@ -354,7 +376,7 @@ export function AgendaDiariaView() {
   // Confirma el alta de la línea seleccionada (llamado por el modal).
   async function confirmarDesdeCatalogo() {
     if (!catSel) return
-    const { item, tipo } = catSel
+    const { item, tipo, cargaNueva, cargaDestino, clienteDestino } = catSel
     const txt = (item.nombre + ' ' + item.grupo).toLowerCase()
     const admiteCantidad = /palet|bobina|doypack|rollo|pieza|unidad|caja|bulto/.test(txt)
 
@@ -375,10 +397,26 @@ export function AgendaDiariaView() {
       importe = Math.round(n * item.precio * 100) / 100
     }
 
-    // Facturación: cliente del catálogo si la entrada lo tiene
+    // V29.99.11 — Cálculo de carga según contexto (logística):
+    //   - cargaNueva: max+1 (o 1 si no hay)
+    //   - cargaDestino: esa carga específica
+    //   - sin contexto (Del catálogo general): max si hay, o 1
+    let carga = 0
+    if (tipo === 'logistica') {
+      if (cargaNueva) {
+        carga = cargasNums.length > 0 ? Math.max(...cargasNums) + 1 : 1
+      } else if (cargaDestino !== undefined) {
+        carga = cargaDestino
+      } else {
+        carga = cargasNums.length > 0 ? Math.max(...cargasNums) : 1
+      }
+    }
+
+    // Facturación: cliente del catálogo si la entrada lo tiene, o el clienteDestino
     let cliente = ''
-    if (tipo === 'facturacion' && item.cliente) {
-      cliente = item.cliente
+    if (tipo === 'facturacion') {
+      if (clienteDestino) cliente = clienteDestino
+      else if (item.cliente) cliente = item.cliente
     }
 
     setGuardandoCat(true)
@@ -386,7 +424,7 @@ export function AgendaDiariaView() {
     try {
       const body: any = {
         fecha, tipo,
-        carga: tipo === 'logistica' ? (cargasNums.length > 0 ? Math.max(...cargasNums) : 1) : 0,
+        carga,
         cliente,
         concepto: item.nombre,
         nota,
@@ -758,10 +796,10 @@ export function AgendaDiariaView() {
                 <TituloSeccion>Logística Hualsa</TituloSeccion>
                 <div className="flex items-center gap-2 mb-2 shrink-0">
                   {/* V29.98 — Añadir del catálogo con click directo */}
-                  <button onClick={() => { setCatalogoAbierto('logistica'); setCatalogoBusq('') }} className="text-xs text-[#1d4ed8] hover:underline flex items-center gap-1 font-bold" title="Elegir un servicio del catálogo y añadirlo con su precio automático">
+                  <button onClick={() => { setCatalogoAbierto({ tipo: 'logistica' }); setCatalogoBusq('') }} className="text-xs text-[#1d4ed8] hover:underline flex items-center gap-1 font-bold" title="Elegir un servicio del catálogo y añadirlo con su precio automático">
                     <ListPlus className="h-3.5 w-3.5" /> Del catálogo
                   </button>
-                  <button onClick={abrirNuevaCarga} className="text-xs text-[#7a1f2b] hover:underline flex items-center gap-1">
+                  <button onClick={() => { setCatalogoAbierto({ tipo: 'logistica', cargaNueva: true }); setCatalogoBusq('') }} className="text-xs text-[#7a1f2b] hover:underline flex items-center gap-1">
                     <Plus className="h-3.5 w-3.5" /> Nueva carga
                   </button>
                 </div>
@@ -778,7 +816,7 @@ export function AgendaDiariaView() {
                       <div className="flex items-center justify-between mb-1.5">
                         <h3 className={`text-base font-bold ${TINTA}`}>Carga {c}</h3>
                         <div className="flex items-center gap-1">
-                          <Button size="sm" variant="ghost" onClick={() => abrirAddLinea('logistica', c)} className="h-7 text-xs text-[#7a1f2b] hover:bg-[#f1e8d2]">
+                          <Button size="sm" variant="ghost" onClick={() => { setCatalogoAbierto({ tipo: 'logistica', cargaDestino: c }); setCatalogoBusq('') }} className="h-7 text-xs text-[#7a1f2b] hover:bg-[#f1e8d2]">
                             <Plus className="h-3 w-3 mr-1" /> Línea
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => borrarCarga(c)} className="h-7 w-7 p-0 text-[#a33b30] hover:bg-[#f3e0dd]" title="Borrar carga completa">
@@ -826,7 +864,7 @@ export function AgendaDiariaView() {
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <TituloSeccion color="#1d4ed8">Facturación del día</TituloSeccion>
                 {/* V29.98 — Añadir del catálogo en facturación */}
-                <button onClick={() => { setCatalogoAbierto('facturacion'); setCatalogoBusq('') }} className="text-xs text-[#1d4ed8] hover:underline flex items-center gap-1 mb-2 font-bold" title="Elegir un servicio del catálogo y añadirlo con su precio y cliente automático">
+                <button onClick={() => { setCatalogoAbierto({ tipo: 'facturacion' }); setCatalogoBusq('') }} className="text-xs text-[#1d4ed8] hover:underline flex items-center gap-1 mb-2 font-bold" title="Elegir un servicio del catálogo y añadirlo con su precio y cliente automático">
                   <ListPlus className="h-3.5 w-3.5" /> Del catálogo
                 </button>
               </div>
@@ -841,7 +879,7 @@ export function AgendaDiariaView() {
                     <div key={cli || '(sin cliente)'} className="bg-[#fbf6e7] border border-[#e9dfc2] rounded-lg p-3">
                       <div className="flex items-center justify-between mb-1.5">
                         <h3 className={`text-base font-bold underline underline-offset-4 decoration-[#cbb98d] ${TINTA}`}>{cli || 'Sin cliente'}</h3>
-                        <Button size="sm" variant="ghost" onClick={() => abrirAddLinea('facturacion', undefined, cli)} className="h-7 text-xs text-[#1d4ed8] hover:bg-[#e5ebf7]">
+                        <Button size="sm" variant="ghost" onClick={() => { setCatalogoAbierto({ tipo: 'facturacion', clienteDestino: cli }); setCatalogoBusq('') }} className="h-7 text-xs text-[#1d4ed8] hover:bg-[#e5ebf7]">
                           <Plus className="h-3 w-3 mr-1" /> Línea
                         </Button>
                       </div>
@@ -1054,7 +1092,17 @@ export function AgendaDiariaView() {
         <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className={SERIF}>
-              {catalogoAbierto === 'logistica' ? 'Añadir servicio de logística' : 'Añadir servicio de facturación'}
+              {/* V29.99.11 — el título muestra el contexto (carga nueva, carga X, para cliente X) */}
+              {(() => {
+                if (!catalogoAbierto) return 'Añadir servicio'
+                if (catalogoAbierto.tipo === 'logistica') {
+                  if (catalogoAbierto.cargaNueva) return 'Nueva carga — elige servicio'
+                  if (catalogoAbierto.cargaDestino !== undefined) return `Carga ${catalogoAbierto.cargaDestino} — elige servicio`
+                  return 'Logística — elige servicio'
+                }
+                if (catalogoAbierto.clienteDestino) return `${catalogoAbierto.clienteDestino} — elige servicio`
+                return 'Facturación — elige servicio'
+              })()}
             </DialogTitle>
           </DialogHeader>
           <div className="flex items-center gap-2 mb-2">
@@ -1103,7 +1151,7 @@ export function AgendaDiariaView() {
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-sm font-bold text-[#7a1f2b]">{fmtNum(c.precio)}€</div>
-                    {catalogoAbierto === 'facturacion' && c.cliente && (
+                    {catalogoAbierto?.tipo === 'facturacion' && c.cliente && (
                       <div className={`text-[10px] ${TINTA_SUAVE}`}>cli: {c.cliente}</div>
                     )}
                   </div>
@@ -1112,8 +1160,8 @@ export function AgendaDiariaView() {
             })()}
           </div>
           <div className={`text-xs ${TINTA_SUAVE} pt-2 border-t border-[#e3d8bc] mt-1`}>
-            {catalogoAbierto === 'logistica'
-              ? 'Pulsa un servicio para añadirlo a la carga actual. Si lleva cantidad (palets, bobinas...) te la pedirá.'
+            {catalogoAbierto?.tipo === 'logistica'
+              ? 'Pulsa un servicio para añadirlo. Si lleva cantidad (palets, bobinas...) te la pedirá.'
               : 'Pulsa un servicio para añadirlo con su cliente e importe. Si lleva cantidad te la pedirá.'}
           </div>
         </DialogContent>
@@ -1138,8 +1186,16 @@ export function AgendaDiariaView() {
             return (
               <div className="space-y-3">
                 <div className={`text-sm ${TINTA_SUAVE}`}>
-                  {catSel.tipo === 'logistica' ? 'Logística' : 'Facturación'} · {catSel.item.grupo}
-                  {catSel.tipo === 'facturacion' && catSel.item.cliente ? ` · cliente: ${catSel.item.cliente}` : ''}
+                  {/* V29.99.11 — mostrar contexto (carga nueva, carga X, para cliente X) */}
+                  {catSel.tipo === 'logistica'
+                    ? (catSel.cargaNueva
+                        ? 'Nueva carga'
+                        : (catSel.cargaDestino !== undefined ? `Carga ${catSel.cargaDestino}` : 'Logística'))
+                    : (catSel.clienteDestino
+                        ? `Facturación · ${catSel.clienteDestino}`
+                        : (catSel.item.cliente ? `Facturación · ${catSel.item.cliente}` : 'Facturación'))}
+                  {' · '}{catSel.item.grupo}
+                  {catSel.tipo === 'facturacion' && catSel.item.cliente && !catSel.clienteDestino ? ` · cliente: ${catSel.item.cliente}` : ''}
                 </div>
 
                 {admiteCantidad && (
