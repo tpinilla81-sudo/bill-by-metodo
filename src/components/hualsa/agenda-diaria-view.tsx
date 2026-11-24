@@ -794,18 +794,15 @@ export function AgendaDiariaView() {
             <div className={`${PAPEL} p-4`}>
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <TituloSeccion>Logística Hualsa</TituloSeccion>
-                <div className="flex items-center gap-2 mb-2 shrink-0">
-                  {/* V29.98 — Añadir del catálogo con click directo */}
-                  <button onClick={() => { setCatalogoAbierto({ tipo: 'logistica' }); setCatalogoBusq('') }} className="text-xs text-[#1d4ed8] hover:underline flex items-center gap-1 font-bold" title="Elegir un servicio del catálogo y añadirlo con su precio automático">
-                    <ListPlus className="h-3.5 w-3.5" /> Del catálogo
-                  </button>
-                  <button onClick={() => { setCatalogoAbierto({ tipo: 'logistica', cargaNueva: true }); setCatalogoBusq('') }} className="text-xs text-[#7a1f2b] hover:underline flex items-center gap-1">
-                    <Plus className="h-3.5 w-3.5" /> Nueva carga
-                  </button>
-                </div>
+                {/* V29.99.12 — botón único "Nueva carga" (el de "Del catálogo" era
+                    redundante: el botón "Línea" dentro de cada carga ya abre el
+                    mismo diálogo del catálogo con su contexto). */}
+                <button onClick={() => { setCatalogoAbierto({ tipo: 'logistica', cargaNueva: true }); setCatalogoBusq('') }} className="text-xs text-[#7a1f2b] hover:underline flex items-center gap-1 mb-2 shrink-0">
+                  <Plus className="h-3.5 w-3.5" /> Nueva carga
+                </button>
               </div>
               {cargasNums.length === 0 && (
-                <div className={`text-center py-6 text-sm italic ${TINTA_SUAVE}`}>No hay cargas este día. Pulsa «Del catálogo» para elegir un servicio, o añade una línea a mano.</div>
+                <div className={`text-center py-6 text-sm italic ${TINTA_SUAVE}`}>No hay cargas este día. Pulsa «Nueva carga» para empezar.</div>
               )}
               <div className="space-y-3">
                 {cargasNums.map(c => {
@@ -863,13 +860,15 @@ export function AgendaDiariaView() {
             <div className={`${PAPEL} p-4`}>
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <TituloSeccion color="#1d4ed8">Facturación del día</TituloSeccion>
-                {/* V29.98 — Añadir del catálogo en facturación */}
-                <button onClick={() => { setCatalogoAbierto({ tipo: 'facturacion' }); setCatalogoBusq('') }} className="text-xs text-[#1d4ed8] hover:underline flex items-center gap-1 mb-2 font-bold" title="Elegir un servicio del catálogo y añadirlo con su precio y cliente automático">
-                  <ListPlus className="h-3.5 w-3.5" /> Del catálogo
+                {/* V29.99.12 — botón único "Nueva línea" (paralelo a "Nueva carga"
+                    de logística). El botón "Línea" dentro de cada cliente abre el
+                    mismo diálogo del catálogo con ese cliente pre-seleccionado. */}
+                <button onClick={() => { setCatalogoAbierto({ tipo: 'facturacion' }); setCatalogoBusq('') }} className="text-xs text-[#1d4ed8] hover:underline flex items-center gap-1 mb-2 font-bold" title="Elegir un servicio del catálogo y añadirlo con su cliente e importe automático">
+                  <Plus className="h-3.5 w-3.5" /> Nueva línea
                 </button>
               </div>
               {facturaciones.length === 0 && (
-                <div className={`text-center py-6 text-sm italic ${TINTA_SUAVE}`}>No hay facturación este día. Pulsa «Del catálogo» para elegir un servicio, o añade una línea a mano.</div>
+                <div className={`text-center py-6 text-sm italic ${TINTA_SUAVE}`}>No hay facturación este día. Pulsa «Nueva línea» para empezar.</div>
               )}
               <div className="space-y-3">
                 {clientesOrden.map(cli => {
