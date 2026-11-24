@@ -4,9 +4,13 @@ import { requireTenantId } from '@/lib/tenant-context'
 import { getSessionUser } from '@/lib/auth'
 
 // V29.99.3 — POST /api/agenda-diaria/traspasar
-// Traspasa las líneas (logística O facturación) de un día a Registros.
+// Traspasa las líneas (logística O facturación) de un día a Entradas (Registros
+// con pasadoRegistro=false, donde el usuario los revisa antes de consolidarlos).
 // V29.99.9 — ahora soporta también facturación (igual que logística):
 // mismo botón, misma confirmación, misma marca visual en calendario (círculo azul).
+// V29.99.15 — las líneas van a ENTRADA (pasadoRegistro=false), no directamente
+// a Registros. En ENTRADA el usuario puede revisar y, con el botón "Pasar al
+// registro", consolidarlas en Registros.
 //
 // Para cada línea:
 //   1. Busca el concepto en el catálogo (match por nombre) → si encaja, usa c1
@@ -22,7 +26,8 @@ import { getSessionUser } from '@/lib/auth'
 //        si el importe viene a 0, lookup del catálogo (igual que Entrada)
 //      - obs = nota de la línea
 //      - customData = { custom_descripcion: "..." } (descripción del catálogo)
-//      - pasadoRegistro = true (ya está en Registros)
+//      - pasadoRegistro = false (va a ENTRADA para revisión; luego el usuario
+//        pulsa "Pasar al registro" para consolidar)
 //   3. Marca traspasadoAt=now() en la línea de agenda → ya no se puede volver a
 //      traspasar.
 //
@@ -167,7 +172,11 @@ export async function POST(req: Request) {
           cant: cant > 0 ? cant : 1,
           precioUnitario,
           obs: String(l.nota || '').trim().slice(0, 200),
-          pasadoRegistro: true, // ya está en Registros, no hace falta pasar por Entradas
+          // V29.99.15 — pasadoRegistro=false: las líneas van a ENTRADA (no a
+          // Registros directamente). El usuario las revisa allí y pulsa el botón
+          // "Pasar al registro" para consolidarlas en Registros. Así no se
+          // mezclan con todo lo demás sin revisión.
+          pasadoRegistro: false,
           customData: customDataRegistro,
         },
       })

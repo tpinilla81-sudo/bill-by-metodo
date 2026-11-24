@@ -478,7 +478,7 @@ export function AgendaDiariaView() {
       if (!res.ok) { setMsg('⚠ ' + (data.error || 'Error traspasando')); return }
       await cargar(fecha)
       const label = tipo === 'facturacion' ? 'facturación' : 'logística'
-      setMsg(`✓ Traspasadas ${data.count} líneas de ${label} a Registros${data.yaTraspasadas ? ` (${data.yaTraspasadas} ya estaban traspasadas)` : ''}`)
+      setMsg(`✓ Traspasadas ${data.count} líneas de ${label} a Entrada${data.yaTraspasadas ? ` (${data.yaTraspasadas} ya estaban traspasadas)` : ''} — revísalas en ENTRADA y pulsa «Pasar al registro» para consolidarlas`)
     } catch (err: any) {
       setMsg('⚠ Error de conexión: ' + (err?.message || ''))
     } finally {
@@ -642,7 +642,7 @@ export function AgendaDiariaView() {
           {/* V29.99.3 — marca de traspasada */}
           {traspasada && (
             <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] uppercase tracking-wide text-[#2d6a4f] font-bold no-underline">
-              <Check className="h-3 w-3" /> en registro
+              <Check className="h-3 w-3" /> en entrada
             </span>
           )}
         </div>
@@ -851,16 +851,16 @@ export function AgendaDiariaView() {
                     onClick={() => setConfirmarTraspaso('logistica')}
                     disabled={traspasando}
                     className="bg-[#2d6a4f] hover:bg-[#1b4332] text-white"
-                    title="Crear registros en la sección REGISTROS a partir de las líneas de logística pendientes de traspasar"
+                    title="Crear entradas en la sección ENTRADA a partir de las líneas de logística pendientes de traspasar"
                   >
                     {traspasando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ArrowRightLeft className="h-4 w-4 mr-2" />}
-                    {traspasando ? 'Traspasando…' : 'Pasar a registro'}
+                    {traspasando ? 'Traspasando…' : 'Pasar a Entrada'}
                   </Button>
                 </div>
               )}
               {logisticas.length > 0 && logisticas.every(l => l.traspasadoAt) && (
                 <div className={`mt-3 text-center text-xs italic ${TINTA_SUAVE} flex items-center justify-center gap-1`}>
-                  <Check className="h-3.5 w-3.5 text-[#2d6a4f]" /> Logística traspasada a Registros
+                  <Check className="h-3.5 w-3.5 text-[#2d6a4f]" /> Logística traspasada a Entrada
                 </div>
               )}
             </div>
@@ -921,16 +921,16 @@ export function AgendaDiariaView() {
                     onClick={() => setConfirmarTraspaso('facturacion')}
                     disabled={traspasando}
                     className="bg-[#2d6a4f] hover:bg-[#1b4332] text-white"
-                    title="Crear registros en la sección REGISTROS a partir de las líneas de facturación pendientes de traspasar"
+                    title="Crear entradas en la sección ENTRADA a partir de las líneas de facturación pendientes de traspasar"
                   >
                     {traspasando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ArrowRightLeft className="h-4 w-4 mr-2" />}
-                    {traspasando ? 'Traspasando…' : 'Pasar a registro'}
+                    {traspasando ? 'Traspasando…' : 'Pasar a Entrada'}
                   </Button>
                 </div>
               )}
               {facturaciones.length > 0 && facturaciones.every(l => l.traspasadoAt) && (
                 <div className={`mt-3 text-center text-xs italic ${TINTA_SUAVE} flex items-center justify-center gap-1`}>
-                  <Check className="h-3.5 w-3.5 text-[#2d6a4f]" /> Facturación traspasada a Registros
+                  <Check className="h-3.5 w-3.5 text-[#2d6a4f]" /> Facturación traspasada a Entrada
                 </div>
               )}
             </div>
@@ -1276,22 +1276,22 @@ export function AgendaDiariaView() {
       <Dialog open={!!confirmarTraspaso} onOpenChange={(open) => { if (!open && !traspasando) setConfirmarTraspaso(null) }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className={SERIF}>Pasar {confirmarTraspaso === 'facturacion' ? 'facturación' : 'logística'} a Registros</DialogTitle>
+            <DialogTitle className={SERIF}>Pasar {confirmarTraspaso === 'facturacion' ? 'facturación' : 'logística'} a Entrada</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <p className={`text-sm ${TINTA}`}>
               {(() => {
                 const lista = confirmarTraspaso === 'facturacion' ? facturaciones : logisticas
                 const label = confirmarTraspaso === 'facturacion' ? 'facturación' : 'logística'
-                return <>Se van a crear <strong>{lista.filter(l => !l.traspasadoAt).length} registros</strong> en la sección <strong>REGISTROS</strong> a partir de las líneas de {label} del día <strong>{fmtFechaLarga(fecha)}</strong>.</>
+                return <>Se van a crear <strong>{lista.filter(l => !l.traspasadoAt).length} entradas</strong> en la sección <strong>ENTRADA</strong> a partir de las líneas de {label} del día <strong>{fmtFechaLarga(fecha)}</strong>.</>
               })()}
             </p>
             <ul className={`text-xs ${TINTA_SUAVE} list-disc pl-4 space-y-0.5`}>
-              <li>Cada línea se convierte en un registro (c1/c2 del catálogo, fecha de la agenda).</li>
+              <li>Cada línea se convierte en una entrada (c1/c2 del catálogo, fecha de la agenda).</li>
               <li>Cliente, precio y descripción se rellenan del catálogo si faltan.</li>
               <li>Las líneas se marcan como <em>traspasadas</em> en la agenda para no duplicarlas.</li>
               <li>Las que ya están traspasadas se saltan.</li>
-              <li>Puedes seguir editando las líneas después (la marca no lo impide).</li>
+              <li>En ENTRADA puedes revisar y editar antes de consolidar con el botón «Pasar al registro».</li>
             </ul>
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" onClick={() => setConfirmarTraspaso(null)} disabled={traspasando}>Cancelar</Button>
