@@ -584,12 +584,12 @@ export function AgendaDiariaView() {
     }
   }
 
-  // V29.99.20 — Copiar todas las líneas del día actual al portapapeles (JSON).
-  // Incluye tipo, carga, cliente, concepto, nota, cantidad, unidad, importe,
-  // prioridad y marcador — pero NO la fecha (al pegar se usa la del día destino).
-  async function copiarDia() {
-    if (items.length === 0) { setMsg('⚠ No hay líneas que copiar este día'); return }
-    const datos = items.map(i => ({
+  // V29.99.22 — Copiar las líneas SELECCIONADAS al portapapeles. El usuario
+  // marca las líneas con checkboxes (modo copiar) y luego pulsa este botón.
+  async function copiarSeleccionadas() {
+    const seleccionadas = items.filter(i => seleccionCopiar.has(i.id))
+    if (seleccionadas.length === 0) { setMsg('⚠ No has seleccionado ninguna línea'); return }
+    const datos = seleccionadas.map(i => ({
       tipo: i.tipo, carga: i.carga, cliente: i.cliente, concepto: i.concepto,
       nota: i.nota, cantidad: i.cantidad, unidad: i.unidad, importe: i.importe,
       prioridad: i.prioridad || '', marcador: i.marcador || '',
@@ -597,17 +597,21 @@ export function AgendaDiariaView() {
     const payload = JSON.stringify({ tipo: 'agenda-hualsa', fecha, lineas: datos })
     try {
       await navigator.clipboard.writeText(payload)
-      setMsg(`✓ Copiadas ${items.length} líneas del ${fmtFechaLarga(fecha)} — ve a otro día y pulsa «Pegar día»`)
     } catch {
-      // Fallback: si el portapapeles no está disponible (iOS sin HTTPS, etc.)
-      // guardamos en sessionStorage para que al menos funcione en la misma sesión
-      try {
-        sessionStorage.setItem('agenda-copiada', payload)
-        setMsg(`✓ Copiadas ${items.length} líneas (en sesión) — ve a otro día y pulsa «Pegar día»`)
-      } catch {
-        setMsg('⚠ No se pudo copiar — el navegador no permite acceso al portapapeles')
-      }
+      try { sessionStorage.setItem('agenda-copiada', payload) } catch {}
     }
+    setModoCopiar(false)
+    setSeleccionCopiar(new Set())
+    setMsg(`✓ Copiadas ${seleccionadas.length} líneas — ve a otro día y pulsa «Pegar día»`)
+  }
+
+  function toggleSeleccion(id: string) {
+    setSeleccionCopiar(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   // V29.99.20 — Pegar las líneas copiadas en el día actual. Lee del portapapeles
@@ -652,8 +656,15 @@ export function AgendaDiariaView() {
   }
 
   // ── Agrupación ────────────────────────────────────────────────────────────
-  const logisticas = items.filter(i => i.tipo === 'logistica').sort(compararLineas)
-  const facturaciones = items.filter(i => i.tipo === 'facturacion').sort(compararLineas)
+  // V29.99.21 — por defecto las líneas traspasadas a Entrada NO se muestran en
+  // la agenda (ya están en Entrada). Se pueden ver con el toggle "ver traspasadas".
+  const [verTraspasadas, setVerTraspasadas] = useState(false)
+  // V29.99.22 — modo copiar líneas: activa checkboxes en cada línea para elegir
+  // cuáles copiar individualmente (no todo el día).
+  const [modoCopiar, setModoCopiar] = useState(false)
+  const [seleccionCopiar, setSeleccionCopiar] = useState<Set<string>>(new Set())
+  const logisticas = items.filter(i => i.tipo === 'logistica' && (verTraspasadas || !i.traspasadoAt)).sort(compararLineas)
+  const facturaciones = items.filter(i => i.tipo === 'facturacion' && (verTraspasadas || !i.traspasadoAt)).sort(compararLineas)
   const cargasNums = [...new Set(logisticas.map(i => i.carga))].sort((a, b) => a - b)
 
   const clientesOrden: string[] = []
@@ -736,8 +747,18 @@ export function AgendaDiariaView() {
     const flash = flashIds.includes(l.id)
     const traspasada = !!l.traspasadoAt
     const marcadorBg = marcadorStyle(l.marcador || '')
+    const seleccionada = seleccionCopiar.has(l.id)
     return (
-      <div className={`group relative flex items-start gap-2 py-1.5 border-b border-dashed border-[#ddd2b4] last:border-b-0 ${flash ? 'bg-[#eef4e2]' : ''} ${marcadorBg ? marcadorBg + ' -mx-2 px-2 rounded-md' : ''} ${traspasada ? 'opacity-50' : ''}`}>
+      <div className={`group relative flex items-start gap-2 py-1.5 border-b border-dashed border-[#ddd2b4] last:border-b-0 ${flash ? 'bg-[#eef4e2]' : ''} ${marcadorBg ? marcadorBg + ' -mx-2 px-2 rounded-md' : ''} ${traspasada ? 'opacity-50' : ''} ${seleccionada ? 'bg-[#e5ebf7]' : ''}`}>
+        {/* V29.99.22 — checkbox de selección en modo copiar */}
+        {modoCopiar && (
+          <input
+            type="checkbox"
+            checked={seleccionada}
+            onChange={() => toggleSeleccion(l.id)}
+            className="mt-1 h-4 w-4 shrink-0 accent-[#7a1f2b]"
+          />
+        )}
         <span className="pt-[3px] shrink-0"><BadgePrioridad p={l.prioridad || ''} /></span>
         <div className={`flex-1 min-w-0 text-[15px] leading-snug ${TINTA} ${traspasada ? 'line-through' : ''}`}>
           {/* V29.99.1 — punto (bullet) delante de cada línea, como lista de texto */}
@@ -934,16 +955,40 @@ export function AgendaDiariaView() {
           </Button>
         </div>
 
-        {/* V29.99.20 — Copiar / Pegar día: copia todas las líneas del día actual
-            al portapapeles y pégalas en otro día. Útil para repetir la agenda
-            de un día a otro sin volver a meter todo a mano. */}
-        <div className="flex items-center justify-center gap-2">
-          <Button variant="outline" size="sm" onClick={copiarDia} className="text-[#7a1f2b] border-[#d8b88a] hover:bg-[#f1e8d2]" title="Copiar todas las líneas de este día al portapapeles">
-            <Copy className="h-3.5 w-3.5 mr-1" /> Copiar día
-          </Button>
-          <Button variant="outline" size="sm" onClick={pegarDia} className="text-[#1d4ed8] border-[#d8b88a] hover:bg-[#f1e8d2]" title="Pegar las líneas copiadas en este día">
-            <ClipboardPaste className="h-3.5 w-3.5 mr-1" /> Pegar día
-          </Button>
+        {/* V29.99.22 — Copiar líneas (selección individual) / Pegar día + toggle ver traspasadas */}
+        <div className="flex items-center justify-center gap-2 flex-wrap">
+          {modoCopiar ? (
+            <>
+              <span className={`text-xs ${TINTA_SUAVE}`}>{seleccionCopiar.size} seleccionada{seleccionCopiar.size !== 1 ? 's' : ''}</span>
+              <Button size="sm" onClick={copiarSeleccionadas} disabled={seleccionCopiar.size === 0} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white">
+                <Copy className="h-3.5 w-3.5 mr-1" /> Copiar seleccionadas
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { setModoCopiar(false); setSeleccionCopiar(new Set()) }} className="text-[#8a7a55] border-[#d8b88a]">
+                Cancelar
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={() => { setModoCopiar(true); setSeleccionCopiar(new Set()) }} className="text-[#7a1f2b] border-[#d8b88a] hover:bg-[#f1e8d2]" title="Selecciona las líneas que quieres copiar">
+                <Copy className="h-3.5 w-3.5 mr-1" /> Copiar líneas
+              </Button>
+              <Button variant="outline" size="sm" onClick={pegarDia} className="text-[#1d4ed8] border-[#d8b88a] hover:bg-[#f1e8d2]" title="Pegar las líneas copiadas en este día">
+                <ClipboardPaste className="h-3.5 w-3.5 mr-1" /> Pegar día
+              </Button>
+            </>
+          )}
+          {/* V29.99.21 — toggle para mostrar/ocultar líneas ya traspasadas a Entrada */}
+          {items.some(i => i.traspasadoAt) && (
+            <label className="flex items-center gap-1 text-[10px] text-[#8a7a55] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={verTraspasadas}
+                onChange={e => setVerTraspasadas(e.target.checked)}
+                className="h-3 w-3"
+              />
+              ver traspasadas
+            </label>
+          )}
         </div>
 
         {msg && (
