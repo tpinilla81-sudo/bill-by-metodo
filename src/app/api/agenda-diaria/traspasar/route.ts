@@ -87,20 +87,25 @@ export async function POST(req: Request) {
       where: { tenantId: tid, deletedAt: null },
       select: { c1: true, c2: true, clienteId: true, final: true, customData: true },
     })
-    const catPorNombre = new Map<string, { c1: string; c2: string; clienteId: string; precio: number; customData: string }>()
-    const catVistos = new Set<string>()
-    for (const c of catRaw) {
-      const n2 = String(c.c2 || '').trim().replace(/\s+/g, ' ')
-      const k = normStr(n2)
-      if (!n2 || !k || catVistos.has(k)) continue
-      catVistos.add(k)
-      catPorNombre.set(k, {
-        c1: String(c.c1 || '').trim(),
-        c2: n2,
-        clienteId: String(c.clienteId || ''),
-        precio: Number(c.final) || 0,
-        customData: String(c.customData || ''),
-      })
+    // V29.99.16 — BUG: antes deduplicaba por c2 (normStr) y colapsaba entradas
+    // con mismo c2 pero DISTINTO c1 (ej. "MILCA - MILAGRO" con c1=MILCA 90€ y
+    // c1=VIAJE CAMPO 99,3€). Ahora guardamos TODAS las entradas del catálogo y
+    // al hacer lookup elegimos la que mejor encaje con el importe de la línea.
+    const catTodas = catRaw.map(c => ({
+      c1: String(c.c1 || '').trim().replace(/\s+/g, ' '),
+      c2: String(c.c2 || '').trim().replace(/\s+/g, ' '),
+      clienteId: String(c.clienteId || ''),
+      precio: Number(c.final) || 0,
+      customData: String(c.customData || ''),
+    }))
+    // Map por nombre (c2) → lista de entradas con ese nombre (puede haber varias
+    // con distinto c1/precio)
+    const catPorNombre = new Map<string, typeof catTodas>()
+    for (const c of catTodas) {
+      if (!c.c2) continue
+      const k = normStr(c.c2)
+      if (!catPorNombre.has(k)) catPorNombre.set(k, [])
+      catPorNombre.get(k)!.push(c)
     }
     // Catálogo "raw" para lookupPrecio/lookupCliente (igual que /api/registros)
     const catRawLookup = catRaw.map(c => ({ c1: String(c.c1 || ''), c2: String(c.c2 || ''), clienteId: String(c.clienteId || ''), final: Number(c.final) || 0 }))
@@ -113,11 +118,40 @@ export async function POST(req: Request) {
     const registrosCreados: any[] = []
     for (const l of lineas) {
       const conceptoTxt = String(l.concepto || '').trim()
-      const catEntry = catPorNombre.get(normStr(conceptoTxt))
-      const c1 = catEntry?.c1 || 'AGENDA'
-      const c2 = catEntry?.c2 || conceptoTxt.slice(0, 120)
       const cant = Number(l.cantidad) || 0
       const importe = Number(l.importe) || 0
+      // V29.99.16 — buscar entradas del catálogo por nombre (puede haber varias
+      // con distinto c1/precio). Elegir la que mejor encaje con el importe de la
+      // línea: si cant>0 y hay una entrada cuyo cant×precio ≈ importe, usarla.
+      // Si no, usar la primera.
+      const candidatos = catPorNombre.get(normStr(conceptoTxt)) || []
+      let catEntry: typeof catTodas[number] | undefined
+      if (candidatos.length === 1) {
+        catEntry = candidatos[0]
+      } else if (candidatos.length > 1) {
+        // Buscar la entrada cuyo cant×precio se acerque más al importe
+        if (cant > 0 && importe > 0) {
+          catEntry = candidatos.reduce((mejor, c) => {
+            const esperado = Math.round(cant * c.precio * 100) / 100
+            const diffC = Math.abs(esperado - importe)
+            const esperadoMejor = Math.round(cant * mejor.precio * 100) / 100
+            const diffMejor = Math.abs(esperadoMejor - importe)
+            return diffC < diffMejor ? c : mejor
+          })
+        } else if (importe > 0) {
+          // sin cant: buscar entrada cuyo precio ≈ importe
+          catEntry = candidatos.reduce((mejor, c) => {
+            const diffC = Math.abs(c.precio - importe)
+            const diffMejor = Math.abs(mejor.precio - importe)
+            return diffC < diffMejor ? c : mejor
+          })
+        } else {
+          // sin importe: coger la primera
+          catEntry = candidatos[0]
+        }
+      }
+      const c1 = catEntry?.c1 || 'AGENDA'
+      const c2 = catEntry?.c2 || conceptoTxt.slice(0, 120)
 
       // V29.99.6 — Cliente: si la línea de agenda trae cliente (nombre), usarlo;
       // si no, intentar detectarlo del catálogo por c1/c2 (igual que Entrada).

@@ -67,17 +67,25 @@ export async function GET(req: Request) {
     const clientesMap = new Map(clientes.map(c => [c.id, c.nombre]))
     const conceptosCatalogo: string[] = []
     const vistos = new Set<string>()
-    // V29.98 — catálogo con todo, deduplicado por nombre
+    // V29.98 — catálogo con todo, deduplicado por nombre.
+    // V29.99.16 — BUG: antes deduplicaba solo por c2 (nombre), lo que colapsaba
+    // entradas con mismo c2 pero DISTINTO c1/precio (ej. "MILCA - MILAGRO" con
+    // c1=MILCA precio=90€ y c1=VIAJE CAMPO precio=99,3€). Ahora deduplica por
+    // (c1+c2) para mantener ambas como servicios distintos. El modal del catálogo
+    // muestra grupo+precio+nombre para distinguirlas.
     const catalogoCompleto: { nombre: string; grupo: string; precio: number; cliente: string }[] = []
     for (const c of catRaw) {
       const n = String(c.c2 || '').trim().replace(/\s+/g, ' ')
-      const k = n.toLowerCase()
-      if (!n || vistos.has(k)) continue
+      const g = String(c.c1 || '').trim().replace(/\s+/g, ' ')
+      if (!n) continue
+      // Clave de deduplicación: grupo + nombre (case-insensitive)
+      const k = `${g.toLowerCase()}|${n.toLowerCase()}`
+      if (vistos.has(k)) continue
       vistos.add(k)
       conceptosCatalogo.push(n)
       catalogoCompleto.push({
         nombre: n,
-        grupo: String(c.c1 || '').trim().replace(/\s+/g, ' '),
+        grupo: g,
         precio: Number(c.final) || 0,
         cliente: clientesMap.get(c.clienteId) || '',
       })
