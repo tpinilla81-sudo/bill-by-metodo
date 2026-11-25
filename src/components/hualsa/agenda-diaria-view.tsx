@@ -603,6 +603,15 @@ export function AgendaDiariaView() {
     recuentos.set(dest, (recuentos.get(dest) || 0) + 1)
   }
   const recuentosArr = [...recuentos.entries()].sort((a, b) => b[1] - a[1])
+  // V29.99.19 — recuentos de LOGÍSTICA por concepto (lo de antes de la "/" o
+  // del guion). Igual que en facturación, para que el usuario vea el resumen
+  // del día dentro de la propia sección (no solo en Notas).
+  const recuentosLog = new Map<string, number>()
+  for (const l of logisticas) {
+    const dest = (l.concepto || '').split('/')[0].split('-')[0].trim() || l.concepto
+    recuentosLog.set(dest, (recuentosLog.get(dest) || 0) + 1)
+  }
+  const recuentosLogArr = [...recuentosLog.entries()].sort((a, b) => b[1] - a[1])
 
   const vocabClientes = [...new Set(items.map(i => i.cliente).filter(Boolean))]
 
@@ -910,6 +919,16 @@ export function AgendaDiariaView() {
                   Total Día; {fmtNum(totalLog)}€
                 </div>
               )}
+              {/* V29.99.19 — Recuentos de logística por concepto (como en facturación).
+                  Muestra el resumen del día dentro de la propia sección. */}
+              {recuentosLogArr.length > 0 && (
+                <div className={`text-sm font-bold space-y-0.5 px-1 mt-2 ${TINTA}`}>
+                  {recuentosLogArr.map(([dest, n]) => (
+                    <div key={dest}>{dest}; {n}</div>
+                  ))}
+                  <div className="pt-1 mt-1 border-t border-dashed border-[#cbb98d]">Total; {recuentosLogArr.reduce((s, [, n]) => s + n, 0)}</div>
+                </div>
+              )}
               {/* V29.99.3 — Pasar logística a Registros. Solo si hay líneas
                   pendientes (no traspasadas). Pide confirmación antes. */}
               {logisticas.some(l => !l.traspasadoAt) && (
@@ -976,6 +995,7 @@ export function AgendaDiariaView() {
                       {recuentosArr.map(([dest, n]) => (
                         <div key={dest}>{dest}; {n}</div>
                       ))}
+                      <div className="pt-1 mt-1 border-t border-dashed border-[#cbb98d]">Total; {recuentosArr.reduce((s, [, n]) => s + n, 0)}</div>
                     </div>
                   )}
                 </>
