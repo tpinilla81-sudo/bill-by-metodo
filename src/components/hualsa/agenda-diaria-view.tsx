@@ -22,7 +22,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, ListPlus, Search, ArrowRightLeft, Check } from 'lucide-react'
+import { Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, ListPlus, Search, ArrowRightLeft, Check, Highlighter } from 'lucide-react'
 
 type AgendaDiaLine = {
   id: string
@@ -38,6 +38,7 @@ type AgendaDiaLine = {
   orden: number
   prioridad?: string // V29.92 estilo Opus One: A1, A2, B1... ('' = sin prioridad)
   traspasadoAt?: string | null // V29.99.3 — ISO date si la línea ya se traspasó a Registros
+  marcador?: string // V29.99.18 — '', 'amarillo', 'rojo', 'verde'
 }
 
 type FormLine = {
@@ -238,6 +239,8 @@ export function AgendaDiariaView() {
   const [traspasando, setTraspasando] = useState(false)
   // V29.99.9 — null = cerrado; 'logistica' | 'facturacion' = modal abierto para ese tipo
   const [confirmarTraspaso, setConfirmarTraspaso] = useState<null | 'logistica' | 'facturacion'>(null)
+  // V29.99.18 — popover del selector de marcador (id de la línea abierta)
+  const [marcadorAbierto, setMarcadorAbierto] = useState<string | null>(null)
   // V29.92 — notas del día (Opus One "Daily Notes") con autosave
   const [nota, setNota] = useState('')
   const [notaEstado, setNotaEstado] = useState<'' | 'guardando' | 'guardada' | 'error'>('')
@@ -539,6 +542,23 @@ export function AgendaDiariaView() {
     }
   }
 
+  // V29.99.18 — poner/quitar marcador tipo fosforito en una línea.
+  // Llama al PUT del endpoint con solo el campo marcador (actualización parcial).
+  async function setMarcador(id: string, marcador: string) {
+    try {
+      const res = await fetch(`/api/agenda-diaria/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ marcador }),
+      })
+      if (!res.ok) { const d = await res.json(); setMsg('⚠ ' + (d.error || 'Error marcando')); return }
+      // Actualizar el estado local sin recargar todo el día
+      setItems(prev => prev.map(i => i.id === id ? { ...i, marcador } : i))
+    } catch (err: any) {
+      setMsg('⚠ Error de conexión: ' + (err?.message || ''))
+    }
+  }
+
   async function borrarCarga(carga: number) {
     const ids = items.filter(i => i.tipo === 'logistica' && i.carga === carga).map(i => i.id)
     if (ids.length === 0) return
@@ -625,11 +645,23 @@ export function AgendaDiariaView() {
   }
 
   // ── Fila de línea (estilo cuaderno, con badge de prioridad) ───────────────
+  // V29.99.18 — colores de marcador (fosforito)
+  const MARCADORES: { valor: string; label: string; bg: string; ring: string }[] = [
+    { valor: 'amarillo', label: 'Amarillo', bg: 'bg-[#fff176]', ring: 'ring-[#fbc02d]' },
+    { valor: 'rojo', label: 'Rojo', bg: 'bg-[#ff8a80]', ring: 'ring-[#d32f2f]' },
+    { valor: 'verde', label: 'Verde', bg: 'bg-[#b9f6ca]', ring: 'ring-[#388e3c]' },
+  ]
+  function marcadorStyle(marcador: string): string {
+    const m = MARCADORES.find(x => x.valor === marcador)
+    return m ? m.bg : ''
+  }
+
   function LineaRow({ l }: { l: AgendaDiaLine }) {
     const flash = flashIds.includes(l.id)
     const traspasada = !!l.traspasadoAt
+    const marcadorBg = marcadorStyle(l.marcador || '')
     return (
-      <div className={`group flex items-start gap-2 py-1.5 border-b border-dashed border-[#ddd2b4] last:border-b-0 ${flash ? 'bg-[#eef4e2] rounded-md px-2 -mx-2' : ''} ${traspasada ? 'opacity-50' : ''}`}>
+      <div className={`group relative flex items-start gap-2 py-1.5 border-b border-dashed border-[#ddd2b4] last:border-b-0 ${flash ? 'bg-[#eef4e2]' : ''} ${marcadorBg ? marcadorBg + ' -mx-2 px-2 rounded-md' : ''} ${traspasada ? 'opacity-50' : ''}`}>
         <span className="pt-[3px] shrink-0"><BadgePrioridad p={l.prioridad || ''} /></span>
         <div className={`flex-1 min-w-0 text-[15px] leading-snug ${TINTA} ${traspasada ? 'line-through' : ''}`}>
           {/* V29.99.1 — punto (bullet) delante de cada línea, como lista de texto */}
@@ -647,6 +679,14 @@ export function AgendaDiariaView() {
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0 opacity-60 group-hover:opacity-100">
+          {/* V29.99.18 — botón rotulador (marcador fosforito) */}
+          <button
+            onClick={() => setMarcadorAbierto(marcadorAbierto === l.id ? null : l.id)}
+            className={`h-8 w-8 rounded-md flex items-center justify-center ${l.marcador ? marcadorBg + ' ring-1 ' + (MARCADORES.find(x => x.valor === l.marcador)?.ring || '') : 'hover:bg-[#f1e8d2] text-[#8a7a55]'}`}
+            title="Marcar con fosforito"
+          >
+            <Highlighter className="h-3.5 w-3.5" />
+          </button>
           <button
             onClick={() => setForm({ mode: 'edit', ...l, prioridad: l.prioridad || '', importeTxt: fmtTxt(l.importe), cantidadTxt: fmtTxt(l.cantidad) })}
             className="h-8 w-8 rounded-md hover:bg-[#f1e8d2] flex items-center justify-center text-[#8a7a55]"
@@ -662,6 +702,33 @@ export function AgendaDiariaView() {
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
+        {/* V29.99.18 — popover del selector de marcador */}
+        {marcadorAbierto === l.id && (
+          <div className="absolute right-0 top-9 z-20 bg-[#fffdf7] border border-[#e3d8bc] rounded-lg shadow-lg p-2 flex flex-col gap-1 min-w-[140px]">
+            <div className={`text-[10px] uppercase tracking-wide ${TINTA_SUAVE} px-1 pb-1`}>Marcador</div>
+            {MARCADORES.map(m => (
+              <button
+                key={m.valor}
+                onClick={() => { setMarcador(l.id, m.valor); setMarcadorAbierto(null) }}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm hover:bg-[#f1e8d2] ${l.marcador === m.valor ? 'ring-1 ' + m.ring : ''}`}
+              >
+                <span className={`h-4 w-4 rounded ${m.bg} border border-[#e3d8bc]`} />
+                <span className={TINTA}>{m.label}</span>
+                {l.marcador === m.valor && <Check className="h-3.5 w-3.5 ml-auto text-[#2d6a4f]" />}
+              </button>
+            ))}
+            {/* Quitar marcador */}
+            {l.marcador && (
+              <button
+                onClick={() => { setMarcador(l.id, ''); setMarcadorAbierto(null) }}
+                className="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm hover:bg-[#f3e0dd] text-[#a33b30]"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Quitar marcador</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
     )
   }

@@ -170,6 +170,7 @@ model AgendaDia {
   creadoPor String    @default("")  // userId que lo creó ("voz" si vino por dictado)
   viaVoz    Boolean   @default(false)
   traspasadoAt DateTime?  // V29.99.3 — fecha en que la línea se traspasó a Registros (null = pendiente)
+  marcador  String    @default("")  // V29.99.18 — marcador tipo fosforito: "" | "amarillo" | "rojo" | "verde"
   deletedAt DateTime?               // V29.52: soft delete — null = activo
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

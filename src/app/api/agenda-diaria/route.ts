@@ -32,6 +32,13 @@ function normPrioridad(v: any): string {
   return m ? `${m[1]}${m[2]}` : ''
 }
 
+// V29.99.18 — marcador tipo fosforito. Valores permitidos: '', 'amarillo',
+// 'rojo', 'verde'. Cualquier otra cosa → '' (sin marcador).
+function normMarcador(v: any): string {
+  const m = String(v || '').trim().toLowerCase()
+  return ['amarillo', 'rojo', 'verde'].includes(m) ? m : ''
+}
+
 // GET /api/agenda-diaria?fecha=YYYY-MM-DD → líneas del día (ambos tipos)
 export async function GET(req: Request) {
   try {
@@ -156,6 +163,7 @@ export async function POST(req: Request) {
           importe: Number.isFinite(importe) ? importe : 0,
           orden,
           prioridad: normPrioridad(l.prioridad),
+          marcador: normMarcador(l.marcador),
           creadoPor,
           viaVoz: !!l.viaVoz,
         },

@@ -11,6 +11,12 @@ function normPrioridad(v: any): string {
   return m ? `${m[1]}${m[2]}` : ''
 }
 
+// V29.99.18 — marcador tipo fosforito: '', 'amarillo', 'rojo', 'verde'.
+function normMarcador(v: any): string {
+  const m = String(v || '').trim().toLowerCase()
+  return ['amarillo', 'rojo', 'verde'].includes(m) ? m : ''
+}
+
 // PUT /api/agenda-diaria/[id] — actualiza los campos editables de la línea.
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -33,6 +39,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (body.importe !== undefined) data.importe = Number(body.importe) || 0
     if (body.orden !== undefined) data.orden = Math.round(Number(body.orden) || 0)
     if (body.prioridad !== undefined) data.prioridad = normPrioridad(body.prioridad)
+    if (body.marcador !== undefined) data.marcador = normMarcador(body.marcador)
 
     const updated = await db.agendaDia.update({ where: { id }, data })
     return NextResponse.json({ item: updated })
