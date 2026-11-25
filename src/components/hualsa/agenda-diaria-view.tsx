@@ -22,7 +22,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, ListPlus, Search, ArrowRightLeft, Check, Highlighter } from 'lucide-react'
+import { Trash2, Plus, Loader2, Pencil, ChevronLeft, ChevronRight, CalendarDays, ListPlus, Search, ArrowRightLeft, Check, Highlighter, Copy, ClipboardPaste } from 'lucide-react'
 
 type AgendaDiaLine = {
   id: string
@@ -584,6 +584,73 @@ export function AgendaDiariaView() {
     }
   }
 
+  // V29.99.20 — Copiar todas las líneas del día actual al portapapeles (JSON).
+  // Incluye tipo, carga, cliente, concepto, nota, cantidad, unidad, importe,
+  // prioridad y marcador — pero NO la fecha (al pegar se usa la del día destino).
+  async function copiarDia() {
+    if (items.length === 0) { setMsg('⚠ No hay líneas que copiar este día'); return }
+    const datos = items.map(i => ({
+      tipo: i.tipo, carga: i.carga, cliente: i.cliente, concepto: i.concepto,
+      nota: i.nota, cantidad: i.cantidad, unidad: i.unidad, importe: i.importe,
+      prioridad: i.prioridad || '', marcador: i.marcador || '',
+    }))
+    const payload = JSON.stringify({ tipo: 'agenda-hualsa', fecha, lineas: datos })
+    try {
+      await navigator.clipboard.writeText(payload)
+      setMsg(`✓ Copiadas ${items.length} líneas del ${fmtFechaLarga(fecha)} — ve a otro día y pulsa «Pegar día»`)
+    } catch {
+      // Fallback: si el portapapeles no está disponible (iOS sin HTTPS, etc.)
+      // guardamos en sessionStorage para que al menos funcione en la misma sesión
+      try {
+        sessionStorage.setItem('agenda-copiada', payload)
+        setMsg(`✓ Copiadas ${items.length} líneas (en sesión) — ve a otro día y pulsa «Pegar día»`)
+      } catch {
+        setMsg('⚠ No se pudo copiar — el navegador no permite acceso al portapapeles')
+      }
+    }
+  }
+
+  // V29.99.20 — Pegar las líneas copiadas en el día actual. Lee del portapapeles
+  // (o de sessionStorage como fallback) y crea las líneas con la fecha de hoy.
+  async function pegarDia() {
+    let payload = ''
+    try {
+      payload = await navigator.clipboard.readText()
+    } catch {
+      // Fallback: sessionStorage
+      payload = sessionStorage.getItem('agenda-copiada') || ''
+    }
+    if (!payload) { setMsg('⚠ No hay líneas copiadas — pulsa «Copiar día» en otro día primero'); return }
+    let datos: any
+    try {
+      datos = JSON.parse(payload)
+    } catch { setMsg('⚠ El portapapeles no contiene líneas de agenda válidas'); return }
+    if (datos.tipo !== 'agenda-hualsa' || !Array.isArray(datos.lineas) || datos.lineas.length === 0) {
+      setMsg('⚠ El portapapeles no contiene líneas de agenda válidas'); return
+    }
+    if (!confirm(`¿Pegar ${datos.lineas.length} líneas del ${fmtFechaLarga(datos.fecha || '?')} en el ${fmtFechaLarga(fecha)}?`)) return
+    setMsg('')
+    try {
+      const batch = datos.lineas.map((l: any) => ({
+        fecha, tipo: l.tipo, carga: l.carga, cliente: l.cliente, concepto: l.concepto,
+        nota: l.nota, cantidad: l.cantidad, unidad: l.unidad, importe: l.importe,
+        prioridad: l.prioridad, marcador: l.marcador,
+      }))
+      const res = await fetch('/api/agenda-diaria', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha, batch }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg('⚠ ' + (data.error || 'Error pegando')); return }
+      await cargar(fecha)
+      flash((data.items || []).map((x: AgendaDiaLine) => x.id))
+      setMsg(`✓ Pegadas ${data.count || (data.items || []).length} líneas del ${fmtFechaLarga(datos.fecha || '?')}`)
+    } catch (err: any) {
+      setMsg('⚠ Error de conexión: ' + (err?.message || ''))
+    }
+  }
+
   // ── Agrupación ────────────────────────────────────────────────────────────
   const logisticas = items.filter(i => i.tipo === 'logistica').sort(compararLineas)
   const facturaciones = items.filter(i => i.tipo === 'facturacion').sort(compararLineas)
@@ -864,6 +931,18 @@ export function AgendaDiariaView() {
           </div>
           <Button variant="ghost" size="icon" onClick={() => setFecha(addDias(fecha, 1))} className="h-10 w-10 shrink-0 text-[#7a1f2b] hover:bg-[#f1e8d2]" title="Día siguiente">
             <ChevronRight className="h-5 w-5" />
+          </Button>
+        </div>
+
+        {/* V29.99.20 — Copiar / Pegar día: copia todas las líneas del día actual
+            al portapapeles y pégalas en otro día. Útil para repetir la agenda
+            de un día a otro sin volver a meter todo a mano. */}
+        <div className="flex items-center justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={copiarDia} className="text-[#7a1f2b] border-[#d8b88a] hover:bg-[#f1e8d2]" title="Copiar todas las líneas de este día al portapapeles">
+            <Copy className="h-3.5 w-3.5 mr-1" /> Copiar día
+          </Button>
+          <Button variant="outline" size="sm" onClick={pegarDia} className="text-[#1d4ed8] border-[#d8b88a] hover:bg-[#f1e8d2]" title="Pegar las líneas copiadas en este día">
+            <ClipboardPaste className="h-3.5 w-3.5 mr-1" /> Pegar día
           </Button>
         </div>
 
