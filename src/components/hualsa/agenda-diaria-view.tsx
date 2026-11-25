@@ -998,46 +998,32 @@ export function AgendaDiariaView() {
                 </div>
                 <div>
                   <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Cantidad</label>
-                  {/* V29.99.10 — desplegable de cantidad (0-30 + opción "otra") igual que el catálogo. */}
-                  {(() => {
-                    const valorActual = form.cantidadTxt && form.cantidadTxt !== '' && form.cantidadTxt !== '+50'
-                      ? String(Math.round(parseNumEs(form.cantidadTxt)))
-                      : (form.cantidad > 0 ? String(Math.round(form.cantidad)) : '0')
-                    const esOtra = form.cantidadTxt === '+50' || (form.cantidad > 50)
-                    return (
-                      <>
-                        <select
-                          value={esOtra ? '+50' : valorActual}
-                          onChange={e => {
-                            if (e.target.value === '+50') {
-                              setForm({ ...form, cantidadTxt: '+50', cantidad: 0 })
-                            } else {
-                              const n = parseNumEs(e.target.value)
-                              setForm({ ...form, cantidadTxt: e.target.value, cantidad: n })
-                            }
-                          }}
-                          className="mt-1 w-full h-10 px-2 rounded-md border border-input bg-transparent text-sm focus:outline-none focus:border-[#7a1f2b]"
-                        >
-                          <option value="0">0</option>
-                          {Array.from({ length: 50 }, (_, i) => String(i + 1)).map(n => (
-                            <option key={n} value={n}>{n}</option>
-                          ))}
-                          <option value="+50">+50 (otra)</option>
-                        </select>
-                        {esOtra && (
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            autoFocus
-                            value={form.cantidadTxt === '+50' ? '' : form.cantidadTxt}
-                            onChange={e => setForm({ ...form, cantidadTxt: e.target.value, cantidad: parseNumEs(e.target.value) })}
-                            placeholder="31"
-                            className="mt-1 text-right"
-                          />
-                        )}
-                      </>
-                    )
-                  })()}
+                  {/* V29.99.17 — input libre para escribir cualquier cantidad.
+                      Botones rápidos debajo con cantidades frecuentes. */}
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={form.cantidadTxt || ''}
+                    onChange={e => setForm({ ...form, cantidadTxt: e.target.value, cantidad: parseNumEs(e.target.value) })}
+                    placeholder="0"
+                    className="mt-1 text-right"
+                  />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {[1, 5, 10, 25, 50, 100, 200].map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setForm({ ...form, cantidadTxt: String(n), cantidad: n })}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors ${
+                          form.cantidadTxt === String(n)
+                            ? 'bg-[#7a1f2b] text-white border-[#7a1f2b]'
+                            : 'bg-[#fffdf7] text-[#7a1f2b] border-[#d8b88a] hover:bg-[#f1e8d2]'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Unidad</label>
@@ -1209,33 +1195,40 @@ export function AgendaDiariaView() {
                 {admiteCantidad && (
                   <div>
                     <label className="text-xs font-bold text-[#8a7a55] uppercase tracking-wide">Cantidad</label>
+                    {/* V29.99.17 — input libre para escribir cualquier cantidad
+                        (hasta 200+ bobinas/palets). Debajo hay botones rápidos
+                        con cantidades frecuentes para no tener que teclear. */}
                     <div className="flex items-center gap-2 mt-1">
-                      {/* V29.99.4 — selector desplegable de cantidad (más fácil en móvil que teclear) */}
-                      <select
-                        value={catSelCantidad === '' ? '1' : catSelCantidad}
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        autoFocus
+                        value={catSelCantidad}
                         onChange={e => setCatSelCantidad(e.target.value)}
-                        className="h-12 px-3 text-lg font-bold rounded-md border border-[#e3d8bc] bg-[#fffdf7] text-[#3d3225] focus:outline-none focus:border-[#7a1f2b]"
-                      >
-                        {Array.from({ length: 50 }, (_, i) => String(i + 1)).map(n => (
-                          <option key={n} value={n}>{n}</option>
-                        ))}
-                        <option value="+50">+50 (otra)</option>
-                      </select>
-                      {catSelCantidad === '+50' && (
-                        <Input
-                          type="text"
-                          inputMode="decimal"
-                          autoFocus
-                          value={catSelCantidad === '+50' ? '' : catSelCantidad}
-                          onChange={e => setCatSelCantidad(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') confirmarDesdeCatalogo() }}
-                          placeholder="31"
-                          className="text-right text-lg font-bold w-24"
-                        />
-                      )}
+                        onKeyDown={e => { if (e.key === 'Enter') confirmarDesdeCatalogo() }}
+                        placeholder="1"
+                        className="text-right text-lg font-bold w-28"
+                      />
                       <span className={`text-sm ${TINTA_SUAVE}`}>
                         × {fmtNum(catSel.item.precio)}€/ud
                       </span>
+                    </div>
+                    {/* Botones rápidos de cantidades frecuentes */}
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {[1, 5, 10, 25, 50, 100, 200].map(n => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setCatSelCantidad(String(n))}
+                          className={`px-2.5 py-1 rounded-md text-xs font-bold border transition-colors ${
+                            catSelCantidad === String(n)
+                              ? 'bg-[#7a1f2b] text-white border-[#7a1f2b]'
+                              : 'bg-[#fffdf7] text-[#7a1f2b] border-[#d8b88a] hover:bg-[#f1e8d2]'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -1260,7 +1253,7 @@ export function AgendaDiariaView() {
 
                 <div className="flex justify-end gap-2 pt-1">
                   <Button variant="outline" onClick={() => setCatSel(null)} disabled={guardandoCat}>Cancelar</Button>
-                  <Button onClick={confirmarDesdeCatalogo} disabled={guardandoCat || (admiteCantidad && (catSelCantidad === '+50' || parseNumEs(catSelCantidad) <= 0))} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white">
+                  <Button onClick={confirmarDesdeCatalogo} disabled={guardandoCat || (admiteCantidad && parseNumEs(catSelCantidad) <= 0)} className="bg-[#7a1f2b] hover:bg-[#5f1620] text-white">
                     {guardandoCat ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                     {guardandoCat ? 'Guardando…' : 'Añadir a la agenda'}
                   </Button>
