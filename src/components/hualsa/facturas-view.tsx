@@ -74,8 +74,8 @@ export function FacturasView() {
   const [savingFull, setSavingFull] = useState(false)
 
   const canEditNumero = hasSubPermission(user?.role, user?.permissions, 'facturas.editarNumero')
-  // Mismo permiso para edición completa de factura
-  const canEditFull = canEditNumero
+  // V29.99.24 — el rol facturación también puede editar la factura (incluido el CIF)
+  const canEditFull = canEditNumero || user?.role === 'facturacion'
 
   const loadFacturas = useCallback(async () => {
     const res = await fetch('/api/facturas')
@@ -804,8 +804,8 @@ Se reemplazarán las líneas actuales por una línea por cada registro original,
                           <Eye className="h-4 w-4" />
                         </Button>
 
-                        {/* Editar (número de factura) — visible para admin o si tiene permiso */}
-                        {(canEditNumero || user?.role === 'admin' || user?.role === 'superadmin') && (
+                        {/* Editar (número de factura) — visible para admin, facturación o si tiene permiso */}
+                        {(canEditFull || user?.role === 'admin' || user?.role === 'superadmin') && (
                           <Button size="sm" variant="ghost" onClick={() => openFactura(f, true)} title="Editar factura" className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
                             <Edit3 className="h-4 w-4" />
                           </Button>
@@ -1202,7 +1202,13 @@ function FacturaEditor({
             ))}
           </select>
           <div className="mt-1 text-[10px] text-gray-500">
-            CIF: {cliDraft.cif || '—'} · {cliDraft.dir || '—'} {cliDraft.cp} {cliDraft.ciudad} {cliDraft.prov}
+            CIF: <input
+              type="text"
+              value={cliDraft.cif || ''}
+              onChange={e => setCliDraft({ ...cliDraft, cif: e.target.value })}
+              placeholder="CIF del cliente"
+              className="inline-block w-40 border border-gray-300 rounded px-1 py-0.5 text-[10px]"
+            /> · {cliDraft.dir || '—'} {cliDraft.cp} {cliDraft.ciudad} {cliDraft.prov}
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2">
