@@ -237,14 +237,11 @@ export function EntradaGrilla() {
     () => data.catalogo.filter(c => !esConceptoFacturacion(c.c1, c.c2)),
     [data.catalogo],
   )
-  // V29.20: solo clientes que aparecen en el CATÁLOGO (evita elegir un cliente
-  // "suelto" que no case con ninguna línea — causa de palets sin descontar).
-  // Si el catálogo está vacío, muestra todos (no bloquear alta inicial).
+  // V29.99.25 — mostrar TODOS los clientes registrados (antes se filtraba a
+  // solo los que tenían entradas en el catálogo). Ordenados alfabéticamente.
   const clientesParaSelect = useMemo(() => {
-    const ids = new Set(data.catalogo.map(c => c.clienteId).filter(Boolean))
-    const filtrados = ids.size > 0 ? data.clientes.filter(c => ids.has(c.id)) : data.clientes
-    return filtrados.slice().sort((a, b) => a.nombre.localeCompare(b.nombre))
-  }, [data.catalogo, data.clientes])
+    return data.clientes.slice().sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [data.clientes])
 
   // V29.38: stock actual para el desplegable de SALIDA PALET en grilla.
   const stockActualGrilla = useMemo(() => buildStock(todosRegistros, []), [todosRegistros])
