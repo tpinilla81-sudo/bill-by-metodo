@@ -1174,17 +1174,12 @@ export function EntradaView({ userRole = 'user', userPermissions = '' }: { userR
 
   const { clientes } = data
 
-  // V29.20: clientesParaSelect — solo clientes que aparecen en el CATÁLOGO.
-  // Evita elegir un cliente "suelto" de la tabla Cliente que no case con
-  // ninguna línea del catálogo (causa de palets sin descontar cuando dos
-  // clientes SMURFIT casi idénticos coexistían en la tabla).
-  // Si el catálogo está vacío (tenant nuevo), muestra todos los clientes
-  // para no bloquear el alta inicial.
+  // V29.99.25 — mostrar TODOS los clientes registrados (antes se filtraba a
+  // solo los que tenían entradas en el catálogo, lo que ocultaba clientes
+  // legítimos sin líneas de catálogo). Ordenados alfabéticamente.
   const clientesParaSelect = useMemo(() => {
-    const ids = new Set(data.catalogo.map(c => c.clienteId).filter(Boolean))
-    const filtrados = ids.size > 0 ? clientes.filter(c => ids.has(c.id)) : clientes
-    return filtrados.slice().sort((a, b) => a.nombre.localeCompare(b.nombre))
-  }, [data.catalogo, clientes])
+    return clientes.slice().sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [clientes])
 
   const clienteVisible = fieldDefs.some(f => f.key === 'cliente' && f.visible)
 
