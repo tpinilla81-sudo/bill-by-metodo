@@ -912,6 +912,7 @@ Se reemplazarán las líneas actuales por una línea por cada registro original,
               onUpdateLinea={updateLineaField}
               onAddLinea={addLinea}
               onRemoveLinea={removeLinea}
+              onCifChange={(cif) => setCliDraft(prev => prev ? { ...prev, cif } : prev)}
             />
           )}
 
@@ -1134,7 +1135,7 @@ function FacturaEditor({
   cliDraft, fechaDraft, ivaDraft, modoDraft, lineasDraft,
   clientes, catalogo, config,
   onClienteChange, onFechaChange, onIvaChange, onModoChange,
-  onUpdateLinea, onAddLinea, onRemoveLinea,
+  onUpdateLinea, onAddLinea, onRemoveLinea, onCifChange,
 }: {
   cliDraft: Cliente
   fechaDraft: string
@@ -1151,6 +1152,8 @@ function FacturaEditor({
   onUpdateLinea: (idx: number, field: keyof LineaFactura, value: string) => void
   onAddLinea: () => void
   onRemoveLinea: (idx: number) => void
+  // V29.99.27 — callback para editar el CIF del cliente directamente en la factura
+  onCifChange: (cif: string) => void
 }) {
   const L = config?.labelsFacturas || DEFAULT_LABELS_FACTURAS
 
@@ -1205,7 +1208,7 @@ function FacturaEditor({
             CIF: <input
               type="text"
               value={cliDraft.cif || ''}
-              onChange={e => setCliDraft({ ...cliDraft, cif: e.target.value })}
+              onChange={e => onCifChange(e.target.value)}
               placeholder="CIF del cliente"
               className="inline-block w-40 border border-gray-300 rounded px-1 py-0.5 text-[10px]"
             /> · {cliDraft.dir || '—'} {cliDraft.cp} {cliDraft.ciudad} {cliDraft.prov}
