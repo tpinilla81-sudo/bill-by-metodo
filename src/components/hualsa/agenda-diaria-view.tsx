@@ -656,15 +656,14 @@ export function AgendaDiariaView() {
   }
 
   // ── Agrupación ────────────────────────────────────────────────────────────
-  // V29.99.21 — por defecto las líneas traspasadas a Entrada NO se muestran en
-  // la agenda (ya están en Entrada). Se pueden ver con el toggle "ver traspasadas".
-  const [verTraspasadas, setVerTraspasadas] = useState(false)
+  // V29.99.23 — la agenda es un RESGUARDO: las líneas siempre se muestran,
+  // incluso las traspasadas a Entrada. No se ocultan ni se borran nunca.
   // V29.99.22 — modo copiar líneas: activa checkboxes en cada línea para elegir
   // cuáles copiar individualmente (no todo el día).
   const [modoCopiar, setModoCopiar] = useState(false)
   const [seleccionCopiar, setSeleccionCopiar] = useState<Set<string>>(new Set())
-  const logisticas = items.filter(i => i.tipo === 'logistica' && (verTraspasadas || !i.traspasadoAt)).sort(compararLineas)
-  const facturaciones = items.filter(i => i.tipo === 'facturacion' && (verTraspasadas || !i.traspasadoAt)).sort(compararLineas)
+  const logisticas = items.filter(i => i.tipo === 'logistica').sort(compararLineas)
+  const facturaciones = items.filter(i => i.tipo === 'facturacion').sort(compararLineas)
   const cargasNums = [...new Set(logisticas.map(i => i.carga))].sort((a, b) => a - b)
 
   const clientesOrden: string[] = []
@@ -976,18 +975,6 @@ export function AgendaDiariaView() {
                 <ClipboardPaste className="h-3.5 w-3.5 mr-1" /> Pegar día
               </Button>
             </>
-          )}
-          {/* V29.99.21 — toggle para mostrar/ocultar líneas ya traspasadas a Entrada */}
-          {items.some(i => i.traspasadoAt) && (
-            <label className="flex items-center gap-1 text-[10px] text-[#8a7a55] cursor-pointer">
-              <input
-                type="checkbox"
-                checked={verTraspasadas}
-                onChange={e => setVerTraspasadas(e.target.checked)}
-                className="h-3 w-3"
-              />
-              ver traspasadas
-            </label>
           )}
         </div>
 
